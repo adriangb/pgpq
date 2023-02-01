@@ -1,0 +1,11 @@
+/*
+
+!/.gitignore
+!/src
+!/Cargo.toml
+!/Cargo.lock
+!/testdata
+
+__pycache__
+*.so
+.DS_Store
