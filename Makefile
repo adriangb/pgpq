@@ -13,7 +13,7 @@ PHONY: init build test
 init: .clean .init
 
 build-develop: .init
-	. ./.venv/bin/activate && maturin develop --release --strip
+	. ./.venv/bin/activate && maturin develop
 
 test: build-develop
 	./.venv/bin/python -m pytest

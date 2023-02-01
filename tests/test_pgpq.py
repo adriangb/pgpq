@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 from dataclasses import dataclass
 from typing import Any, Dict, Iterator, List, Tuple
 import polars as pl
@@ -32,7 +34,9 @@ class Field:
 Schema = Dict[str, Field]
 
 
-def copy_buffer_and_get_rows(schema: Schema, buffer: bytes, dbconn: Connection) -> List[Tuple[Any, ...]]:
+def copy_buffer_and_get_rows(
+    schema: Schema, buffer: bytes, dbconn: Connection
+) -> List[Tuple[Any, ...]]:
     ddl = ", ".join([f"{name} {field.pg_type}" for name, field in schema.items()])
     try:
         with dbconn.cursor() as cursor:
@@ -47,14 +51,27 @@ def copy_buffer_and_get_rows(schema: Schema, buffer: bytes, dbconn: Connection) 
 
 
 @pytest.mark.parametrize(
-    "schema", [
+    "schema",
+    [
         {"int8_col": Field(pg_type="SMALLINT", pl_type=pl.Int8(), data=[-1, 0, 1])},
-        {"bool_col":Field(pg_type="BOOLEAN", pl_type=pl.Boolean(), data=[True, False])},
+        {
+            "bool_col": Field(
+                pg_type="BOOLEAN", pl_type=pl.Boolean(), data=[True, False]
+            )
+        },
         # nulls
-        {"int8_col_nullable": Field(pg_type="SMALLINT", pl_type=pl.Int8(), data=[-1, 0, 1, None])},
-        {"bool_col_nullable":Field(pg_type="BOOLEAN", pl_type=pl.Boolean(), data=[True, False, None])},
+        {
+            "int8_col_nullable": Field(
+                pg_type="SMALLINT", pl_type=pl.Int8(), data=[-1, 0, 1, None]
+            )
+        },
+        {
+            "bool_col_nullable": Field(
+                pg_type="BOOLEAN", pl_type=pl.Boolean(), data=[True, False, None]
+            )
+        },
     ],
-    ids=str
+    ids=str,
 )
 def test_encode_record_batch(dbconn: Connection, schema: Schema) -> None:
     data = {name: field.data for name, field in schema.items()}
@@ -85,7 +102,8 @@ def test_yellow_cab_data(dbconn: Connection) -> None:
             return "TEXT"
         assert False
 
-    df = pl.read_parquet("tests/testdata/yellow_tripdata_2022-01.parquet", n_rows=10)
+    df = pl.read_parquet("tests/testdata/yellow_tripdata_2022-01.parquet", n_rows=20)
+    df = df.slice(18, 1)
     df_schema = df.schema
     schema = {
         col: Field(pg_type=to_pg_type(pl_type), pl_type=pl_type, data=df[col].to_list())

@@ -1,6 +1,3 @@
-// use pyo3::create_exception;
-// use pyo3::exceptions;
-// use pyo3::exceptions::PyValueError;
 use pyo3::prelude::*;
 use pyo3::types::PyBytes;
 use pyo3::Python;
@@ -8,6 +5,7 @@ use pyo3::Python;
 use arrow::datatypes::Schema;
 use arrow::pyarrow::PyArrowConvert;
 use arrow::record_batch::RecordBatch;
+use bytes::BytesMut;
 
 #[pyclass]
 #[derive(Debug)]
@@ -26,14 +24,16 @@ impl ArrowToPostgresBinaryEncoder {
         }
     }
     fn encode(&mut self, batch: &PyAny) -> Py<PyAny> {
-        let data = self
-            .encoder
-            .encode(RecordBatch::from_pyarrow(batch).unwrap())
+        let mut buff = BytesMut::new();
+        self.encoder
+            .encode(RecordBatch::from_pyarrow(batch).unwrap(), &mut buff)
             .unwrap();
-        Python::with_gil(|py| PyBytes::new(py, &data[..]).into())
+        Python::with_gil(|py| PyBytes::new(py, &buff[..]).into())
     }
     fn finish(&mut self, py: Python) -> Py<PyAny> {
-        PyBytes::new(py, &self.encoder.finish()[..]).into()
+        let mut buff = BytesMut::new();
+        self.encoder.finish(&mut buff).unwrap();
+        PyBytes::new(py, &buff[..]).into()
     }
 }
 
