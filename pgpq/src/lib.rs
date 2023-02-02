@@ -1,7 +1,6 @@
 mod error;
 
 use std::convert::TryFrom;
-use std::io;
 
 use crate::error::Error;
 use arrow::array;
@@ -10,7 +9,7 @@ use arrow::datatypes::{DataType, Schema, TimeUnit};
 
 use arrow::record_batch::RecordBatch;
 
-use arrow_array::{types as array_types, Array, ArrayAccessor};
+use arrow_array::{types as array_types, Array};
 
 use byteorder::{BigEndian, ByteOrder};
 use bytes::{BufMut, BytesMut};
@@ -27,28 +26,25 @@ fn write_null(buf: &mut BytesMut) {
 }
 
 #[inline]
-fn write_value(
-    v: &impl ToSql,
-    type_: &Type,
-    field_name: &str,
-    buf: &mut BytesMut,
-) -> Result<(), Error> {
+fn write_value(v: &impl ToSql, field: &PostgresField, buf: &mut BytesMut) -> Result<(), Error> {
     let idx = buf.len();
     buf.put_i32(0);
     let len = match v
-        .to_sql_checked(type_, buf)
-        .map_err(|e| Error::to_sql(e, field_name))?
+        .to_sql_checked(&field.type_, buf)
+        .map_err(|e| Error::to_sql(e, field))?
     {
         IsNull::Yes => -1,
-        IsNull::No => i32::try_from(buf.len() - idx - 4)
-            .map_err(|e| Error::encode(io::Error::new(io::ErrorKind::InvalidInput, e)))?,
+        IsNull::No => {
+            let written = buf.len() - idx - 4; // 4 comes from the i32 we put above
+            i32::try_from(written).map_err(|_| Error::field_too_large(field, written))?
+        }
     };
     BigEndian::write_i32(&mut buf[idx..], len);
     Ok(())
 }
 
-fn arrow_type_to_pg_type(tp: &DataType) -> Type {
-    match tp {
+fn arrow_type_to_pg_type(col_name: &str, tp: &DataType) -> Result<Type, Error> {
+    let tp = match tp {
         DataType::Null => {
             // Any value will do
             Type::INT2
@@ -96,111 +92,15 @@ fn arrow_type_to_pg_type(tp: &DataType) -> Type {
         DataType::Decimal256(_, _) => {
             panic!("TODO, use https://docs.rs/rust_decimal/latest/rust_decimal/prelude/struct.Decimal.html#method.to_sql")
         }
-        _ => panic!("UNSUPPORTED"),
-    }
+        _ => return Err(Error::type_unsupported(col_name, tp)),
+    };
+    Ok(tp)
 }
 
-#[derive(Debug, Clone)]
-struct PostgresField {
+#[derive(Debug, Clone, PartialEq)]
+pub struct PostgresField {
     type_: Type,
     name: String,
-}
-
-enum TimestampArray<'a> {
-    Nanosecond(&'a array::TimestampNanosecondArray),
-    Microsecond(&'a array::TimestampMicrosecondArray),
-    Millisecond(&'a array::TimestampMillisecondArray),
-    Second(&'a array::TimestampSecondArray),
-}
-
-impl<'a> TimestampArray<'a> {
-    #[inline]
-    pub fn value_as_datetime(&self, i: usize) -> Option<chrono::NaiveDateTime> {
-        match self {
-            Self::Nanosecond(arr) => {
-                if arr.is_null(i) {
-                    None
-                } else {
-                    Some(arr.value_as_datetime(i).expect("Invalid TIMESTAMP"))
-                }
-            }
-            Self::Microsecond(arr) => {
-                if arr.is_null(i) {
-                    None
-                } else {
-                    Some(arr.value_as_datetime(i).expect("Invalid TIMESTAMP"))
-                }
-            }
-            Self::Millisecond(arr) => {
-                if arr.is_null(i) {
-                    None
-                } else {
-                    Some(arr.value_as_datetime(i).expect("Invalid TIMESTAMP"))
-                }
-            }
-            Self::Second(arr) => {
-                if arr.is_null(i) {
-                    None
-                } else {
-                    Some(arr.value_as_datetime(i).expect("Invalid TIMESTAMP"))
-                }
-            }
-        }
-    }
-}
-
-enum Time32Array<'a> {
-    Millisecond(&'a array::Time32MillisecondArray),
-    Second(&'a array::Time32SecondArray),
-}
-
-impl<'a> Time32Array<'a> {
-    #[inline]
-    pub fn value_as_time(&self, i: usize) -> Option<chrono::NaiveTime> {
-        match self {
-            Self::Millisecond(arr) => {
-                if arr.is_null(i) {
-                    None
-                } else {
-                    Some(arr.value_as_time(i).expect("Invalid TIME"))
-                }
-            }
-            Self::Second(arr) => {
-                if arr.is_null(i) {
-                    None
-                } else {
-                    Some(arr.value_as_time(i).expect("Invalid TIME"))
-                }
-            }
-        }
-    }
-}
-
-enum Time64Array<'a> {
-    Nanosecond(&'a array::Time64NanosecondArray),
-    Microsecond(&'a array::Time64MicrosecondArray),
-}
-
-impl<'a> Time64Array<'a> {
-    #[inline]
-    pub fn value_as_time(&self, i: usize) -> Option<chrono::NaiveTime> {
-        match self {
-            Self::Nanosecond(arr) => {
-                if arr.is_null(i) {
-                    None
-                } else {
-                    Some(arr.value_as_time(i).expect("Invalid TIME"))
-                }
-            }
-            Self::Microsecond(arr) => {
-                if arr.is_null(i) {
-                    None
-                } else {
-                    Some(arr.value_as_time(i).expect("Invalid TIME"))
-                }
-            }
-        }
-    }
 }
 
 #[derive(Debug)]
@@ -225,11 +125,14 @@ impl ToSql for PostgresDuration {
 }
 
 #[inline]
-fn get_value_checking_null_mask<T>(arr: &impl ArrayAccessor<Item = T>, index: usize) -> Option<T> {
+fn check_null_mask<T>(arr: T, index: usize) -> Option<T>
+where
+    T: Array,
+{
     if arr.is_null(index) {
         None
     } else {
-        Some(arr.value(index))
+        Some(arr)
     }
 }
 
@@ -248,20 +151,24 @@ pub struct ArrowToPostgresBinaryEncoder {
 
 impl ArrowToPostgresBinaryEncoder {
     /// Creates a new writer which will write rows of the provided types to the provided sink.
-    pub fn new(schema: Schema) -> ArrowToPostgresBinaryEncoder {
+    pub fn try_new(schema: Schema) -> Result<ArrowToPostgresBinaryEncoder, Error> {
+        let dtypes: Result<Vec<Type>, Error> = schema
+            .fields
+            .iter()
+            .map(|f| arrow_type_to_pg_type(f.name(), f.data_type()))
+            .collect();
         let pg_fields: Vec<PostgresField> = schema
             .fields
             .iter()
-            .map(|f| PostgresField {
-                type_: arrow_type_to_pg_type(f.data_type()),
-                name: f.name().to_string(),
-            })
+            .map(|f| f.name().to_string())
+            .zip(dtypes?)
+            .map(|(name, type_)| PostgresField { name, type_ })
             .collect();
 
-        ArrowToPostgresBinaryEncoder {
+        Ok(ArrowToPostgresBinaryEncoder {
             fields: pg_fields,
             state: EncoderState::Created,
-        }
+        })
     }
 
     pub fn write_header(&mut self, out: &mut BytesMut) {
@@ -289,158 +196,160 @@ impl ArrowToPostgresBinaryEncoder {
             for (col, arr_ref) in columns.iter().enumerate() {
                 let field = &self.fields[col];
                 let arr = &*arr_ref.clone();
-                let field_name = &field.name;
-                let pg_type = &field.type_;
+                let _field_name = &field.name;
+                let _pg_type = &field.type_;
                 match arr.data_type() {
                     DataType::Null => write_null(buf),
                     DataType::Boolean => {
                         let arr = array::as_boolean_array(arr);
-                        let v = get_value_checking_null_mask(&arr, row);
-                        write_value(&v, pg_type, field_name, buf).unwrap();
+                        let v = check_null_mask(arr, row).map(|arr| arr.value(row));
+                        write_value(&v, field, buf)?;
                     }
                     DataType::Int8 => {
                         let arr = as_primitive_array::<array_types::Int8Type>(arr);
-                        let v = get_value_checking_null_mask(&arr, row).map(i16::from);
-                        write_value(&v, pg_type, field_name, buf).unwrap();
+                        let v = check_null_mask(arr, row)
+                            .map(|arr| arr.value(row))
+                            .map(i16::from);
+                        write_value(&v, field, buf)?;
                     }
                     DataType::Int16 => {
                         let arr = as_primitive_array::<array_types::Int16Type>(arr);
-                        let v = get_value_checking_null_mask(&arr, row);
-                        write_value(&v, pg_type, field_name, buf).unwrap();
+                        let v = check_null_mask(arr, row).map(|arr| arr.value(row));
+                        write_value(&v, field, buf)?;
                     }
                     DataType::Int32 => {
                         let arr = as_primitive_array::<array_types::Int32Type>(arr);
-                        let v = get_value_checking_null_mask(&arr, row);
-                        write_value(&v, pg_type, field_name, buf).unwrap();
+                        let v = check_null_mask(arr, row).map(|arr| arr.value(row));
+                        write_value(&v, field, buf)?;
                     }
                     DataType::Int64 => {
                         let arr = as_primitive_array::<array_types::Int64Type>(arr);
-                        let v = get_value_checking_null_mask(&arr, row);
-                        write_value(&v, pg_type, field_name, buf).unwrap();
+                        let v = check_null_mask(arr, row).map(|arr| arr.value(row));
+                        write_value(&v, field, buf)?;
                     }
                     DataType::UInt8 => {
                         let arr = as_primitive_array::<array_types::UInt8Type>(arr);
-                        let v = get_value_checking_null_mask(&arr, row).map(i16::from);
-                        write_value(&v, pg_type, field_name, buf).unwrap();
+                        let v = check_null_mask(arr, row)
+                            .map(|arr| arr.value(row))
+                            .map(i16::from);
+                        write_value(&v, field, buf)?;
                     }
                     DataType::UInt16 => {
                         let arr = as_primitive_array::<array_types::UInt16Type>(arr);
-                        let v = get_value_checking_null_mask(&arr, row).map(i32::from);
-                        write_value(&v, pg_type, field_name, buf).unwrap();
+                        let v = check_null_mask(arr, row)
+                            .map(|arr| arr.value(row))
+                            .map(i32::from);
+                        write_value(&v, field, buf)?;
                     }
                     DataType::UInt32 => {
                         let arr = as_primitive_array::<array_types::UInt32Type>(arr);
-                        let v = get_value_checking_null_mask(&arr, row).map(i64::from);
-                        write_value(&v, pg_type, field_name, buf).unwrap();
-                    }
-                    DataType::UInt64 => {
-                        panic!("rust-postgres doesn't support u64 or i128")
+                        let v = check_null_mask(arr, row)
+                            .map(|arr| arr.value(row))
+                            .map(i64::from);
+                        write_value(&v, field, buf)?;
                     }
                     DataType::Float16 => {
                         let arr = as_primitive_array::<array_types::Float16Type>(arr);
-                        let v = get_value_checking_null_mask(&arr, row).map(f32::from);
-                        write_value(&v, pg_type, field_name, buf).unwrap();
+                        let v = check_null_mask(arr, row)
+                            .map(|arr| arr.value(row))
+                            .map(f32::from);
+                        write_value(&v, field, buf)?;
                     }
                     DataType::Float32 => {
                         let arr = as_primitive_array::<array_types::Float32Type>(arr);
-                        let v = get_value_checking_null_mask(&arr, row);
-                        write_value(&v, pg_type, field_name, buf).unwrap();
+                        let v = check_null_mask(arr, row).map(|arr| arr.value(row));
+                        write_value(&v, field, buf)?;
                     }
                     DataType::Float64 => {
                         let arr = as_primitive_array::<array_types::Float64Type>(arr);
-                        let v = get_value_checking_null_mask(&arr, row);
-                        write_value(&v, pg_type, field_name, buf).unwrap();
+                        let v = check_null_mask(arr, row).map(|arr| arr.value(row));
+                        write_value(&v, field, buf)?;
                     }
                     DataType::Timestamp(time_unit, tz_option) => {
-                        let arr = match time_unit {
-                            TimeUnit::Nanosecond => {
-                                TimestampArray::Nanosecond(as_primitive_array::<
-                                    array_types::TimestampNanosecondType,
-                                >(arr))
-                            }
-                            TimeUnit::Microsecond => {
-                                TimestampArray::Microsecond(as_primitive_array::<
-                                    array_types::TimestampMicrosecondType,
-                                >(arr))
-                            }
-                            TimeUnit::Millisecond => {
-                                TimestampArray::Millisecond(as_primitive_array::<
-                                    array_types::TimestampMillisecondType,
-                                >(arr))
-                            }
-                            TimeUnit::Second => {
-                                TimestampArray::Second(as_primitive_array::<
-                                    array_types::TimestampSecondType,
-                                >(arr))
-                            }
+                        let v = match time_unit {
+                            TimeUnit::Nanosecond => check_null_mask(
+                                as_primitive_array::<array_types::TimestampNanosecondType>(arr),
+                                row,
+                            )
+                            .map(|arr| arr.value_as_datetime(row).unwrap()),
+                            TimeUnit::Microsecond => check_null_mask(
+                                as_primitive_array::<array_types::TimestampMicrosecondType>(arr),
+                                row,
+                            )
+                            .map(|arr| arr.value_as_datetime(row).unwrap()),
+                            TimeUnit::Millisecond => check_null_mask(
+                                as_primitive_array::<array_types::TimestampMillisecondType>(arr),
+                                row,
+                            )
+                            .map(|arr| arr.value_as_datetime(row).unwrap()),
+                            TimeUnit::Second => check_null_mask(
+                                as_primitive_array::<array_types::TimestampSecondType>(arr),
+                                row,
+                            )
+                            .map(|arr| arr.value_as_datetime(row).unwrap()),
                         };
                         match tz_option {
                             Some(_) => {
-                                let v = arr
-                                    .value_as_datetime(row)
-                                    .map(|v| Utc.from_local_datetime(&v).unwrap());
-                                write_value(&v, pg_type, field_name, buf).unwrap();
+                                let v = v.map(|v| Utc.from_local_datetime(&v).unwrap());
+                                write_value(&v, field, buf)?;
                             }
                             None => {
-                                let v = arr.value_as_datetime(row);
-                                write_value(&v, pg_type, field_name, buf).unwrap();
+                                write_value(&v, field, buf)?;
                             }
                         }
                     }
                     DataType::Date32 => {
                         let arr = as_primitive_array::<array_types::Date32Type>(arr);
-                        let v = get_value_checking_null_mask(&arr, row);
-                        write_value(&v, pg_type, field_name, buf).unwrap();
+                        let v = check_null_mask(arr, row).map(|arr| arr.value(row));
+                        write_value(&v, field, buf)?;
                     }
                     DataType::Date64 => {
                         let arr = as_primitive_array::<array_types::Date64Type>(arr);
-                        let v = get_value_checking_null_mask(&arr, row);
-                        write_value(&v, pg_type, field_name, buf).unwrap();
+                        let v = check_null_mask(arr, row).map(|arr| arr.value(row));
+                        write_value(&v, field, buf)?;
                     }
                     DataType::Time32(time_unit) => {
-                        let arr = match time_unit {
-                            TimeUnit::Millisecond => {
-                                Time32Array::Millisecond(as_primitive_array::<
-                                    array_types::Time32MillisecondType,
-                                >(arr))
-                            }
-                            TimeUnit::Second => {
-                                Time32Array::Second(as_primitive_array::<
-                                    array_types::Time32SecondType,
-                                >(arr))
-                            }
-                            _ => panic!("Time32 does not support {time_unit:?}"),
+                        let v = match time_unit {
+                            TimeUnit::Millisecond => check_null_mask(
+                                as_primitive_array::<array_types::Time32MillisecondType>(arr),
+                                row,
+                            )
+                            .map(|arr| arr.value_as_time(row)),
+                            TimeUnit::Second => check_null_mask(
+                                as_primitive_array::<array_types::Time32SecondType>(arr),
+                                row,
+                            )
+                            .map(|arr| arr.value_as_time(row)),
+                            _ => unreachable!(),
                         };
-                        let v = arr.value_as_time(row);
-                        write_value(&v, pg_type, field_name, buf).unwrap();
+                        write_value(&v, field, buf)?;
                     }
                     DataType::Time64(time_unit) => {
-                        let arr = match time_unit {
-                            TimeUnit::Nanosecond => {
-                                Time64Array::Nanosecond(as_primitive_array::<
-                                    array_types::Time64NanosecondType,
-                                >(arr))
-                            }
-                            TimeUnit::Microsecond => {
-                                Time64Array::Microsecond(as_primitive_array::<
-                                    array_types::Time64MicrosecondType,
-                                >(arr))
-                            }
-                            _ => panic!("Time64 does not support {time_unit:?}"),
+                        let v = match time_unit {
+                            TimeUnit::Nanosecond => check_null_mask(
+                                as_primitive_array::<array_types::Time64NanosecondType>(arr),
+                                row,
+                            )
+                            .map(|arr| arr.value_as_time(row)),
+                            TimeUnit::Microsecond => check_null_mask(
+                                as_primitive_array::<array_types::Time64MicrosecondType>(arr),
+                                row,
+                            )
+                            .map(|arr| arr.value_as_time(row)),
+                            _ => unreachable!(),
                         };
-                        for row in 0..n_rows {
-                            let v = arr.value_as_time(row);
-                            write_value(&v, pg_type, field_name, buf).unwrap();
-                        }
+                        write_value(&v, field, buf)?;
                     }
                     DataType::Duration(time_unit) => match time_unit {
                         TimeUnit::Microsecond => {
-                            let arr =
-                                as_primitive_array::<array_types::DurationMicrosecondType>(arr);
-                            match get_value_checking_null_mask(&arr, row) {
-                                Some(v) => write_value(&PostgresDuration { microseconds: v }, pg_type, field_name, buf).unwrap(),
-                                None => write_null(buf),
-                            }
+                            let v = check_null_mask(
+                                as_primitive_array::<array_types::DurationMicrosecondType>(arr),
+                                row,
+                            )
+                            .map(|arr| PostgresDuration {
+                                microseconds: arr.value(row),
+                            });
+                            write_value(&v, field, buf)?
                         }
                         time_unit => {
                             panic!("Durations in units of {time_unit:?} are not supported")
@@ -448,36 +357,36 @@ impl ArrowToPostgresBinaryEncoder {
                     },
                     DataType::Binary => {
                         let arr = arr.as_any().downcast_ref::<array::BinaryArray>().unwrap();
-                        let v = get_value_checking_null_mask(&arr, row);
-                        write_value(&v, pg_type, field_name, buf).unwrap();
+                        let v = check_null_mask(arr, row).map(|arr| arr.value(row));
+                        write_value(&v, field, buf)?;
                     }
                     DataType::FixedSizeBinary(_) => {
                         let arr = arr
                             .as_any()
                             .downcast_ref::<array::FixedSizeBinaryArray>()
                             .unwrap();
-                        let v = get_value_checking_null_mask(&arr, row);
-                        write_value(&v, pg_type, field_name, buf).unwrap();
+                        let v = check_null_mask(arr, row).map(|arr| arr.value(row));
+                        write_value(&v, field, buf)?;
                     }
                     DataType::LargeBinary => {
                         let arr = arr
                             .as_any()
                             .downcast_ref::<array::LargeBinaryArray>()
                             .unwrap();
-                        let v = get_value_checking_null_mask(&arr, row);
-                        write_value(&v, pg_type, field_name, buf).unwrap();
+                        let v = check_null_mask(arr, row).map(|arr| arr.value(row));
+                        write_value(&v, field, buf)?;
                     }
                     DataType::Utf8 => {
                         let arr = array::as_string_array(arr);
-                        let v = get_value_checking_null_mask(&arr, row);
-                        write_value(&v, pg_type, field_name, buf).unwrap();
+                        let v = check_null_mask(arr, row).map(|arr| arr.value(row));
+                        write_value(&v, field, buf)?;
                     }
                     DataType::LargeUtf8 => {
                         let arr = array::as_largestring_array(arr);
-                        let v = get_value_checking_null_mask(&arr, row);
-                        write_value(&v, pg_type, field_name, buf).unwrap();
+                        let v = check_null_mask(arr, row).map(|arr| arr.value(row));
+                        write_value(&v, field, buf)?;
                     }
-                    _ => panic!("Unsupported data type"),
+                    _ => unreachable!(),
                 }
             }
         }
@@ -507,7 +416,7 @@ mod tests {
 
     fn run_snap_test(name: &str, batch: RecordBatch, schema: Schema) {
         let mut buff = BytesMut::new();
-        let mut writer = ArrowToPostgresBinaryEncoder::new(schema);
+        let mut writer = ArrowToPostgresBinaryEncoder::try_new(schema).unwrap();
 
         writer.write_header(&mut buff);
         writer.write_batch(batch, &mut buff).unwrap();

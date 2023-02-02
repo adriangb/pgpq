@@ -114,8 +114,9 @@ def test_yellow_cab_data(dbconn: Connection) -> None:
     arrow_table = df.to_arrow()
     encoder = ArrowToPostgresBinaryEncoder(arrow_table.schema)
     buffer = bytearray()
+    buffer.extend(encoder.write_header())
     for batch in arrow_table.to_batches():
-        buffer.extend(encoder.encode(batch))
+        buffer.extend(encoder.write_batch(batch))
     buffer.extend(encoder.finish())
 
     rows = copy_buffer_and_get_rows(schema, buffer, dbconn)

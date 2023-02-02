@@ -27,7 +27,7 @@ fn setup(row_limit: Option<usize>) -> (Vec<RecordBatch>, Schema) {
 
 fn bench(input: (Vec<RecordBatch>, Schema)) {
     let (reader, schema) = input;
-    let mut encoder = ArrowToPostgresBinaryEncoder::new(schema);
+    let mut encoder = ArrowToPostgresBinaryEncoder::try_new(schema).unwrap();
     let mut buff = BytesMut::new();
     encoder.write_header(&mut buff);
     for batch in reader {
