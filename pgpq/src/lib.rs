@@ -28,7 +28,7 @@ fn write_null(buf: &mut BytesMut) {
 
 #[inline]
 fn write_value(
-    v: &dyn ToSql,
+    v: &impl ToSql,
     type_: &Type,
     field_name: &str,
     buf: &mut BytesMut,
@@ -291,50 +291,47 @@ impl ArrowToPostgresBinaryEncoder {
                 let arr = &*arr_ref.clone();
                 let field_name = &field.name;
                 let pg_type = &field.type_;
-                let mut write = |v: &dyn ToSql| {
-                    write_value(v, pg_type, field_name, buf).unwrap();
-                };
                 match arr.data_type() {
                     DataType::Null => write_null(buf),
                     DataType::Boolean => {
                         let arr = array::as_boolean_array(arr);
                         let v = get_value_checking_null_mask(&arr, row);
-                        write(&v)
+                        write_value(&v, pg_type, field_name, buf).unwrap();
                     }
                     DataType::Int8 => {
                         let arr = as_primitive_array::<array_types::Int8Type>(arr);
                         let v = get_value_checking_null_mask(&arr, row).map(i16::from);
-                        write(&v)
+                        write_value(&v, pg_type, field_name, buf).unwrap();
                     }
                     DataType::Int16 => {
                         let arr = as_primitive_array::<array_types::Int16Type>(arr);
                         let v = get_value_checking_null_mask(&arr, row);
-                        write(&v);
+                        write_value(&v, pg_type, field_name, buf).unwrap();
                     }
                     DataType::Int32 => {
                         let arr = as_primitive_array::<array_types::Int32Type>(arr);
                         let v = get_value_checking_null_mask(&arr, row);
-                        write(&v);
+                        write_value(&v, pg_type, field_name, buf).unwrap();
                     }
                     DataType::Int64 => {
                         let arr = as_primitive_array::<array_types::Int64Type>(arr);
                         let v = get_value_checking_null_mask(&arr, row);
-                        write(&v);
+                        write_value(&v, pg_type, field_name, buf).unwrap();
                     }
                     DataType::UInt8 => {
                         let arr = as_primitive_array::<array_types::UInt8Type>(arr);
                         let v = get_value_checking_null_mask(&arr, row).map(i16::from);
-                        write(&v);
+                        write_value(&v, pg_type, field_name, buf).unwrap();
                     }
                     DataType::UInt16 => {
                         let arr = as_primitive_array::<array_types::UInt16Type>(arr);
                         let v = get_value_checking_null_mask(&arr, row).map(i32::from);
-                        write(&v);
+                        write_value(&v, pg_type, field_name, buf).unwrap();
                     }
                     DataType::UInt32 => {
                         let arr = as_primitive_array::<array_types::UInt32Type>(arr);
                         let v = get_value_checking_null_mask(&arr, row).map(i64::from);
-                        write(&v);
+                        write_value(&v, pg_type, field_name, buf).unwrap();
                     }
                     DataType::UInt64 => {
                         panic!("rust-postgres doesn't support u64 or i128")
@@ -342,17 +339,17 @@ impl ArrowToPostgresBinaryEncoder {
                     DataType::Float16 => {
                         let arr = as_primitive_array::<array_types::Float16Type>(arr);
                         let v = get_value_checking_null_mask(&arr, row).map(f32::from);
-                        write(&v);
+                        write_value(&v, pg_type, field_name, buf).unwrap();
                     }
                     DataType::Float32 => {
                         let arr = as_primitive_array::<array_types::Float32Type>(arr);
                         let v = get_value_checking_null_mask(&arr, row);
-                        write(&v);
+                        write_value(&v, pg_type, field_name, buf).unwrap();
                     }
                     DataType::Float64 => {
                         let arr = as_primitive_array::<array_types::Float64Type>(arr);
                         let v = get_value_checking_null_mask(&arr, row);
-                        write(&v);
+                        write_value(&v, pg_type, field_name, buf).unwrap();
                     }
                     DataType::Timestamp(time_unit, tz_option) => {
                         let arr = match time_unit {
@@ -382,23 +379,23 @@ impl ArrowToPostgresBinaryEncoder {
                                 let v = arr
                                     .value_as_datetime(row)
                                     .map(|v| Utc.from_local_datetime(&v).unwrap());
-                                write(&v)
+                                write_value(&v, pg_type, field_name, buf).unwrap();
                             }
                             None => {
                                 let v = arr.value_as_datetime(row);
-                                write(&v)
+                                write_value(&v, pg_type, field_name, buf).unwrap();
                             }
                         }
                     }
                     DataType::Date32 => {
                         let arr = as_primitive_array::<array_types::Date32Type>(arr);
                         let v = get_value_checking_null_mask(&arr, row);
-                        write(&v);
+                        write_value(&v, pg_type, field_name, buf).unwrap();
                     }
                     DataType::Date64 => {
                         let arr = as_primitive_array::<array_types::Date64Type>(arr);
                         let v = get_value_checking_null_mask(&arr, row);
-                        write(&v);
+                        write_value(&v, pg_type, field_name, buf).unwrap();
                     }
                     DataType::Time32(time_unit) => {
                         let arr = match time_unit {
@@ -415,7 +412,7 @@ impl ArrowToPostgresBinaryEncoder {
                             _ => panic!("Time32 does not support {time_unit:?}"),
                         };
                         let v = arr.value_as_time(row);
-                        write(&v);
+                        write_value(&v, pg_type, field_name, buf).unwrap();
                     }
                     DataType::Time64(time_unit) => {
                         let arr = match time_unit {
@@ -433,7 +430,7 @@ impl ArrowToPostgresBinaryEncoder {
                         };
                         for row in 0..n_rows {
                             let v = arr.value_as_time(row);
-                            write(&v)
+                            write_value(&v, pg_type, field_name, buf).unwrap();
                         }
                     }
                     DataType::Duration(time_unit) => match time_unit {
@@ -441,8 +438,8 @@ impl ArrowToPostgresBinaryEncoder {
                             let arr =
                                 as_primitive_array::<array_types::DurationMicrosecondType>(arr);
                             match get_value_checking_null_mask(&arr, row) {
-                                Some(v) => write(&PostgresDuration { microseconds: v }),
-                                none => write(&none),
+                                Some(v) => write_value(&PostgresDuration { microseconds: v }, pg_type, field_name, buf).unwrap(),
+                                None => write_null(buf),
                             }
                         }
                         time_unit => {
@@ -452,7 +449,7 @@ impl ArrowToPostgresBinaryEncoder {
                     DataType::Binary => {
                         let arr = arr.as_any().downcast_ref::<array::BinaryArray>().unwrap();
                         let v = get_value_checking_null_mask(&arr, row);
-                        write(&v)
+                        write_value(&v, pg_type, field_name, buf).unwrap();
                     }
                     DataType::FixedSizeBinary(_) => {
                         let arr = arr
@@ -460,7 +457,7 @@ impl ArrowToPostgresBinaryEncoder {
                             .downcast_ref::<array::FixedSizeBinaryArray>()
                             .unwrap();
                         let v = get_value_checking_null_mask(&arr, row);
-                        write(&v)
+                        write_value(&v, pg_type, field_name, buf).unwrap();
                     }
                     DataType::LargeBinary => {
                         let arr = arr
@@ -468,17 +465,17 @@ impl ArrowToPostgresBinaryEncoder {
                             .downcast_ref::<array::LargeBinaryArray>()
                             .unwrap();
                         let v = get_value_checking_null_mask(&arr, row);
-                        write(&v)
+                        write_value(&v, pg_type, field_name, buf).unwrap();
                     }
                     DataType::Utf8 => {
                         let arr = array::as_string_array(arr);
                         let v = get_value_checking_null_mask(&arr, row);
-                        write(&v)
+                        write_value(&v, pg_type, field_name, buf).unwrap();
                     }
                     DataType::LargeUtf8 => {
                         let arr = array::as_largestring_array(arr);
                         let v = get_value_checking_null_mask(&arr, row);
-                        write(&v)
+                        write_value(&v, pg_type, field_name, buf).unwrap();
                     }
                     _ => panic!("Unsupported data type"),
                 }
