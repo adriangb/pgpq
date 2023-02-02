@@ -233,7 +233,6 @@ fn get_value_checking_null_mask<T>(arr: &impl ArrayAccessor<Item = T>, index: us
     }
 }
 
-
 #[derive(Debug, PartialEq)]
 pub enum EncoderState {
     Created,
@@ -265,7 +264,7 @@ impl ArrowToPostgresBinaryEncoder {
         }
     }
 
-    pub fn write_header(&mut self, out: &mut BytesMut) -> () {
+    pub fn write_header(&mut self, out: &mut BytesMut) {
         assert_eq!(self.state, EncoderState::Created);
         out.put(MAGIC);
         out.put_i32(0); // flags

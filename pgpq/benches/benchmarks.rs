@@ -29,10 +29,11 @@ fn bench(input: (Vec<RecordBatch>, Schema)) {
     let (reader, schema) = input;
     let mut encoder = ArrowToPostgresBinaryEncoder::new(schema);
     let mut buff = BytesMut::new();
+    encoder.write_header(&mut buff);
     for batch in reader {
-        encoder.encode(batch, &mut buff);
+        encoder.write_batch(batch, &mut buff);
     }
-    encoder.finish(&mut buff);
+    encoder.write_footer(&mut buff);
 }
 
 pub fn benchmark_nyc_taxi_small(c: &mut Criterion) {
