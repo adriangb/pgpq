@@ -11,29 +11,42 @@ use bytes::BytesMut;
 #[derive(Debug)]
 struct ArrowToPostgresBinaryEncoder {
     encoder: pgpq::ArrowToPostgresBinaryEncoder,
+    buf: BytesMut,
 }
+
+const BUFF_SIZE: usize = 1024 * 1024;
+const EMPTY: Vec<u8> = vec![];
 
 #[pymethods]
 impl ArrowToPostgresBinaryEncoder {
     #[new]
     fn new(pyschema: &PyAny) -> Self {
+        let encoder =
+            pgpq::ArrowToPostgresBinaryEncoder::new(Schema::from_pyarrow(pyschema).unwrap());
         ArrowToPostgresBinaryEncoder {
-            encoder: pgpq::ArrowToPostgresBinaryEncoder::new(
-                Schema::from_pyarrow(pyschema).unwrap(),
-            ),
+            encoder,
+            buf: BytesMut::with_capacity(BUFF_SIZE),
         }
     }
-    fn encode(&mut self, batch: &PyAny) -> Py<PyAny> {
-        let mut buff = BytesMut::new();
+    fn write_header(&mut self, py: Python) -> Py<PyAny> {
+        self.encoder.write_header(&mut self.buf);
+        PyBytes::new(py, &self.buf.split()[..]).into()
+    }
+    fn write_batch(&mut self, batch: &PyAny) -> Py<PyAny> {
         self.encoder
-            .encode(RecordBatch::from_pyarrow(batch).unwrap(), &mut buff)
+            .write_batch(RecordBatch::from_pyarrow(batch).unwrap(), &mut self.buf)
             .unwrap();
-        Python::with_gil(|py| PyBytes::new(py, &buff[..]).into())
+        Python::with_gil(|py| {
+            if self.buf.len() > BUFF_SIZE {
+                PyBytes::new(py, &self.buf.split()[..]).into()
+            } else {
+                PyBytes::new(py, &EMPTY[..]).into()
+            }
+        })
     }
     fn finish(&mut self, py: Python) -> Py<PyAny> {
-        let mut buff = BytesMut::new();
-        self.encoder.finish(&mut buff).unwrap();
-        PyBytes::new(py, &buff[..]).into()
+        self.encoder.write_footer(&mut self.buf).unwrap();
+        PyBytes::new(py, &self.buf[..]).into()
     }
 }
 

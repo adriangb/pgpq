@@ -208,8 +208,6 @@ struct PostgresDuration {
     microseconds: i64,
 }
 
-const BUFF_SIZE: usize = 1024 * 1024;
-
 impl ToSql for PostgresDuration {
     fn to_sql(
         &self,
@@ -235,10 +233,18 @@ fn get_value_checking_null_mask<T>(arr: &impl ArrayAccessor<Item = T>, index: us
     }
 }
 
+
+#[derive(Debug, PartialEq)]
+pub enum EncoderState {
+    Created,
+    Encoding,
+    Finished,
+}
+
 #[derive(Debug)]
 pub struct ArrowToPostgresBinaryEncoder {
     fields: Vec<PostgresField>,
-    buff: BytesMut,
+    state: EncoderState,
 }
 
 impl ArrowToPostgresBinaryEncoder {
@@ -253,18 +259,22 @@ impl ArrowToPostgresBinaryEncoder {
             })
             .collect();
 
-        let mut buf = BytesMut::with_capacity(BUFF_SIZE);
-        buf.put(MAGIC);
-        buf.put_i32(0); // flags
-        buf.put_i32(0); // header extension
-
         ArrowToPostgresBinaryEncoder {
             fields: pg_fields,
-            buff: buf,
+            state: EncoderState::Created,
         }
     }
 
-    pub fn encode(&mut self, batch: RecordBatch, out: &mut BytesMut) -> Result<(), Error> {
+    pub fn write_header(&mut self, out: &mut BytesMut) -> () {
+        assert_eq!(self.state, EncoderState::Created);
+        out.put(MAGIC);
+        out.put_i32(0); // flags
+        out.put_i32(0); // header extension
+        self.state = EncoderState::Encoding;
+    }
+
+    pub fn write_batch(&mut self, batch: RecordBatch, buf: &mut BytesMut) -> Result<(), Error> {
+        assert_eq!(self.state, EncoderState::Encoding);
         assert!(
             batch.num_columns() == self.fields.len(),
             "expected {} values but got {}",
@@ -275,7 +285,6 @@ impl ArrowToPostgresBinaryEncoder {
         let n_cols = batch.num_columns();
 
         let columns = batch.columns();
-        let buf = &mut self.buff;
         for row in 0..n_rows {
             buf.put_i16(n_cols as i16);
             for (col, arr_ref) in columns.iter().enumerate() {
@@ -476,14 +485,13 @@ impl ArrowToPostgresBinaryEncoder {
                 }
             }
         }
-        if buf.len() > BUFF_SIZE {
-            out.put(buf.split());
-        }
         Ok(())
     }
-    pub fn finish(&mut self, out: &mut BytesMut) -> Result<(), Error> {
-        out.put(&self.buff[..]);
+
+    pub fn write_footer(&mut self, out: &mut BytesMut) -> Result<(), Error> {
+        assert_eq!(self.state, EncoderState::Encoding);
         out.put_i16(-1);
+        self.state = EncoderState::Finished;
         Ok(())
     }
 }
@@ -505,8 +513,9 @@ mod tests {
         let mut buff = BytesMut::new();
         let mut writer = ArrowToPostgresBinaryEncoder::new(schema);
 
-        writer.encode(batch, &mut buff).unwrap();
-        writer.finish(&mut buff).unwrap();
+        writer.write_header(&mut buff);
+        writer.write_batch(batch, &mut buff).unwrap();
+        writer.write_footer(&mut buff).unwrap();
 
         let snap_file =
             PathBuf::from(env!("CARGO_MANIFEST_DIR")).join(format!("src/snapshots/{name}.bin"));
