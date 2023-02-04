@@ -32,6 +32,8 @@ build-backend = "maturin"
 [tool.maturin]
 sdist-include = ["Cargo.lock"]
 strip = true
+python-source = "python"
+profile = "release"
 
 [tool.isort]
 profile = "black"

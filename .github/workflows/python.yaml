@@ -38,7 +38,7 @@ jobs:
       - name: Install built wheel - x86_64
         run: |
           pip install dist/${{ env.PACKAGE_NAME }}-*.whl --force-reinstall
-          pip install pytest
+          pip install -r requirements-dev.txt
           pytest -v
       - name: Build wheels - universal2
         uses: messense/maturin-action@v1
@@ -48,7 +48,7 @@ jobs:
       - name: Install built wheel - universal2
         run: |
           pip install dist/${{ env.PACKAGE_NAME }}-*universal2.whl --force-reinstall
-          pip install pytest
+          pip install -r requirements-dev.txt
           pytest -v
       - name: Upload wheels
         uses: actions/upload-artifact@v2
@@ -83,7 +83,7 @@ jobs:
         shell: bash
         run: |
           python -m pip install dist/${{ env.PACKAGE_NAME }}-*.whl --force-reinstall
-          pip install pytest
+          pip install -r requirements-dev.txt
           python -m pytest -v
       - name: Upload wheels
         uses: actions/upload-artifact@v2
@@ -113,7 +113,7 @@ jobs:
         if: matrix.target == 'x86_64'
         run: |
           pip install dist/${{ env.PACKAGE_NAME }}-*.whl --force-reinstall
-          pip install pytest
+          pip install -r requirements-dev.txt
           pytest -v
       - name: Upload wheels
         uses: actions/upload-artifact@v2
@@ -151,7 +151,7 @@ jobs:
             pip3 install -U pip
           run: |
             pip3 install ${{ env.PACKAGE_NAME }} --no-index --find-links dist/ --force-reinstall
-            pip install pytest
+            pip install -r requirements-dev.txt
             pytest -v
       - name: Upload wheels
         uses: actions/upload-artifact@v2
@@ -264,7 +264,7 @@ jobs:
         if: matrix.target == 'x86_64'
         run: |
           pip install dist/${{ env.PACKAGE_NAME }}-*.whl --force-reinstall
-          pip install pytest
+          pip install -r requirements-dev.txt
           pytest -v
       - name: Upload wheels
         uses: actions/upload-artifact@v2

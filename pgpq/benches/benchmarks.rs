@@ -1,5 +1,6 @@
 #![allow(unused)]
 
+use arrow::array::ArrayIter;
 use arrow::datatypes::{DataType, Schema, TimeUnit};
 use arrow::record_batch::RecordBatchReader;
 use arrow_array::RecordBatch;
@@ -38,15 +39,16 @@ fn bench(input: (Vec<RecordBatch>, Schema)) {
 
 pub fn benchmark_nyc_taxi_small(c: &mut Criterion) {
     let mut group = c.benchmark_group("benchmark_nyc_taxi_small");
-    group.sampling_mode(criterion::SamplingMode::Flat);
-    group.sample_size(10); // the minimum
     group.bench_function("NYC Yello Taxi 100 rows", |b| {
         b.iter_with_setup(|| setup(Some(100)), bench)
     });
 }
 
 pub fn benchmark_nyc_taxi_full(c: &mut Criterion) {
-    c.bench_function("NYC Yello Taxi Full", |b| {
+    let mut group = c.benchmark_group("benchmark_nyc_taxi_full");
+    group.sampling_mode(criterion::SamplingMode::Flat);
+    group.sample_size(10); // the minimum
+    group.bench_function("NYC Yello Taxi full", |b| {
         b.iter_with_setup(|| setup(None), bench)
     });
 }

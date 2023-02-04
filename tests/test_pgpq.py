@@ -53,7 +53,7 @@ def copy_buffer_and_get_rows(
 @pytest.mark.parametrize(
     "schema",
     [
-        {"int8_col": Field(pg_type="SMALLINT", pl_type=pl.Int8(), data=[-1, 0, 1])},
+        {"int8_col": Field(pg_type="INT2", pl_type=pl.Int8(), data=[-1, 0, 1])},
         {
             "bool_col": Field(
                 pg_type="BOOLEAN", pl_type=pl.Boolean(), data=[True, False]
@@ -62,7 +62,7 @@ def copy_buffer_and_get_rows(
         # nulls
         {
             "int8_col_nullable": Field(
-                pg_type="SMALLINT", pl_type=pl.Int8(), data=[-1, 0, 1, None]
+                pg_type="INT2", pl_type=pl.Int8(), data=[-1, 0, 1, None]
             )
         },
         {

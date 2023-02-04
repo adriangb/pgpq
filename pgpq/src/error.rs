@@ -2,13 +2,24 @@ use arrow_schema::DataType;
 use std::error;
 use std::fmt;
 
-use crate::PostgresField;
-
 #[derive(Debug, PartialEq)]
 pub enum ErrorKind {
-    TypeNotSupported { field: String, tp: DataType },
-    FieldTooLarge { field: PostgresField, size: usize }, // Postgres' binary format only supports fields up to 32bits
-    ToSql { field: PostgresField },
+    ColumnTypeMismatch {
+        field: String,
+        expected: DataType,
+        actual: DataType,
+    },
+    TypeNotSupported {
+        field: String,
+        tp: DataType,
+    },
+    FieldTooLarge {
+        field: String,
+        size: usize,
+    }, // Postgres' binary format only supports fields up to 32bits
+    ToSql {
+        field: String,
+    },
     Encode,
 }
 
@@ -33,18 +44,23 @@ impl fmt::Debug for Error {
 impl fmt::Display for Error {
     fn fmt(&self, fmt: &mut fmt::Formatter<'_>) -> fmt::Result {
         match &self.0.kind {
-            ErrorKind::ToSql { field } => {
-                write!(fmt, "error serializing parameter {}", field.name)?
-            }
+            ErrorKind::ToSql { field } => write!(fmt, "error serializing parameter {field}")?,
             ErrorKind::Encode => write!(fmt, "error encoding message")?,
             ErrorKind::FieldTooLarge { field, size } => write!(
                 fmt,
-                "field {} exceeds the maximum allowed size for binary copy ({} bytes)",
-                field.name, size
+                "field {field} exceeds the maximum allowed size for binary copy ({size} bytes)"
             )?,
             ErrorKind::TypeNotSupported { field, tp } => {
                 write!(fmt, "Arrow type {tp} for field {field} is not supported")?
             }
+            ErrorKind::ColumnTypeMismatch {
+                field,
+                expected,
+                actual,
+            } => write!(
+                fmt,
+                "Type mismatch for column {field}: expected {expected:?} but got {actual:?}"
+            )?,
         };
         if let Some(ref cause) = self.0.cause {
             write!(fmt, ": {cause}")?;
@@ -65,19 +81,19 @@ impl Error {
     }
 
     #[allow(clippy::wrong_self_convention)]
-    pub(crate) fn to_sql(e: Box<dyn error::Error + Sync + Send>, field: &PostgresField) -> Error {
+    pub(crate) fn to_sql(e: Box<dyn error::Error + Sync + Send>, field: &str) -> Error {
         Error::new(
             ErrorKind::ToSql {
-                field: field.clone(),
+                field: field.to_string(),
             },
             Some(e),
         )
     }
 
-    pub(crate) fn field_too_large(field: &PostgresField, size: usize) -> Error {
+    pub(crate) fn field_too_large(field: &str, size: usize) -> Error {
         Error::new(
             ErrorKind::FieldTooLarge {
-                field: field.clone(),
+                field: field.to_string(),
                 size,
             },
             None,
@@ -89,6 +105,21 @@ impl Error {
             ErrorKind::TypeNotSupported {
                 field: field.to_string(),
                 tp: tp.clone(),
+            },
+            None,
+        )
+    }
+
+    pub(crate) fn mismatched_column_type(
+        field: &str,
+        expected: &DataType,
+        actual: &DataType,
+    ) -> Error {
+        Error::new(
+            ErrorKind::ColumnTypeMismatch {
+                field: field.to_string(),
+                expected: expected.clone(),
+                actual: actual.clone(),
             },
             None,
         )

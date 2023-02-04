@@ -1,0 +1,4 @@
+enum Encoder {
+    Scalar,
+    List,
+}

@@ -19,6 +19,4 @@ version = "^0.18.0"
 features = ["extension-module", "abi3-py37"]
 
 [package.metadata.maturin]
-python-source = "python"
-description-content-type = "text/markdown; charset=UTF-8; variant=GFM"
 name = "pgpq._pgpq"

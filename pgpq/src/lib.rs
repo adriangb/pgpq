@@ -1,128 +1,22 @@
 mod error;
 
-use std::convert::TryFrom;
+use std::ops::Not;
 
 use crate::error::Error;
-use arrow::array;
-use arrow::array::as_primitive_array;
-use arrow::datatypes::{DataType, Schema, TimeUnit};
+use crate::postgres::{write_null, write_value, PostgresDuration, HEADER_MAGIC_BYTES};
+use crate::arrays::{downcast_array, ArrowArray};
 
-use arrow::record_batch::RecordBatch;
-
-use arrow_array::{types as array_types, Array};
-
-use byteorder::{BigEndian, ByteOrder};
+use arrow_array;
+use arrow_schema::Schema;
+use arrow_array::RecordBatch;
+use arrow_array::{Array, ArrowPrimitiveType, PrimitiveArray};
+use arrow_schema::Field as ArrowField;
 use bytes::{BufMut, BytesMut};
-use chrono::{TimeZone, Utc};
+use chrono::{TimeZone, Utc, DateTime, NaiveDateTime, NaiveDate, NaiveTime};
+use postgres_types::Type as PostgresType;
 
-use postgres_types::{to_sql_checked, IsNull, ToSql, Type};
-
-const MAGIC: &[u8] = b"PGCOPY\n\xff\r\n\0";
-
-fn write_null(buf: &mut BytesMut) {
-    let idx = buf.len();
-    buf.put_i32(0);
-    BigEndian::write_i32(&mut buf[idx..], -1);
-}
-
-#[inline]
-fn write_value(v: &impl ToSql, field: &PostgresField, buf: &mut BytesMut) -> Result<(), Error> {
-    let idx = buf.len();
-    buf.put_i32(0);
-    let len = match v
-        .to_sql_checked(&field.type_, buf)
-        .map_err(|e| Error::to_sql(e, field))?
-    {
-        IsNull::Yes => -1,
-        IsNull::No => {
-            let written = buf.len() - idx - 4; // 4 comes from the i32 we put above
-            i32::try_from(written).map_err(|_| Error::field_too_large(field, written))?
-        }
-    };
-    BigEndian::write_i32(&mut buf[idx..], len);
-    Ok(())
-}
-
-fn arrow_type_to_pg_type(col_name: &str, tp: &DataType) -> Result<Type, Error> {
-    let tp = match tp {
-        DataType::Null => {
-            // Any value will do
-            Type::INT2
-        }
-        DataType::Boolean => Type::BOOL,
-        DataType::Int8 => Type::INT2,
-        DataType::Int16 => Type::INT2,
-        DataType::Int32 => Type::INT4,
-        DataType::Int64 => Type::INT8,
-        DataType::UInt8 => Type::INT2,
-        DataType::UInt16 => Type::INT4,
-        DataType::UInt32 => Type::INT8,
-        DataType::Float16 => Type::FLOAT4,
-        DataType::Float32 => Type::FLOAT4,
-        DataType::Float64 => Type::FLOAT8,
-        DataType::Timestamp(_, None) => Type::TIMESTAMP,
-        DataType::Timestamp(_, Some(_)) => Type::TIMESTAMPTZ,
-        DataType::Date32 => Type::DATE,
-        DataType::Date64 => Type::DATE,
-        DataType::Time32(_) => Type::TIME,
-        DataType::Duration(_) => Type::INTERVAL,
-        DataType::Binary => Type::BYTEA,
-        DataType::FixedSizeBinary(_) => Type::BYTEA,
-        DataType::LargeBinary => Type::BYTEA,
-        DataType::Utf8 => Type::TEXT,
-        DataType::LargeUtf8 => Type::TEXT,
-        DataType::List(_) => {
-            panic!("TODO, needs a lot of boilerplate")
-        }
-        DataType::FixedSizeList(_, _) => {
-            panic!("TODO, needs a lot of boilerplate")
-        }
-        DataType::LargeList(_) => {
-            panic!("TODO, needs a lot of boilerplate")
-        }
-        DataType::Struct(_) => {
-            panic!("TODO, unpack as JSONB")
-        }
-        DataType::Dictionary(_, _) => {
-            panic!("TODO, unpack as JSONB")
-        }
-        DataType::Decimal128(_, _) => {
-            panic!("TODO, use https://docs.rs/rust_decimal/latest/rust_decimal/prelude/struct.Decimal.html#method.to_sql")
-        }
-        DataType::Decimal256(_, _) => {
-            panic!("TODO, use https://docs.rs/rust_decimal/latest/rust_decimal/prelude/struct.Decimal.html#method.to_sql")
-        }
-        _ => return Err(Error::type_unsupported(col_name, tp)),
-    };
-    Ok(tp)
-}
-
-#[derive(Debug, Clone, PartialEq)]
-pub struct PostgresField {
-    type_: Type,
-    name: String,
-}
-
-#[derive(Debug)]
-struct PostgresDuration {
-    microseconds: i64,
-}
-
-impl ToSql for PostgresDuration {
-    fn to_sql(
-        &self,
-        _ty: &Type,
-        out: &mut BytesMut,
-    ) -> Result<IsNull, Box<(dyn std::error::Error + Send + Sync)>> {
-        out.put_i64(self.microseconds);
-        Ok(IsNull::No)
-    }
-    fn accepts(ty: &Type) -> bool {
-        matches!(*ty, Type::INTERVAL)
-    }
-
-    to_sql_checked!();
-}
+mod arrays;
+mod postgres;
 
 #[inline]
 fn check_null_mask<T>(arr: T, index: usize) -> Option<T>
@@ -137,7 +31,7 @@ where
 }
 
 #[derive(Debug, PartialEq)]
-pub enum EncoderState {
+enum EncoderState {
     Created,
     Encoding,
     Finished,
@@ -145,35 +39,173 @@ pub enum EncoderState {
 
 #[derive(Debug)]
 pub struct ArrowToPostgresBinaryEncoder {
-    fields: Vec<PostgresField>,
+    fields: Vec<ArrowField>,
     state: EncoderState,
+}
+
+#[inline]
+fn value_from_primitive_array<T: ArrowPrimitiveType>(
+    arr: &PrimitiveArray<T>,
+    row: usize,
+) -> Option<T::Native> {
+    arr.is_null(row).not().then(|| arr.value(row))
+}
+
+#[inline]
+fn write_array(arr: ArrowArray, field_name: &str, buf: &mut BytesMut) -> Result<(), Error> {
+    match arr {
+        ArrowArray::Boolean(arr) => {
+            let v: Vec<Option<bool>> = arr.iter().collect();
+            write_value(&v, &PostgresType::BOOL_ARRAY, field_name, buf)
+        }
+        ArrowArray::Int8(arr) => {
+            let v: Vec<Option<i16>> = arr.iter().map(|v| v.map(i16::from)).collect();
+            write_value(&v, &PostgresType::INT2_ARRAY, field_name, buf)
+        }
+        ArrowArray::Int16(arr) => {
+            let v: Vec<Option<i16>> = arr.iter().collect();
+            write_value(&v, &PostgresType::INT2_ARRAY, field_name, buf)
+        }
+        ArrowArray::Int32(arr) => {
+            let v: Vec<Option<i32>> = arr.iter().collect();
+            write_value(&v, &PostgresType::INT4_ARRAY, field_name, buf)
+        }
+        ArrowArray::Int64(arr) => {
+            let v: Vec<Option<i64>> = arr.iter().collect();
+            write_value(&v, &PostgresType::INT8_ARRAY, field_name, buf)
+        }
+        ArrowArray::UInt8(arr) => {
+            let v: Vec<Option<i16>> = arr.iter().map(|v| v.map(i16::from)).collect();
+            write_value(&v, &PostgresType::INT4_ARRAY, field_name, buf)
+        }
+        ArrowArray::UInt16(arr) => {
+            let v: Vec<Option<i32>> = arr.iter().map(|v| v.map(i32::from)).collect();
+            write_value(&v, &PostgresType::INT4_ARRAY, field_name, buf)
+        }
+        ArrowArray::UInt32(arr) => {
+            let v: Vec<Option<i64>> = arr.iter().map(|v| v.map(i64::from)).collect();
+            write_value(&v, &PostgresType::INT8_ARRAY, field_name, buf)
+        }
+        ArrowArray::Float16(arr) => {
+            let v: Vec<Option<f32>> = arr.iter().map(|v| v.map(f32::from)).collect();
+            write_value(&v, &PostgresType::FLOAT4_ARRAY, field_name, buf)
+        }
+        ArrowArray::Float32(arr) => {
+            let v: Vec<Option<f32>> = arr.iter().collect();
+            write_value(&v, &PostgresType::FLOAT4_ARRAY, field_name, buf)
+        }
+        ArrowArray::Float64(arr) => {
+            let v: Vec<Option<f64>> = arr.iter().collect();
+            write_value(&v, &PostgresType::FLOAT8_ARRAY, field_name, buf)
+        }
+        ArrowArray::TimestampNanosecond(arr, true) => {
+            let v: Vec<Option<DateTime<Utc>>> = (0..arr.len()).map(|idx|arr.value_as_datetime(idx).map(|v|Utc.from_utc_datetime(&v))).collect();
+            write_value(&v, &PostgresType::TIMESTAMPTZ_ARRAY, field_name, buf)
+        }
+        ArrowArray::TimestampMicrosecond(arr, true) => {
+            let v: Vec<Option<DateTime<Utc>>> = (0..arr.len()).map(|idx|arr.value_as_datetime(idx).map(|v|Utc.from_utc_datetime(&v))).collect();
+            write_value(&v, &PostgresType::TIMESTAMPTZ_ARRAY, field_name, buf)
+        }
+        ArrowArray::TimestampMillisecond(arr, true) => {
+            let v: Vec<Option<DateTime<Utc>>> = (0..arr.len()).map(|idx|arr.value_as_datetime(idx).map(|v|Utc.from_utc_datetime(&v))).collect();
+            write_value(&v, &PostgresType::TIMESTAMPTZ_ARRAY, field_name, buf)
+        }
+        ArrowArray::TimestampSecond(arr, true) => {
+            let v: Vec<Option<DateTime<Utc>>> = (0..arr.len()).map(|idx|arr.value_as_datetime(idx).map(|v|Utc.from_utc_datetime(&v))).collect();
+            write_value(&v, &PostgresType::TIMESTAMPTZ_ARRAY, field_name, buf)
+        }
+        ArrowArray::TimestampNanosecond(arr, false) => {
+            let v: Vec<Option<NaiveDateTime>> = (0..arr.len()).map(|idx|arr.value_as_datetime(idx)).collect();
+            write_value(&v, &PostgresType::TIMESTAMP_ARRAY, field_name, buf)
+        }
+        ArrowArray::TimestampMicrosecond(arr, false) => {
+            let v: Vec<Option<NaiveDateTime>> = (0..arr.len()).map(|idx|arr.value_as_datetime(idx)).collect();
+            write_value(&v, &PostgresType::TIMESTAMP_ARRAY, field_name, buf)
+        }
+        ArrowArray::TimestampMillisecond(arr, false) => {
+            let v: Vec<Option<NaiveDateTime>> = (0..arr.len()).map(|idx|arr.value_as_datetime(idx)).collect();
+            write_value(&v, &PostgresType::TIMESTAMP_ARRAY, field_name, buf)
+        }
+        ArrowArray::TimestampSecond(arr, false) => {
+            let v: Vec<Option<NaiveDateTime>> = (0..arr.len()).map(|idx|arr.value_as_datetime(idx)).collect();
+            write_value(&v, &PostgresType::TIMESTAMP_ARRAY, field_name, buf)
+        }
+        ArrowArray::Date32(arr) => {
+            let v: Vec<Option<NaiveDate>> = (0..arr.len()).map(|idx|arr.value_as_date(idx)).collect();
+            write_value(&v, &PostgresType::DATE_ARRAY, field_name, buf)
+        }
+        ArrowArray::Date64(arr) => {
+            let v: Vec<Option<NaiveDate>> = (0..arr.len()).map(|idx|arr.value_as_date(idx)).collect();
+            write_value(&v, &PostgresType::DATE_ARRAY, field_name, buf)
+        }
+        ArrowArray::Time32Millisecond(arr) => {
+            let v: Vec<Option<NaiveTime>> = (0..arr.len()).map(|idx|arr.value_as_time(idx)).collect();
+            write_value(&v, &PostgresType::TIME_ARRAY, field_name, buf)
+        }
+        ArrowArray::Time32Second(arr) => {
+            let v: Vec<Option<NaiveTime>> = (0..arr.len()).map(|idx|arr.value_as_time(idx)).collect();
+            write_value(&v, &PostgresType::TIME_ARRAY, field_name, buf)
+        }
+        ArrowArray::Time64Microsecond(arr) => {
+            let v: Vec<Option<NaiveTime>> = (0..arr.len()).map(|idx|arr.value_as_time(idx)).collect();
+            write_value(&v, &PostgresType::TIME_ARRAY, field_name, buf)
+        }
+        ArrowArray::Time64Nanosecond(arr) => {
+            let v: Vec<Option<NaiveTime>> = (0..arr.len()).map(|idx|arr.value_as_time(idx)).collect();
+            write_value(&v, &PostgresType::TIME_ARRAY, field_name, buf)
+        }
+        ArrowArray::DurationNanosecond(arr) => {
+            let v: Vec<Option<PostgresDuration>> = (0..arr.len()).map(|idx|arr.value_as_duration(idx).map(|v| PostgresDuration { duration: v })).collect();
+            write_value(&v, &PostgresType::INTERVAL_ARRAY, field_name, buf)
+        }
+        ArrowArray::DurationMicrosecond(arr) => {
+            let v: Vec<Option<PostgresDuration>> = (0..arr.len()).map(|idx|arr.value_as_duration(idx).map(|v| PostgresDuration { duration: v })).collect();
+            write_value(&v, &PostgresType::INTERVAL_ARRAY, field_name, buf)
+        }
+        ArrowArray::DurationMillisecond(arr) => {
+            let v: Vec<Option<PostgresDuration>> = (0..arr.len()).map(|idx|arr.value_as_duration(idx).map(|v| PostgresDuration { duration: v })).collect();
+            write_value(&v, &PostgresType::INTERVAL_ARRAY, field_name, buf)
+        }
+        ArrowArray::DurationSecond(arr) => {
+            let v: Vec<Option<PostgresDuration>> = (0..arr.len()).map(|idx|arr.value_as_duration(idx).map(|v| PostgresDuration { duration: v })).collect();
+            write_value(&v, &PostgresType::INTERVAL_ARRAY, field_name, buf)
+        }
+        ArrowArray::Binary(arr) => {
+            let v: Vec<Option<&[u8]>> = arr.iter().collect();
+            write_value(&v, &PostgresType::BYTEA_ARRAY, field_name, buf)
+        }
+        ArrowArray::LargeBinary(arr) => {
+            let v: Vec<Option<&[u8]>> = arr.iter().collect();
+            write_value(&v, &PostgresType::BYTEA_ARRAY, field_name, buf)
+        }
+        ArrowArray::String(arr) => {
+            let v: Vec<Option<&str>> = arr.iter().collect();
+            write_value(&v, &PostgresType::TEXT_ARRAY, field_name, buf)
+        }
+        ArrowArray::LargeStringArray(arr) => {
+            let v: Vec<Option<&str>> = arr.iter().collect();
+            write_value(&v, &PostgresType::TEXT_ARRAY, field_name, buf)
+        }
+        // we don't support any other array types
+        // but would have already errored when we were processing the schema
+        _ => unreachable!(),
+    }
 }
 
 impl ArrowToPostgresBinaryEncoder {
     /// Creates a new writer which will write rows of the provided types to the provided sink.
     pub fn try_new(schema: Schema) -> Result<ArrowToPostgresBinaryEncoder, Error> {
-        let dtypes: Result<Vec<Type>, Error> = schema
-            .fields
-            .iter()
-            .map(|f| arrow_type_to_pg_type(f.name(), f.data_type()))
-            .collect();
-        let pg_fields: Vec<PostgresField> = schema
-            .fields
-            .iter()
-            .map(|f| f.name().to_string())
-            .zip(dtypes?)
-            .map(|(name, type_)| PostgresField { name, type_ })
-            .collect();
+        let fields = schema.fields.to_vec();
 
         Ok(ArrowToPostgresBinaryEncoder {
-            fields: pg_fields,
+            fields,
             state: EncoderState::Created,
         })
     }
 
     pub fn write_header(&mut self, out: &mut BytesMut) {
         assert_eq!(self.state, EncoderState::Created);
-        out.put(MAGIC);
+        out.put(HEADER_MAGIC_BYTES);
         out.put_i32(0); // flags
         out.put_i32(0); // header extension
         self.state = EncoderState::Encoding;
@@ -190,204 +222,300 @@ impl ArrowToPostgresBinaryEncoder {
         let n_rows = batch.num_rows();
         let n_cols = batch.num_columns();
 
-        let columns = batch.columns();
+        let columns = batch
+            .columns()
+            .iter()
+            .zip(&self.fields)
+            .map(|(col, field)| downcast_array(field.data_type(), col, field.name()))
+            .collect::<Result<Vec<ArrowArray>, Error>>()?;
+
         for row in 0..n_rows {
             buf.put_i16(n_cols as i16);
-            for (col, arr_ref) in columns.iter().enumerate() {
-                let field = &self.fields[col];
-                let arr = &*arr_ref.clone();
-                let _field_name = &field.name;
-                let _pg_type = &field.type_;
-                match arr.data_type() {
-                    DataType::Null => write_null(buf),
-                    DataType::Boolean => {
-                        let arr = array::as_boolean_array(arr);
+            for (col, field) in columns.iter().zip(&self.fields) {
+                let field_name = field.name();
+                match col {
+                    ArrowArray::Boolean(arr) => {
                         let v = check_null_mask(arr, row).map(|arr| arr.value(row));
-                        write_value(&v, field, buf)?;
+                        write_value(&v, &PostgresType::BOOL, field_name, buf)?;
                     }
-                    DataType::Int8 => {
-                        let arr = as_primitive_array::<array_types::Int8Type>(arr);
-                        let v = check_null_mask(arr, row)
-                            .map(|arr| arr.value(row))
-                            .map(i16::from);
-                        write_value(&v, field, buf)?;
+                    ArrowArray::Int8(arr) => {
+                        write_value(
+                            &value_from_primitive_array(arr, row).map(i16::from),
+                            &PostgresType::INT2,
+                            field_name,
+                            buf,
+                        )?;
                     }
-                    DataType::Int16 => {
-                        let arr = as_primitive_array::<array_types::Int16Type>(arr);
-                        let v = check_null_mask(arr, row).map(|arr| arr.value(row));
-                        write_value(&v, field, buf)?;
+                    ArrowArray::Int16(arr) => {
+                        write_value(
+                            &value_from_primitive_array(arr, row),
+                            &PostgresType::INT4,
+                            field_name,
+                            buf,
+                        )?;
                     }
-                    DataType::Int32 => {
-                        let arr = as_primitive_array::<array_types::Int32Type>(arr);
-                        let v = check_null_mask(arr, row).map(|arr| arr.value(row));
-                        write_value(&v, field, buf)?;
+                    ArrowArray::Int32(arr) => {
+                        write_value(
+                            &value_from_primitive_array(arr, row),
+                            &PostgresType::INT4,
+                            field_name,
+                            buf,
+                        )?;
                     }
-                    DataType::Int64 => {
-                        let arr = as_primitive_array::<array_types::Int64Type>(arr);
-                        let v = check_null_mask(arr, row).map(|arr| arr.value(row));
-                        write_value(&v, field, buf)?;
+                    ArrowArray::Int64(arr) => {
+                        write_value(
+                            &value_from_primitive_array(arr, row),
+                            &PostgresType::INT8,
+                            field_name,
+                            buf,
+                        )?;
                     }
-                    DataType::UInt8 => {
-                        let arr = as_primitive_array::<array_types::UInt8Type>(arr);
-                        let v = check_null_mask(arr, row)
-                            .map(|arr| arr.value(row))
-                            .map(i16::from);
-                        write_value(&v, field, buf)?;
+                    ArrowArray::UInt8(arr) => {
+                        write_value(
+                            &value_from_primitive_array(arr, row).map(i16::from),
+                            &PostgresType::INT4,
+                            field_name,
+                            buf,
+                        )?;
                     }
-                    DataType::UInt16 => {
-                        let arr = as_primitive_array::<array_types::UInt16Type>(arr);
-                        let v = check_null_mask(arr, row)
-                            .map(|arr| arr.value(row))
-                            .map(i32::from);
-                        write_value(&v, field, buf)?;
+                    ArrowArray::UInt16(arr) => {
+                        write_value(
+                            &value_from_primitive_array(arr, row).map(i32::from),
+                            &PostgresType::INT4,
+                            field_name,
+                            buf,
+                        )?;
                     }
-                    DataType::UInt32 => {
-                        let arr = as_primitive_array::<array_types::UInt32Type>(arr);
-                        let v = check_null_mask(arr, row)
-                            .map(|arr| arr.value(row))
-                            .map(i64::from);
-                        write_value(&v, field, buf)?;
+                    ArrowArray::UInt32(arr) => {
+                        write_value(
+                            &value_from_primitive_array(arr, row),
+                            &PostgresType::INT8,
+                            field_name,
+                            buf,
+                        )?;
                     }
-                    DataType::Float16 => {
-                        let arr = as_primitive_array::<array_types::Float16Type>(arr);
-                        let v = check_null_mask(arr, row)
-                            .map(|arr| arr.value(row))
-                            .map(f32::from);
-                        write_value(&v, field, buf)?;
+                    ArrowArray::Float16(arr) => {
+                        write_value(
+                            &value_from_primitive_array(arr, row).map(f32::from),
+                            &PostgresType::FLOAT4,
+                            field_name,
+                            buf,
+                        )?;
                     }
-                    DataType::Float32 => {
-                        let arr = as_primitive_array::<array_types::Float32Type>(arr);
-                        let v = check_null_mask(arr, row).map(|arr| arr.value(row));
-                        write_value(&v, field, buf)?;
+                    ArrowArray::Float32(arr) => {
+                        write_value(
+                            &value_from_primitive_array(arr, row),
+                            &PostgresType::FLOAT4,
+                            field_name,
+                            buf,
+                        )?;
                     }
-                    DataType::Float64 => {
-                        let arr = as_primitive_array::<array_types::Float64Type>(arr);
-                        let v = check_null_mask(arr, row).map(|arr| arr.value(row));
-                        write_value(&v, field, buf)?;
+                    ArrowArray::Float64(arr) => {
+                        write_value(
+                            &value_from_primitive_array(arr, row),
+                            &PostgresType::FLOAT8,
+                            field_name,
+                            buf,
+                        )?;
                     }
-                    DataType::Timestamp(time_unit, tz_option) => {
-                        let v = match time_unit {
-                            TimeUnit::Nanosecond => check_null_mask(
-                                as_primitive_array::<array_types::TimestampNanosecondType>(arr),
-                                row,
-                            )
-                            .map(|arr| arr.value_as_datetime(row).unwrap()),
-                            TimeUnit::Microsecond => check_null_mask(
-                                as_primitive_array::<array_types::TimestampMicrosecondType>(arr),
-                                row,
-                            )
-                            .map(|arr| arr.value_as_datetime(row).unwrap()),
-                            TimeUnit::Millisecond => check_null_mask(
-                                as_primitive_array::<array_types::TimestampMillisecondType>(arr),
-                                row,
-                            )
-                            .map(|arr| arr.value_as_datetime(row).unwrap()),
-                            TimeUnit::Second => check_null_mask(
-                                as_primitive_array::<array_types::TimestampSecondType>(arr),
-                                row,
-                            )
-                            .map(|arr| arr.value_as_datetime(row).unwrap()),
-                        };
-                        match tz_option {
-                            Some(_) => {
-                                let v = v.map(|v| Utc.from_local_datetime(&v).unwrap());
-                                write_value(&v, field, buf)?;
+                    ArrowArray::TimestampNanosecond(arr, true) => {
+                        let v = &check_null_mask(arr, row)
+                            .map(|arr| arr.value_as_datetime(row).unwrap());
+                        let v = v.map(|v| Utc.from_utc_datetime(&v));
+                        write_value(&v, &PostgresType::TIMESTAMPTZ, field_name, buf)?;
+                    }
+                    ArrowArray::TimestampMicrosecond(arr, true) => {
+                        let v = &check_null_mask(arr, row)
+                            .map(|arr| arr.value_as_datetime(row).unwrap());
+                        let v = v.map(|v| Utc.from_utc_datetime(&v));
+                        write_value(&v, &PostgresType::TIMESTAMPTZ, field_name, buf)?;
+                    }
+                    ArrowArray::TimestampMillisecond(arr, true) => {
+                        let v = &check_null_mask(arr, row)
+                            .map(|arr| arr.value_as_datetime(row).unwrap());
+                        let v = v.map(|v| Utc.from_utc_datetime(&v));
+                        write_value(&v, &PostgresType::TIMESTAMPTZ, field_name, buf)?;
+                    }
+                    ArrowArray::TimestampSecond(arr, true) => {
+                        let v = &check_null_mask(arr, row)
+                            .map(|arr| arr.value_as_datetime(row).unwrap());
+                        let v = v.map(|v| Utc.from_utc_datetime(&v));
+                        write_value(&v, &PostgresType::TIMESTAMPTZ, field_name, buf)?;
+                    }
+                    ArrowArray::TimestampNanosecond(arr, false) => {
+                        let v = &check_null_mask(arr, row)
+                            .map(|arr| arr.value_as_datetime(row).unwrap());
+                        write_value(&v, &PostgresType::TIMESTAMP, field_name, buf)?;
+                    }
+                    ArrowArray::TimestampMicrosecond(arr, false) => {
+                        let v = &check_null_mask(arr, row)
+                            .map(|arr| arr.value_as_datetime(row).unwrap());
+                        write_value(&v, &PostgresType::TIMESTAMP, field_name, buf)?;
+                    }
+                    ArrowArray::TimestampMillisecond(arr, false) => {
+                        let v = &check_null_mask(arr, row)
+                            .map(|arr| arr.value_as_datetime(row).unwrap());
+                        write_value(&v, &PostgresType::TIMESTAMP, field_name, buf)?;
+                    }
+                    ArrowArray::TimestampSecond(arr, false) => {
+                        let v = &check_null_mask(arr, row)
+                            .map(|arr| arr.value_as_datetime(row).unwrap());
+                        write_value(&v, &PostgresType::TIMESTAMP, field_name, buf)?;
+                    }
+                    ArrowArray::Date32(arr) => {
+                        write_value(
+                            &value_from_primitive_array(arr, row),
+                            &PostgresType::DATE,
+                            field_name,
+                            buf,
+                        )?;
+                    }
+                    ArrowArray::Date64(arr) => {
+                        write_value(
+                            &value_from_primitive_array(arr, row),
+                            &PostgresType::DATE,
+                            field_name,
+                            buf,
+                        )?;
+                    }
+                    ArrowArray::Time32Millisecond(arr) => {
+                        write_value(
+                            &value_from_primitive_array(arr, row),
+                            &PostgresType::TIME,
+                            field_name,
+                            buf,
+                        )?;
+                    }
+                    ArrowArray::Time32Second(arr) => {
+                        write_value(
+                            &value_from_primitive_array(arr, row),
+                            &PostgresType::TIME,
+                            field_name,
+                            buf,
+                        )?;
+                    }
+                    ArrowArray::Time64Nanosecond(arr) => {
+                        write_value(
+                            &value_from_primitive_array(arr, row),
+                            &PostgresType::TIME,
+                            field_name,
+                            buf,
+                        )?;
+                    }
+                    ArrowArray::Time64Microsecond(arr) => {
+                        write_value(
+                            &value_from_primitive_array(arr, row),
+                            &PostgresType::TIME,
+                            field_name,
+                            buf,
+                        )?;
+                    }
+                    ArrowArray::DurationNanosecond(arr) => {
+                        let v = &check_null_mask(arr, row)
+                            .map(|arr| arr.value_as_duration(row).unwrap());
+                        write_value(
+                            &v.map(|v| PostgresDuration { duration: v }),
+                            &PostgresType::TIMESTAMPTZ,
+                            field_name,
+                            buf,
+                        )?;
+                    }
+                    ArrowArray::DurationMicrosecond(arr) => {
+                        let v = &check_null_mask(arr, row)
+                            .map(|arr| arr.value_as_duration(row).unwrap());
+                        write_value(
+                            &v.map(|v| PostgresDuration { duration: v }),
+                            &PostgresType::TIMESTAMPTZ,
+                            field_name,
+                            buf,
+                        )?;
+                    }
+                    ArrowArray::DurationMillisecond(arr) => {
+                        let v = &check_null_mask(arr, row)
+                            .map(|arr| arr.value_as_duration(row).unwrap());
+                        write_value(
+                            &v.map(|v| PostgresDuration { duration: v }),
+                            &PostgresType::TIMESTAMPTZ,
+                            field_name,
+                            buf,
+                        )?;
+                    }
+                    ArrowArray::DurationSecond(arr) => {
+                        let v = &check_null_mask(arr, row)
+                            .map(|arr| arr.value_as_duration(row).unwrap());
+                        write_value(
+                            &v.map(|v| PostgresDuration { duration: v }),
+                            &PostgresType::TIMESTAMPTZ,
+                            field_name,
+                            buf,
+                        )?;
+                    }
+                    ArrowArray::Binary(arr) => {
+                        write_value(
+                            &check_null_mask(arr, row).map(|arr| arr.value(row)),
+                            &PostgresType::BYTEA,
+                            field_name,
+                            buf,
+                        )?;
+                    }
+                    ArrowArray::LargeBinary(arr) => {
+                        write_value(
+                            &check_null_mask(arr, row).map(|arr| arr.value(row)),
+                            &PostgresType::BYTEA,
+                            field_name,
+                            buf,
+                        )?;
+                    }
+                    ArrowArray::String(arr) => {
+                        write_value(
+                            &check_null_mask(arr, row).map(|arr| arr.value(row)),
+                            &PostgresType::TEXT,
+                            field_name,
+                            buf,
+                        )?;
+                    }
+                    ArrowArray::LargeStringArray(arr) => {
+                        write_value(
+                            &check_null_mask(arr, row).map(|arr| arr.value(row)),
+                            &PostgresType::TEXT,
+                            field_name,
+                            buf,
+                        )?;
+                    }
+                    ArrowArray::List(arr, inner_type) => {
+                        let v = &check_null_mask(arr, row).map(|arr| arr.value(row));
+                        match v {
+                            Some(inner_arr) => {
+                                let inner_arr =
+                                    downcast_array(inner_type, inner_arr, field.name())?;
+                                write_array(inner_arr, field_name, buf)?
                             }
-                            None => {
-                                write_value(&v, field, buf)?;
+                            None => write_null(buf),
+                        };
+                    }
+                    ArrowArray::FixedSizeList(arr, inner_type) => {
+                        let v = &check_null_mask(arr, row).map(|arr| arr.value(row));
+                        match v {
+                            Some(inner_arr) => {
+                                let inner_arr =
+                                    downcast_array(inner_type, inner_arr, field.name())?;
+                                write_array(inner_arr, field_name, buf)?
                             }
-                        }
-                    }
-                    DataType::Date32 => {
-                        let arr = as_primitive_array::<array_types::Date32Type>(arr);
-                        let v = check_null_mask(arr, row).map(|arr| arr.value(row));
-                        write_value(&v, field, buf)?;
-                    }
-                    DataType::Date64 => {
-                        let arr = as_primitive_array::<array_types::Date64Type>(arr);
-                        let v = check_null_mask(arr, row).map(|arr| arr.value(row));
-                        write_value(&v, field, buf)?;
-                    }
-                    DataType::Time32(time_unit) => {
-                        let v = match time_unit {
-                            TimeUnit::Millisecond => check_null_mask(
-                                as_primitive_array::<array_types::Time32MillisecondType>(arr),
-                                row,
-                            )
-                            .map(|arr| arr.value_as_time(row)),
-                            TimeUnit::Second => check_null_mask(
-                                as_primitive_array::<array_types::Time32SecondType>(arr),
-                                row,
-                            )
-                            .map(|arr| arr.value_as_time(row)),
-                            _ => unreachable!(),
+                            None => write_null(buf),
                         };
-                        write_value(&v, field, buf)?;
                     }
-                    DataType::Time64(time_unit) => {
-                        let v = match time_unit {
-                            TimeUnit::Nanosecond => check_null_mask(
-                                as_primitive_array::<array_types::Time64NanosecondType>(arr),
-                                row,
-                            )
-                            .map(|arr| arr.value_as_time(row)),
-                            TimeUnit::Microsecond => check_null_mask(
-                                as_primitive_array::<array_types::Time64MicrosecondType>(arr),
-                                row,
-                            )
-                            .map(|arr| arr.value_as_time(row)),
-                            _ => unreachable!(),
+                    ArrowArray::LargeList(arr, inner_type) => {
+                        let v = &check_null_mask(arr, row).map(|arr| arr.value(row));
+                        match v {
+                            Some(inner_arr) => {
+                                let inner_arr =
+                                    downcast_array(inner_type, inner_arr, field.name())?;
+                                write_array(inner_arr, field_name, buf)?
+                            }
+                            None => write_null(buf),
                         };
-                        write_value(&v, field, buf)?;
                     }
-                    DataType::Duration(time_unit) => match time_unit {
-                        TimeUnit::Microsecond => {
-                            let v = check_null_mask(
-                                as_primitive_array::<array_types::DurationMicrosecondType>(arr),
-                                row,
-                            )
-                            .map(|arr| PostgresDuration {
-                                microseconds: arr.value(row),
-                            });
-                            write_value(&v, field, buf)?
-                        }
-                        time_unit => {
-                            panic!("Durations in units of {time_unit:?} are not supported")
-                        }
-                    },
-                    DataType::Binary => {
-                        let arr = arr.as_any().downcast_ref::<array::BinaryArray>().unwrap();
-                        let v = check_null_mask(arr, row).map(|arr| arr.value(row));
-                        write_value(&v, field, buf)?;
-                    }
-                    DataType::FixedSizeBinary(_) => {
-                        let arr = arr
-                            .as_any()
-                            .downcast_ref::<array::FixedSizeBinaryArray>()
-                            .unwrap();
-                        let v = check_null_mask(arr, row).map(|arr| arr.value(row));
-                        write_value(&v, field, buf)?;
-                    }
-                    DataType::LargeBinary => {
-                        let arr = arr
-                            .as_any()
-                            .downcast_ref::<array::LargeBinaryArray>()
-                            .unwrap();
-                        let v = check_null_mask(arr, row).map(|arr| arr.value(row));
-                        write_value(&v, field, buf)?;
-                    }
-                    DataType::Utf8 => {
-                        let arr = array::as_string_array(arr);
-                        let v = check_null_mask(arr, row).map(|arr| arr.value(row));
-                        write_value(&v, field, buf)?;
-                    }
-                    DataType::LargeUtf8 => {
-                        let arr = array::as_largestring_array(arr);
-                        let v = check_null_mask(arr, row).map(|arr| arr.value(row));
-                        write_value(&v, field, buf)?;
-                    }
-                    _ => unreachable!(),
-                }
+                };
             }
         }
         Ok(())
@@ -404,15 +532,17 @@ impl ArrowToPostgresBinaryEncoder {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use arrow::array;
-    use arrow::array::{make_array, ArrayRef};
-    use arrow::datatypes::{DataType, Field, Schema};
+    use arrow_array;
+    use arrow_array::{make_array, ArrayRef};
+    use arrow_schema::{DataType, Field, Schema, TimeUnit};
     use arrow_array::RecordBatchReader;
+    use arrow_array::{builder as array_builder, types as array_types, GenericListArray};
     use parquet::arrow::arrow_reader::ParquetRecordBatchReaderBuilder;
     use rstest::*;
     use std::fs;
     use std::path::PathBuf;
     use std::sync::Arc;
+    use std::thread::current;
 
     fn run_snap_test(name: &str, batch: RecordBatch, schema: Schema) {
         let mut buff = BytesMut::new();
@@ -429,7 +559,13 @@ mod tests {
             panic!("wrote new snap at {snap_file:?}")
         } else {
             let existing = fs::read(snap_file).unwrap();
-            assert_eq!(existing, &buff[..])
+            assert_eq!(
+                existing,
+                &buff[..],
+                "values did not match. First 50 bytes: {:?} (actual) vs {:?} (expected)",
+                &existing[..50],
+                &buff[..50]
+            )
         }
     }
 
@@ -441,7 +577,7 @@ mod tests {
     }
 
     impl TestField {
-        fn new(data_type: DataType, nullable: bool, data: impl array::Array) -> Self {
+        fn new(data_type: DataType, nullable: bool, data: impl arrow_array::Array) -> Self {
             TestField {
                 data_type,
                 nullable,
@@ -464,22 +600,99 @@ mod tests {
         (schema, batch)
     }
 
+    fn list_array_from_iter_primitive<T, P, I>(
+        iter: I,
+        nullable: bool,
+        item_nullable: bool,
+    ) -> GenericListArray<i32>
+    where
+        T: ArrowPrimitiveType,
+        P: IntoIterator<Item = Option<<T as ArrowPrimitiveType>::Native>>,
+        I: IntoIterator<Item = Option<P>>,
+    {
+        let iter = iter.into_iter();
+        let size_hint = iter.size_hint().0;
+        let mut builder = array_builder::GenericListBuilder::with_capacity(
+            array_builder::PrimitiveBuilder::<T>::new(),
+            size_hint,
+        );
+
+        // TODO: how can we set nullability and inner item nullability on the generated array? It seems to be hardcoded to `true`
+
+        for outer in iter {
+            match outer {
+                Some(inner) => {
+                    for inner_item in inner {
+                        match item_nullable {
+                            true => builder.values().append_option(inner_item),
+                            false => match inner_item {
+                                Some(v) => builder.values().append_value(v),
+                                None => {
+                                    panic!("Expected non-nullable inner items but got a None value")
+                                }
+                            },
+                        }
+                    }
+                    builder.append(true);
+                }
+                None => {
+                    if !nullable {
+                        panic!("Expected non nullable list items but got a None")
+                    }
+                    builder.append(true)
+                }
+            }
+        }
+        builder.finish()
+    }
+
+    #[derive(Debug)]
+    struct TestCase {
+        description: String,
+    }
+
+    #[fixture]
+    fn testcase() -> TestCase {
+        let name = current().name().unwrap().to_string();
+        let description = name
+            .split("::")
+            .map(|item| {
+                item.split('_')
+                    .skip(2)
+                    .collect::<Vec<&str>>()
+                    .join("_")
+
+            })
+            .last()
+            .unwrap();
+        TestCase { description }
+    }
+
     #[rstest]
-    #[case::int8_non_nullable("int8_non_nullable", TestField::new(DataType::Int8, false, array::Int8Array::from(vec![-1, 0, 1])))]
-    #[case::int64_non_nullable("int64_non_nullable", TestField::new(DataType::Int64, false, array::Int64Array::from(vec![-1, 0, 1])))]
-    #[case::int8_nullable("int8_nullable", TestField::new(DataType::Int8, true, array::Int8Array::from(vec![-1, 0, 1])))]
-    #[case::int64_nullable("int64_nullable", TestField::new(DataType::Int64, true, array::Int64Array::from(vec![-1, 0, 1])))]
-    #[case::int8_nullable_nulls("int8_nullable_nulls", TestField::new(DataType::Int8, true, array::Int8Array::from(vec![Some(-1), Some(0), None])))]
-    #[case::int64_nullable_nulls("int64_nullable_nulls", TestField::new(DataType::Int64, true, array::Int64Array::from(vec![Some(-1), Some(0), None])))]
-    #[case::timestamp_second_with_tz_non_nullable("timestamp_second_with_tz_non_nullable", TestField::new(DataType::Timestamp(TimeUnit::Second, Some("America/New_York".into())), false, array::TimestampSecondArray::from(vec![
-        0,
-        1675210660,
-        1675210661,
-    ]).with_timezone("America/New_York".to_string())))]
-    #[trace] //This attribute enable traceing
-    fn test_field_types(#[case] name: &str, #[case] input: TestField) {
+    #[case::int8_non_nullable(TestField::new(DataType::Int8, false, arrow_array::Int8Array::from(vec![-1, 0, 1])))]
+    #[case::int64_non_nullable(TestField::new(DataType::Int64, false, arrow_array::Int64Array::from(vec![-1, 0, 1])))]
+    #[case::int8_nullable(TestField::new(DataType::Int8, true, arrow_array::Int8Array::from(vec![-1, 0, 1])))]
+    #[case::int64_nullable(TestField::new(DataType::Int64, true, arrow_array::Int64Array::from(vec![-1, 0, 1])))]
+    #[case::int8_nullable_nulls(TestField::new(DataType::Int8, true, arrow_array::Int8Array::from(vec![Some(-1), Some(0), None])))]
+    #[case::int64_nullable_nulls(TestField::new(DataType::Int64, true, arrow_array::Int64Array::from(vec![Some(-1), Some(0), None])))]
+    #[case::timestamp_second_with_tz_non_nullable(
+        TestField::new(
+            DataType::Timestamp(TimeUnit::Second, Some("America/New_York".into())),
+            false,
+            arrow_array::TimestampSecondArray::from(vec![0, 1675210660, 1675210661]).with_timezone("America/New_York".to_string())
+        )
+    )]
+    #[case::i32_nullable_list_nullable_items(
+        TestField::new(
+            DataType::List(Box::new(Field::new("item".to_string(), DataType::Int32, true))),
+            true,
+            list_array_from_iter_primitive::<array_types::Int32Type, _, _>(vec![Some(vec![Some(123), None]), None], true, true)
+        )
+    )]
+    #[trace] //This attribute enable tracing
+    fn test_field_types(testcase: TestCase, #[case] input: TestField) {
         let (schema, batch) = create_batch_from_fields(vec![input]);
-        run_snap_test(name, batch, schema);
+        run_snap_test(&testcase.description, batch, schema);
     }
 
     #[test]
