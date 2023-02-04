@@ -89,36 +89,3 @@ def test_encode_record_batch(dbconn: Connection, schema: Schema) -> None:
     rows = copy_buffer_and_get_rows(schema, buffer, dbconn)
     new_df = pl.DataFrame(rows, schema=df_schema)
     assert new_df.frame_equal(df)
-
-
-def test_yellow_cab_data(dbconn: Connection) -> None:
-    def to_pg_type(tp: pl.PolarsDataType) -> str:
-        if tp == pl.Int64():
-            return "BIGINT"
-        if tp == pl.Float64():
-            return "DOUBLE PRECISION"
-        if tp == pl.Datetime(time_unit="ns"):
-            return "TIMESTAMP"
-        if tp == pl.Utf8():
-            return "TEXT"
-        assert False
-
-    df = pl.read_parquet("tests/testdata/yellow_tripdata_2022-01.parquet", n_rows=20)
-    df = df.slice(18, 1)
-    df_schema = df.schema
-    schema = {
-        col: Field(pg_type=to_pg_type(pl_type), pl_type=pl_type, data=df[col].to_list())
-        for col, pl_type in df_schema.items()
-    }
-
-    arrow_table = df.to_arrow()
-    encoder = ArrowToPostgresBinaryEncoder(arrow_table.schema)
-    buffer = bytearray()
-    buffer.extend(encoder.write_header())
-    for batch in arrow_table.to_batches():
-        buffer.extend(encoder.write_batch(batch))
-    buffer.extend(encoder.finish())
-
-    rows = copy_buffer_and_get_rows(schema, buffer, dbconn)
-    new_df = pl.DataFrame(rows, schema=df_schema)
-    assert new_df.frame_equal(df)

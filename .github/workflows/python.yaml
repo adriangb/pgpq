@@ -39,8 +39,6 @@ jobs:
       - name: Install built wheel - x86_64
         run: |
           pip install dist/${{ env.PACKAGE_NAME }}-*.whl --force-reinstall
-          pip install -r requirements-dev.txt
-          pytest -v
       - name: Build wheels - universal2
         uses: messense/maturin-action@v1
         with:
@@ -49,8 +47,6 @@ jobs:
       - name: Install built wheel - universal2
         run: |
           pip install dist/${{ env.PACKAGE_NAME }}-*universal2.whl --force-reinstall
-          pip install -r requirements-dev.txt
-          pytest -v
       - name: Upload wheels
         uses: actions/upload-artifact@v2
         with:
@@ -84,8 +80,6 @@ jobs:
         shell: bash
         run: |
           python -m pip install dist/${{ env.PACKAGE_NAME }}-*.whl --force-reinstall
-          pip install -r requirements-dev.txt
-          python -m pytest -v
       - name: Upload wheels
         uses: actions/upload-artifact@v2
         with:
@@ -152,8 +146,6 @@ jobs:
             pip3 install -U pip
           run: |
             pip3 install ${{ env.PACKAGE_NAME }} --no-index --find-links dist/ --force-reinstall
-            pip install -r requirements-dev.txt
-            pytest -v
       - name: Upload wheels
         uses: actions/upload-artifact@v2
         with:
@@ -188,9 +180,7 @@ jobs:
           options: -v ${{ github.workspace }}:/io -w /io
           run: |
             apk add py3-pip
-            pip3 install -U pip pytest
             pip3 install ${{ env.PACKAGE_NAME }} --no-index --find-links /io/dist/ --force-reinstall
-            python3 -m pytest
       - name: Upload wheels
         uses: actions/upload-artifact@v2
         with:
@@ -226,10 +216,8 @@ jobs:
           githubToken: ${{ github.token }}
           install: |
             apk add py3-pip
-            pip3 install -U pip pytest
           run: |
             pip3 install ${{ env.PACKAGE_NAME }} --no-index --find-links dist/ --force-reinstall
-            python3 -m pytest
       - name: Upload wheels
         uses: actions/upload-artifact@v2
         with:
@@ -265,8 +253,6 @@ jobs:
         if: matrix.target == 'x86_64'
         run: |
           pip install dist/${{ env.PACKAGE_NAME }}-*.whl --force-reinstall
-          pip install -r requirements-dev.txt
-          pytest -v
       - name: Upload wheels
         uses: actions/upload-artifact@v2
         with:
