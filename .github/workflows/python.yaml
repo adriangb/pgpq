@@ -13,6 +13,7 @@ concurrency:
 env:
   PACKAGE_NAME: pgpq
   PYTHON_VERSION: "3.7" # to build abi3 wheels
+  MATURIN_VERSION: "v0.14.2"
 
 jobs:
   macos:
@@ -34,7 +35,7 @@ jobs:
         with:
           target: x86_64
           args: --release --out dist --sdist
-          maturin-version: "v0.13.0"
+          maturin-version: ${{ env.MATURIN_VERSION }}
       - name: Install built wheel - x86_64
         run: |
           pip install dist/${{ env.PACKAGE_NAME }}-*.whl --force-reinstall
@@ -44,7 +45,7 @@ jobs:
         uses: messense/maturin-action@v1
         with:
           args: --release --universal2 --out dist
-          maturin-version: "v0.13.0"
+          maturin-version: ${{ env.MATURIN_VERSION }}
       - name: Install built wheel - universal2
         run: |
           pip install dist/${{ env.PACKAGE_NAME }}-*universal2.whl --force-reinstall
@@ -78,7 +79,7 @@ jobs:
         with:
           target: ${{ matrix.target }}
           args: --release --out dist
-          maturin-version: "v0.13.0"
+          maturin-version: ${{ env.MATURIN_VERSION }}
       - name: Install built wheel
         shell: bash
         run: |
@@ -108,7 +109,7 @@ jobs:
           target: ${{ matrix.target }}
           manylinux: auto
           args: --release --out dist
-          maturin-version: "v0.13.0"
+          maturin-version: ${{ env.MATURIN_VERSION }}
       - name: Install built wheel
         if: matrix.target == 'x86_64'
         run: |
@@ -137,7 +138,7 @@ jobs:
           target: ${{ matrix.target }}
           manylinux: auto
           args: --release --out dist
-          maturin-version: "v0.13.0"
+          maturin-version: ${{ env.MATURIN_VERSION }}
       - uses: uraimo/run-on-arch-action@v2.0.5
         if: matrix.target != 'ppc64'
         name: Install built wheel
@@ -178,7 +179,7 @@ jobs:
           target: ${{ matrix.target }}
           manylinux: musllinux_1_2
           args: --release --out dist
-          maturin-version: "v0.13.0"
+          maturin-version: ${{ env.MATURIN_VERSION }}
       - name: Install built wheel
         if: matrix.target == 'x86_64-unknown-linux-musl'
         uses: addnab/docker-run-action@v3
@@ -216,7 +217,7 @@ jobs:
           target: ${{ matrix.platform.target }}
           manylinux: musllinux_1_2
           args: --release --out dist
-          maturin-version: "v0.13.0"
+          maturin-version: ${{ env.MATURIN_VERSION }}
       - uses: uraimo/run-on-arch-action@master
         name: Install built wheel
         with:
@@ -256,7 +257,7 @@ jobs:
       - name: Build wheels
         uses: messense/maturin-action@v1
         with:
-          maturin-version: "v0.13.0"
+          maturin-version: ${{ env.MATURIN_VERSION }}
           target: ${{ matrix.target }}
           manylinux: auto
           args: --release --out dist -i pypy${{ matrix.python-version }}
