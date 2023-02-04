@@ -217,7 +217,7 @@ jobs:
           install: |
             apk add py3-pip
           run: |
-            pip3 install ${{ env.PACKAGE_NAME }} --no-index --find-links dist/ --force-reinstall
+            pip3 install ${{ env.PACKAGE_NAME }} --no-index --find-links dist/ --force-reinstall --no-dependencies
       - name: Upload wheels
         uses: actions/upload-artifact@v2
         with:
