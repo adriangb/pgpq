@@ -53,5 +53,14 @@ pub fn benchmark_nyc_taxi_full(c: &mut Criterion) {
     });
 }
 
-criterion_group!(benches, benchmark_nyc_taxi_small, benchmark_nyc_taxi_full);
+pub fn benchmark_approaches(c: &mut Criterion) {
+    let mut group = c.benchmark_group("benchmark_approaches");
+    group.bench_function("dyn_to_buffer", |b| {
+        b.iter_with_setup(|| setup(None), |(records, schema) {
+            let out =
+        })
+    });
+}
+
+criterion_group!(benches, benchmark_nyc_taxi_small, benchmark_nyc_taxi_full, benchmark_dyn_to_buffer);
 criterion_main!(benches);
