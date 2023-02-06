@@ -5,7 +5,7 @@ use arrow::datatypes::{DataType, Schema, TimeUnit};
 use arrow::record_batch::RecordBatchReader;
 use arrow_array::RecordBatch;
 use bytes::BytesMut;
-use criterion::{black_box, criterion_group, criterion_main, Criterion};
+use criterion::{criterion_group, criterion_main, Criterion};
 use parquet::arrow::arrow_reader::{ParquetRecordBatchReader, ParquetRecordBatchReaderBuilder};
 use pgpq::ArrowToPostgresBinaryEncoder;
 use std::fs;
@@ -53,14 +53,5 @@ pub fn benchmark_nyc_taxi_full(c: &mut Criterion) {
     });
 }
 
-pub fn benchmark_approaches(c: &mut Criterion) {
-    let mut group = c.benchmark_group("benchmark_approaches");
-    group.bench_function("dyn_to_buffer", |b| {
-        b.iter_with_setup(|| setup(None), |(records, schema) {
-            let out =
-        })
-    });
-}
-
-criterion_group!(benches, benchmark_nyc_taxi_small, benchmark_nyc_taxi_full, benchmark_dyn_to_buffer);
+criterion_group!(benches, benchmark_nyc_taxi_small, benchmark_nyc_taxi_full);
 criterion_main!(benches);

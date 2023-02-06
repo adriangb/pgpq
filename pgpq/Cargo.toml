@@ -23,7 +23,12 @@ features = ["chrono-tz"]
 rstest = ">=0.16.0"
 parquet = ">=32.0.0"
 criterion = ">=0.4.0"
+arrow = ">=32.0.0"
 
 [[bench]]
 name = "benchmarks"
+harness = false
+
+[[bench]]
+name = "columnar_vs_rows"
 harness = false
