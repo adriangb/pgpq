@@ -23,9 +23,6 @@ pub fn benchmark_approaches(c: &mut Criterion) {
         vec![Field::new("c1", DataType::Int64, false), Field::new("c2", DataType::Utf8, false)]
     )), vec![Arc::new(id_array), Arc::new(name_array)]).unwrap();
 
-    group.sampling_mode(criterion::SamplingMode::Flat);
-    group.sample_size(10); // the minimum
-
     group.bench_function("columnar", |b| {
         b.iter(|| {
             let mut buffer = BytesMut::new();
@@ -36,28 +33,22 @@ pub fn benchmark_approaches(c: &mut Criterion) {
                 match column.data_type() {
                     DataType::Int64 => {
                         let arr = column.as_any().downcast_ref::<arrow_array::Int64Array>().unwrap();
-                        for item in arr {
-                            match item {
-                                Some(v) => {
-                                    buffer.put_i64(v);
-                                    offsets.push(buffer.len())
-                                },
-                                None => panic!()
-                            }
+                        for row in 0..arr.len() {
+                            if !arr.is_null(row) {
+                                let v = arr.value(row);
+                                buffer.put_i64(v);
+                                offsets.push(buffer.len());
+                            } else { panic!()};
                         }
                     }
                     DataType::Utf8 => {
                         let arr = column.as_any().downcast_ref::<arrow_array::StringArray>().unwrap();
-                        for item in arr {
-                            for item in arr {
-                                match item {
-                                    Some(v) => {
-                                        buffer.put_slice(v.as_bytes());
-                                        offsets.push(buffer.len())
-                                    },
-                                    None => panic!()
-                                }
-                            }
+                        for row in 0..arr.len() {
+                            if !arr.is_null(row) {
+                                let v = arr.value(row).as_bytes();
+                                buffer.put_slice(v);
+                                offsets.push(buffer.len());
+                            } else { panic!()}
                         }
                     }
                     _ => unreachable!()
