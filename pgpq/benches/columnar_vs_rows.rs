@@ -11,6 +11,12 @@ use std::fs;
 use std::sync::Arc;
 
 
+fn get_start_end(row: usize, col: usize, n_rows: usize, offsets: &Vec<usize>) -> (usize, usize) {
+    let idx = col * n_rows + col;
+    (offsets[idx], offsets[idx+1])
+}
+
+
 pub fn benchmark_approaches(c: &mut Criterion) {
     let mut group = c.benchmark_group("benchmark_approaches");
 
@@ -25,42 +31,52 @@ pub fn benchmark_approaches(c: &mut Criterion) {
 
     group.bench_function("columnar", |b| {
         b.iter(|| {
-            let mut buffer = BytesMut::new();
             let n_items = batch.num_columns() * batch.num_rows();
             let mut offsets: Vec<usize> = Vec::with_capacity(n_items);
             offsets.push(0);
             for column in batch.columns() {
                 match column.data_type() {
                     DataType::Int64 => {
-                        let arr = column.as_any().downcast_ref::<arrow_array::Int64Array>().unwrap();
-                        for row in 0..arr.len() {
-                            if !arr.is_null(row) {
-                                let v = arr.value(row);
-                                buffer.put_i64(v);
-                                offsets.push(buffer.len());
-                            } else { panic!()};
+                        for row in 0..batch.num_rows() {
+                            offsets.push(offsets.last().unwrap()+8);
                         }
                     }
                     DataType::Utf8 => {
                         let arr = column.as_any().downcast_ref::<arrow_array::StringArray>().unwrap();
                         for row in 0..arr.len() {
                             if !arr.is_null(row) {
-                                let v = arr.value(row).as_bytes();
-                                buffer.put_slice(v);
-                                offsets.push(buffer.len());
+                                let v = arr.value(row);
+                                offsets.push(offsets.last().unwrap()+v.len());
                             } else { panic!()}
                         }
                     }
                     _ => unreachable!()
                 }
             }
-            let mut output = BytesMut::with_capacity(buffer.len());
-            for row in 0..batch.num_rows() {
-                for col in 0..batch.num_columns() {
-                    let idx = col * batch.num_rows() + col;
-                    let start = offsets[idx];
-                    let end = offsets[idx+1];
-                    output.put_slice(&buffer[start..end])
+            let mut buff = BytesMut::zeroed(*offsets.last().unwrap());
+            for (col, any_array) in batch.columns().iter().enumerate() {
+                match any_array.data_type() {
+                    DataType::Int64 => {
+                        let arr = any_array.as_any().downcast_ref::<arrow_array::Int64Array>().unwrap();
+                        for row in 0..arr.len() {
+                            if !arr.is_null(row) {
+                                let v = arr.value(row);
+                                let (start, end) = get_start_end(row, col, batch.num_rows(), &offsets);
+                                buff[start..end].copy_from_slice(&v.to_ne_bytes());
+                            } else { panic!()};
+                        }
+                    }
+                    DataType::Utf8 => {
+                        let arr = any_array.as_any().downcast_ref::<arrow_array::StringArray>().unwrap();
+                        for row in 0..arr.len() {
+                            if !arr.is_null(row) {
+                                let v = arr.value(row).as_bytes();
+                                let (start, end) = get_start_end(row, col, batch.num_rows(), &offsets);
+                                buff[start..end].copy_from_slice(&v);
+                            } else { panic!()}
+                        }
+                    }
+                    _ => unreachable!()
                 }
             }
         })
