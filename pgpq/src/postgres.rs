@@ -2,16 +2,13 @@ use postgres_types::{to_sql_checked, IsNull, ToSql, Type};
 
 use crate::error::Error;
 
-use byteorder::{BigEndian, ByteOrder};
 use bytes::{BufMut, BytesMut};
 
 pub const HEADER_MAGIC_BYTES: &[u8] = b"PGCOPY\n\xff\r\n\0";
 
 #[inline]
 pub(crate) fn write_null(buf: &mut BytesMut) {
-    let idx = buf.len();
-    buf.put_i32(0);
-    BigEndian::write_i32(&mut buf[idx..], -1);
+    buf.put_i32(-1);
 }
 
 #[inline]
@@ -22,7 +19,7 @@ pub(crate) fn write_value(
     buf: &mut BytesMut,
 ) -> Result<(), Error> {
     let idx = buf.len();
-    buf.put_i32(0);
+    buf.put_i32(0); // save space for field length word
     let len = match v
         .to_sql_checked(type_, buf)
         .map_err(|e| Error::to_sql(e, field_name))?
@@ -33,7 +30,7 @@ pub(crate) fn write_value(
             i32::try_from(written).map_err(|_| Error::field_too_large(field_name, written))?
         }
     };
-    BigEndian::write_i32(&mut buf[idx..], len);
+    buf[idx..idx+4].copy_from_slice(&len.to_be_bytes());
     Ok(())
 }
 

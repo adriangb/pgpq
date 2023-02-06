@@ -5,7 +5,7 @@ use arrow::datatypes::{DataType, Schema, TimeUnit};
 use arrow::record_batch::RecordBatchReader;
 use arrow_array::RecordBatch;
 use bytes::BytesMut;
-use criterion::{criterion_group, criterion_main, Criterion};
+use criterion::{black_box, criterion_group, criterion_main, Criterion};
 use parquet::arrow::arrow_reader::{ParquetRecordBatchReader, ParquetRecordBatchReaderBuilder};
 use pgpq::ArrowToPostgresBinaryEncoder;
 use std::fs;
@@ -39,8 +39,16 @@ fn bench(input: (Vec<RecordBatch>, Schema)) {
 
 pub fn benchmark_nyc_taxi_small(c: &mut Criterion) {
     let mut group = c.benchmark_group("benchmark_nyc_taxi_small");
+    let (batches, schema) = setup(Some(100));
     group.bench_function("NYC Yello Taxi 100 rows", |b| {
-        b.iter_with_setup(|| setup(Some(100)), bench)
+        b.iter_with_setup(
+            || {
+                let batches = batches.iter().cloned().collect();
+                let schema = schema.clone();
+                (batches, schema)
+            },
+            |(batches, schema)| bench(black_box((batches, schema))),
+        )
     });
 }
 
@@ -48,10 +56,23 @@ pub fn benchmark_nyc_taxi_full(c: &mut Criterion) {
     let mut group = c.benchmark_group("benchmark_nyc_taxi_full");
     group.sampling_mode(criterion::SamplingMode::Flat);
     group.sample_size(10); // the minimum
+
+    let (batches, schema) = setup(Some(100));
     group.bench_function("NYC Yello Taxi full", |b| {
-        b.iter_with_setup(|| setup(None), bench)
+        b.iter_with_setup(
+            || {
+                let batches = batches.iter().cloned().collect();
+                let schema = schema.clone();
+                (batches, schema)
+            },
+            |(batches, schema)| bench(black_box((batches, schema))),
+        )
     });
 }
 
-criterion_group!(benches, benchmark_nyc_taxi_small, benchmark_nyc_taxi_full);
+criterion_group! {
+    name = benches;
+    config = Criterion::default();
+    targets = benchmark_nyc_taxi_small, benchmark_nyc_taxi_full
+}
 criterion_main!(benches);

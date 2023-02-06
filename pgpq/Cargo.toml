@@ -5,7 +5,6 @@ edition = "2021"
 description = ""
 
 [dependencies]
-byteorder = "^1.4.3"
 bytes = "^1.4.0"
 chrono = "^0.4.23"
 arrow-schema = "^32.0.0"
@@ -24,6 +23,9 @@ rstest = ">=0.16.0"
 parquet = ">=32.0.0"
 criterion = ">=0.4.0"
 arrow = ">=32.0.0"
+
+[profile.bench]
+debug = true
 
 [[bench]]
 name = "benchmarks"

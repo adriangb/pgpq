@@ -6,7 +6,6 @@ use crate::error::Error;
 use crate::postgres::{write_null, write_value, PostgresDuration, HEADER_MAGIC_BYTES};
 use crate::arrays::{downcast_array, ArrowArray};
 
-use arrow_array;
 use arrow_schema::Schema;
 use arrow_array::RecordBatch;
 use arrow_array::{Array, ArrowPrimitiveType, PrimitiveArray};
@@ -532,7 +531,7 @@ impl ArrowToPostgresBinaryEncoder {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use arrow_array;
+
     use arrow_array::{make_array, ArrayRef};
     use arrow_schema::{DataType, Field, Schema, TimeUnit};
     use arrow_array::RecordBatchReader;

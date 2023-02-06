@@ -11,7 +11,7 @@ use std::fs;
 use std::sync::Arc;
 
 
-fn get_start_end(row: usize, col: usize, n_rows: usize, offsets: &Vec<usize>) -> (usize, usize) {
+fn get_start_end(row: usize, col: usize, n_rows: usize, offsets: &[usize]) -> (usize, usize) {
     let idx = col * n_rows + col;
     (offsets[idx], offsets[idx+1])
 }
@@ -62,7 +62,7 @@ pub fn benchmark_approaches(c: &mut Criterion) {
                             if !arr.is_null(row) {
                                 let v = arr.value(row);
                                 let (start, end) = get_start_end(row, col, batch.num_rows(), &offsets);
-                                buff[start..end].copy_from_slice(&v.to_ne_bytes());
+                                buff[start..end].copy_from_slice(&v.to_be_bytes());
                             } else { panic!()};
                         }
                     }
@@ -72,7 +72,7 @@ pub fn benchmark_approaches(c: &mut Criterion) {
                             if !arr.is_null(row) {
                                 let v = arr.value(row).as_bytes();
                                 let (start, end) = get_start_end(row, col, batch.num_rows(), &offsets);
-                                buff[start..end].copy_from_slice(&v);
+                                buff[start..end].copy_from_slice(v);
                             } else { panic!()}
                         }
                     }
@@ -86,6 +86,20 @@ pub fn benchmark_approaches(c: &mut Criterion) {
         b.iter(|| {
             let mut buffer = BytesMut::new();
             let cols = batch.columns();
+            let additional = cols.iter().map(|col| {
+                match col.data_type() {
+                    DataType::Int64 => {
+                        let arr = col.as_any().downcast_ref::<arrow_array::Int64Array>().unwrap();
+                        8 * arr.len()
+                    }
+                    DataType::Utf8 => {
+                        let arr = col.as_any().downcast_ref::<arrow_array::StringArray>().unwrap();
+                        (arr.value_offsets().last().unwrap() - arr.value_offsets().first().unwrap()) as usize
+                    }
+                    _ => unreachable!()
+                }
+            }).sum();
+            buffer.reserve(additional);
             for row in 0..batch.num_rows() {
                 for col in cols {
                     match col.data_type() {

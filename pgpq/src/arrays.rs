@@ -1,6 +1,6 @@
 use std::any::Any;
 
-use arrow_array;
+
 use arrow_array::{Array, ListArray, FixedSizeListArray, LargeListArray};
 use arrow_schema::{DataType, TimeUnit, Field};
 
@@ -114,44 +114,20 @@ pub(crate) fn downcast_array<'a>(
         DataType::Float16 => ArrowArray::Float16(downcast_checked(arr, field, type_)?),
         DataType::Float32 => ArrowArray::Float32(downcast_checked(arr, field, type_)?),
         DataType::Float64 => ArrowArray::Float64(downcast_checked(arr, field, type_)?),
-        DataType::Timestamp(TimeUnit::Nanosecond, tz) => {
-            ArrowArray::TimestampNanosecond(downcast_checked(arr, field, type_)?, tz.is_some())
-        }
-        DataType::Timestamp(TimeUnit::Microsecond, tz) => {
-            ArrowArray::TimestampMicrosecond(downcast_checked(arr, field, type_)?, tz.is_some())
-        }
-        DataType::Timestamp(TimeUnit::Millisecond, tz) => {
-            ArrowArray::TimestampMillisecond(downcast_checked(arr, field, type_)?, tz.is_some())
-        }
-        DataType::Timestamp(TimeUnit::Second, tz) => {
-            ArrowArray::TimestampSecond(downcast_checked(arr, field, type_)?, tz.is_some())
-        }
+        DataType::Timestamp(TimeUnit::Nanosecond, tz) => ArrowArray::TimestampNanosecond(downcast_checked(arr, field, type_)?, tz.is_some()),
+        DataType::Timestamp(TimeUnit::Microsecond, tz) => ArrowArray::TimestampMicrosecond(downcast_checked(arr, field, type_)?, tz.is_some()),
+        DataType::Timestamp(TimeUnit::Millisecond, tz) => ArrowArray::TimestampMillisecond(downcast_checked(arr, field, type_)?, tz.is_some()),
+        DataType::Timestamp(TimeUnit::Second, tz) => ArrowArray::TimestampSecond(downcast_checked(arr, field, type_)?, tz.is_some()),
         DataType::Date32 => ArrowArray::Date32(downcast_checked(arr, field, type_)?),
         DataType::Date64 => ArrowArray::Date64(downcast_checked(arr, field, type_)?),
-        DataType::Time32(TimeUnit::Millisecond) => {
-            ArrowArray::Time32Millisecond(downcast_checked(arr, field, type_)?)
-        }
-        DataType::Time32(TimeUnit::Second) => {
-            ArrowArray::Time32Second(downcast_checked(arr, field, type_)?)
-        }
-        DataType::Time64(TimeUnit::Nanosecond) => {
-            ArrowArray::Time64Nanosecond(downcast_checked(arr, field, type_)?)
-        }
-        DataType::Time64(TimeUnit::Microsecond) => {
-            ArrowArray::Time64Microsecond(downcast_checked(arr, field, type_)?)
-        }
-        DataType::Duration(TimeUnit::Nanosecond) => {
-            ArrowArray::DurationNanosecond(downcast_checked(arr, field, type_)?)
-        }
-        DataType::Duration(TimeUnit::Microsecond) => {
-            ArrowArray::DurationMicrosecond(downcast_checked(arr, field, type_)?)
-        }
-        DataType::Duration(TimeUnit::Millisecond) => {
-            ArrowArray::DurationMillisecond(downcast_checked(arr, field, type_)?)
-        }
-        DataType::Duration(TimeUnit::Second) => {
-            ArrowArray::DurationSecond(downcast_checked(arr, field, type_)?)
-        }
+        DataType::Time32(TimeUnit::Millisecond) => ArrowArray::Time32Millisecond(downcast_checked(arr, field, type_)?),
+        DataType::Time32(TimeUnit::Second) => ArrowArray::Time32Second(downcast_checked(arr, field, type_)?),
+        DataType::Time64(TimeUnit::Nanosecond) => ArrowArray::Time64Nanosecond(downcast_checked(arr, field, type_)?),
+        DataType::Time64(TimeUnit::Microsecond) => ArrowArray::Time64Microsecond(downcast_checked(arr, field, type_)?),
+        DataType::Duration(TimeUnit::Nanosecond) => ArrowArray::DurationNanosecond(downcast_checked(arr, field, type_)?),
+        DataType::Duration(TimeUnit::Microsecond) => ArrowArray::DurationMicrosecond(downcast_checked(arr, field, type_)?),
+        DataType::Duration(TimeUnit::Millisecond) => ArrowArray::DurationMillisecond(downcast_checked(arr, field, type_)?),
+        DataType::Duration(TimeUnit::Second) => ArrowArray::DurationSecond(downcast_checked(arr, field, type_)?),
         DataType::Binary => ArrowArray::Binary(downcast_checked(arr, field, type_)?),
         DataType::LargeBinary => ArrowArray::LargeBinary(downcast_checked(arr, field, type_)?),
         DataType::Utf8 => ArrowArray::String(downcast_checked(arr, field, type_)?),

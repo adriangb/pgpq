@@ -1298,7 +1298,6 @@ dependencies = [
  "arrow",
  "arrow-array",
  "arrow-schema",
- "byteorder",
  "bytes",
  "chrono",
  "criterion",

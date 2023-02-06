@@ -4,7 +4,7 @@ version = 3
 
 [[package]]
 name = "_pgpq"
-version = "0.1.0"
+version = "0.1.1"
 dependencies = [
  "arrow",
  "bytes",
@@ -882,7 +882,6 @@ version = "0.1.0"
 dependencies = [
  "arrow-array",
  "arrow-schema",
- "byteorder",
  "bytes",
  "chrono",
  "postgres-types",

@@ -1,4 +1,0 @@
-enum Encoder {
-    Scalar,
-    List,
-}
