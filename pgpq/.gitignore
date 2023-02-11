@@ -5,6 +5,7 @@
 !/Cargo.toml
 !/Cargo.lock
 !/testdata
+!/tests
 !/benches
 
 __pycache__

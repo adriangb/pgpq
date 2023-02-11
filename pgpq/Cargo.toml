@@ -22,7 +22,8 @@ features = ["chrono-tz"]
 rstest = ">=0.16.0"
 parquet = ">=32.0.0"
 criterion = ">=0.4.0"
-arrow = ">=32.0.0"
+arrow = { version = ">=32.0.0", features = ["ipc"]}
+arrow-ipc = "32.0.0"
 
 [profile.bench]
 debug = true
@@ -33,4 +34,8 @@ harness = false
 
 [[bench]]
 name = "columnar_vs_rows"
+harness = false
+
+[[bench]]
+name = "to_sql_vs_manual"
 harness = false
