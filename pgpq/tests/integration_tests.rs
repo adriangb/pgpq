@@ -1,12 +1,12 @@
+use std::cmp::min;
+use std::fs::{self, File};
 use std::path::PathBuf;
-use std::fs::{File, self};
 
 use arrow_array::RecordBatch;
-use bytes::BytesMut;
-use pgpq::ArrowToPostgresBinaryEncoder;
 use arrow_ipc::reader::FileReader;
 use arrow_schema::Schema;
-
+use bytes::BytesMut;
+use pgpq::ArrowToPostgresBinaryEncoder;
 
 fn read_batches(file: PathBuf) -> (Vec<RecordBatch>, Schema) {
     let file = File::open(file).unwrap();
@@ -16,11 +16,9 @@ fn read_batches(file: PathBuf) -> (Vec<RecordBatch>, Schema) {
     (batches, schema)
 }
 
-
-fn run_test_case(case: &str) -> () {
-    let path = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join(
-        format!("tests/testdata/{}.arrow", case)
-    );
+fn run_test_case(case: &str) {
+    let path =
+        PathBuf::from(env!("CARGO_MANIFEST_DIR")).join(format!("tests/testdata/{case}.arrow"));
     let (batches, schema) = read_batches(path);
     let mut encoder = ArrowToPostgresBinaryEncoder::try_new(schema).unwrap();
     let mut buf = BytesMut::new();
@@ -37,12 +35,11 @@ fn run_test_case(case: &str) -> () {
         panic!("wrote new snap at {snap_file:?}")
     } else {
         let existing = fs::read(snap_file).unwrap();
+        let n_chars = min(buf.len(), 50);
         assert_eq!(
             existing,
             &buf[..],
-            "values did not match. First 50 bytes: {:?} (actual) vs {:?} (expected)",
-            &existing[..50],
-            &buf[..50]
+            "values did not match. First {n_chars} bytes shown",
         )
     }
 }

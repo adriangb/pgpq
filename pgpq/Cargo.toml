@@ -6,17 +6,12 @@ description = ""
 
 [dependencies]
 bytes = "^1.4.0"
-chrono = "^0.4.23"
 arrow-schema = "^32.0.0"
-
-[dependencies.postgres-types]
-version = "^0.2.4"
-features = ["with-chrono-0_4"]
+enum_dispatch = "0.3.11"
 
 [dependencies.arrow-array]
 version = "^32.0.0"
 default-features = false
-features = ["chrono-tz"]
 
 [dev-dependencies]
 rstest = ">=0.16.0"

@@ -13,7 +13,8 @@ use std::path::PathBuf;
 
 fn setup(row_limit: Option<usize>) -> (Vec<RecordBatch>, Schema) {
     let file = fs::File::open(
-        PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("testdata/yellow_tripdata_2022-01.parquet"),
+        PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+            .join("tests/testdata/yellow_tripdata_2022-01.parquet"),
     )
     .unwrap();
     let builder = ParquetRecordBatchReaderBuilder::try_new(file).unwrap();
@@ -43,7 +44,7 @@ pub fn benchmark_nyc_taxi_small(c: &mut Criterion) {
     group.bench_function("NYC Yello Taxi 100 rows", |b| {
         b.iter_with_setup(
             || {
-                let batches = batches.iter().cloned().collect();
+                let batches = batches.to_vec();
                 let schema = schema.clone();
                 (batches, schema)
             },
@@ -61,7 +62,7 @@ pub fn benchmark_nyc_taxi_full(c: &mut Criterion) {
     group.bench_function("NYC Yello Taxi full", |b| {
         b.iter_with_setup(
             || {
-                let batches = batches.iter().cloned().collect();
+                let batches = batches.to_vec();
                 let schema = schema.clone();
                 (batches, schema)
             },

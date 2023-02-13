@@ -6,7 +6,7 @@ use std::fmt;
 pub enum ErrorKind {
     ColumnTypeMismatch {
         field: String,
-        expected: DataType,
+        expected: String,
         actual: DataType,
     },
     TypeNotSupported {
@@ -17,10 +17,9 @@ pub enum ErrorKind {
         field: String,
         size: usize,
     }, // Postgres' binary format only supports fields up to 32bits
-    ToSql {
-        field: String,
+    Encode {
+        reason: String,
     },
-    Encode,
 }
 
 #[derive(Debug)]
@@ -44,8 +43,7 @@ impl fmt::Debug for Error {
 impl fmt::Display for Error {
     fn fmt(&self, fmt: &mut fmt::Formatter<'_>) -> fmt::Result {
         match &self.0.kind {
-            ErrorKind::ToSql { field } => write!(fmt, "error serializing parameter {field}")?,
-            ErrorKind::Encode => write!(fmt, "error encoding message")?,
+            ErrorKind::Encode { reason } => write!(fmt, "error encoding message: {reason}")?,
             ErrorKind::FieldTooLarge { field, size } => write!(
                 fmt,
                 "field {field} exceeds the maximum allowed size for binary copy ({size} bytes)"
@@ -59,7 +57,7 @@ impl fmt::Display for Error {
                 actual,
             } => write!(
                 fmt,
-                "Type mismatch for column {field}: expected {expected:?} but got {actual:?}"
+                "Type mismatch for column {field}: expected {expected} but got {actual:?}"
             )?,
         };
         if let Some(ref cause) = self.0.cause {
@@ -78,16 +76,6 @@ impl error::Error for Error {
 impl Error {
     pub fn new(kind: ErrorKind, cause: Option<Box<dyn error::Error + Sync + Send>>) -> Error {
         Error(Box::new(ErrorInner { kind, cause }))
-    }
-
-    #[allow(clippy::wrong_self_convention)]
-    pub(crate) fn to_sql(e: Box<dyn error::Error + Sync + Send>, field: &str) -> Error {
-        Error::new(
-            ErrorKind::ToSql {
-                field: field.to_string(),
-            },
-            Some(e),
-        )
     }
 
     pub(crate) fn field_too_large(field: &str, size: usize) -> Error {
@@ -110,15 +98,11 @@ impl Error {
         )
     }
 
-    pub(crate) fn mismatched_column_type(
-        field: &str,
-        expected: &DataType,
-        actual: &DataType,
-    ) -> Error {
+    pub(crate) fn mismatched_column_type(field: &str, expected: &str, actual: &DataType) -> Error {
         Error::new(
             ErrorKind::ColumnTypeMismatch {
                 field: field.to_string(),
-                expected: expected.clone(),
+                expected: expected.to_string(),
                 actual: actual.clone(),
             },
             None,
