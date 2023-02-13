@@ -4,7 +4,7 @@ version = 3
 
 [[package]]
 name = "_pgpq"
-version = "0.1.3"
+version = "0.1.4"
 dependencies = [
  "arrow",
  "bytes",

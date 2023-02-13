@@ -135,7 +135,7 @@ impl_encode!(UInt32Encoder, 8, i64::from, BufMut::put_i64);
 pub(crate) struct Int8Encoder<'a> {
     arr: &'a arrow_array::Int8Array,
 }
-impl_encode!(Int8Encoder, 2, identity, BufMut::put_i8);
+impl_encode!(Int8Encoder, 2, i16::from, BufMut::put_i16);
 
 #[derive(Debug, Clone)]
 pub(crate) struct Int16Encoder<'a> {
