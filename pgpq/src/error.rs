@@ -12,6 +12,7 @@ pub enum ErrorKind {
     TypeNotSupported {
         field: String,
         tp: DataType,
+        msg: String,
     },
     FieldTooLarge {
         field: String,
@@ -48,9 +49,10 @@ impl fmt::Display for Error {
                 fmt,
                 "field {field} exceeds the maximum allowed size for binary copy ({size} bytes)"
             )?,
-            ErrorKind::TypeNotSupported { field, tp } => {
-                write!(fmt, "Arrow type {tp} for field {field} is not supported")?
-            }
+            ErrorKind::TypeNotSupported { field, tp, msg } => write!(
+                fmt,
+                "Arrow type {tp} for field {field} is not supported: {msg}"
+            )?,
             ErrorKind::ColumnTypeMismatch {
                 field,
                 expected,
@@ -88,11 +90,12 @@ impl Error {
         )
     }
 
-    pub(crate) fn type_unsupported(field: &str, tp: &DataType) -> Error {
+    pub(crate) fn type_unsupported(field: &str, tp: &DataType, msg: &str) -> Error {
         Error::new(
             ErrorKind::TypeNotSupported {
                 field: field.to_string(),
                 tp: tp.clone(),
+                msg: msg.to_string(),
             },
             None,
         )

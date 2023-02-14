@@ -22,7 +22,7 @@ impl ArrowToPostgresBinaryEncoder {
     #[new]
     fn new(pyschema: &PyAny, py: Python) -> Self {
         let encoder =
-            pgpq::ArrowToPostgresBinaryEncoder::try_new(Schema::from_pyarrow(pyschema).unwrap())
+            pgpq::ArrowToPostgresBinaryEncoder::try_new(&Schema::from_pyarrow(pyschema).unwrap())
                 .unwrap();
         ArrowToPostgresBinaryEncoder {
             encoder,
@@ -36,7 +36,7 @@ impl ArrowToPostgresBinaryEncoder {
     }
     fn write_batch(&mut self, batch: &PyAny) -> Py<PyAny> {
         self.encoder
-            .write_batch(RecordBatch::from_pyarrow(batch).unwrap(), &mut self.buf)
+            .write_batch(&RecordBatch::from_pyarrow(batch).unwrap(), &mut self.buf)
             .unwrap();
         if self.buf.len() > BUFF_SIZE {
             Python::with_gil(|py| PyBytes::new(py, &self.buf.split()[..]).into())

@@ -19,18 +19,15 @@ parquet = ">=32.0.0"
 criterion = ">=0.4.0"
 arrow = { version = ">=32.0.0", features = ["ipc"]}
 arrow-ipc = "32.0.0"
+postgres-types = {version = "0.2.4", features = ["with-chrono-0_4"]}
 
 [profile.bench]
 debug = true
 
 [[bench]]
-name = "benchmarks"
+name = "yellow_cab_dataset"
 harness = false
 
 [[bench]]
-name = "columnar_vs_rows"
-harness = false
-
-[[bench]]
-name = "to_sql_vs_manual"
+name = "experiments"
 harness = false

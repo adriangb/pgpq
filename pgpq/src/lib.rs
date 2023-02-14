@@ -6,9 +6,9 @@ use arrow_schema::Field as ArrowField;
 use arrow_schema::Schema;
 use bytes::{BufMut, BytesMut};
 
-mod encoder;
+mod encoders;
 
-use crate::encoder::{BuildEncoder, Encode, EncoderBuilder};
+use crate::encoders::{BuildEncoder, Encode, EncoderBuilder};
 
 pub const HEADER_MAGIC_BYTES: &[u8] = b"PGCOPY\n\xff\r\n\0";
 
@@ -28,7 +28,7 @@ pub struct ArrowToPostgresBinaryEncoder {
 
 impl ArrowToPostgresBinaryEncoder {
     /// Creates a new writer which will write rows of the provided types to the provided sink.
-    pub fn try_new(schema: Schema) -> Result<ArrowToPostgresBinaryEncoder, Error> {
+    pub fn try_new(schema: &Schema) -> Result<ArrowToPostgresBinaryEncoder, Error> {
         let fields = schema.fields.to_vec();
 
         let encoder_builders_result: Result<Vec<EncoderBuilder>, Error> = fields
@@ -51,7 +51,7 @@ impl ArrowToPostgresBinaryEncoder {
         self.state = EncoderState::Encoding;
     }
 
-    pub fn write_batch(&mut self, batch: RecordBatch, buf: &mut BytesMut) -> Result<(), Error> {
+    pub fn write_batch(&mut self, batch: &RecordBatch, buf: &mut BytesMut) -> Result<(), Error> {
         assert_eq!(self.state, EncoderState::Encoding);
         assert!(
             batch.num_columns() == self.fields.len(),

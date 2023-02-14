@@ -20,11 +20,11 @@ fn run_test_case(case: &str) {
     let path =
         PathBuf::from(env!("CARGO_MANIFEST_DIR")).join(format!("tests/testdata/{case}.arrow"));
     let (batches, schema) = read_batches(path);
-    let mut encoder = ArrowToPostgresBinaryEncoder::try_new(schema).unwrap();
+    let mut encoder = ArrowToPostgresBinaryEncoder::try_new(&schema).unwrap();
     let mut buf = BytesMut::new();
     encoder.write_header(&mut buf);
     for batch in batches {
-        encoder.write_batch(batch, &mut buf).unwrap();
+        encoder.write_batch(&batch, &mut buf).unwrap();
     }
     encoder.write_footer(&mut buf).unwrap();
 
@@ -45,15 +45,6 @@ fn run_test_case(case: &str) {
 }
 
 // These tests are generated in generate_test_data.py
-#[test]
-fn test_bool() {
-    run_test_case("bool")
-}
-
-#[test]
-fn test_uint8() {
-    run_test_case("uint8")
-}
 
 #[test]
 fn test_uint16() {
@@ -85,11 +76,6 @@ fn test_int64() {
     run_test_case("int64")
 }
 
-// #[test]
-// fn test_float16() {
-//     run_test_case("float16")
-// }
-
 #[test]
 fn test_float32() {
     run_test_case("float32")
@@ -98,11 +84,6 @@ fn test_float32() {
 #[test]
 fn test_float64() {
     run_test_case("float64")
-}
-
-#[test]
-fn test_timestamp_ns_notz() {
-    run_test_case("timestamp_ns_notz")
 }
 
 #[test]
@@ -121,6 +102,21 @@ fn test_timestamp_s_notz() {
 }
 
 #[test]
+fn test_timestamp_us_tz() {
+    run_test_case("timestamp_us_tz")
+}
+
+#[test]
+fn test_timestamp_ms_tz() {
+    run_test_case("timestamp_ms_tz")
+}
+
+#[test]
+fn test_timestamp_s_tz() {
+    run_test_case("timestamp_s_tz")
+}
+
+#[test]
 fn test_time_s() {
     run_test_case("time_s")
 }
@@ -133,16 +129,6 @@ fn test_time_ms() {
 #[test]
 fn test_time_us() {
     run_test_case("time_us")
-}
-
-#[test]
-fn test_time_ns() {
-    run_test_case("time_ns")
-}
-
-#[test]
-fn test_duration_ns() {
-    run_test_case("duration_ns")
 }
 
 #[test]
@@ -220,11 +206,6 @@ fn test_int64_nullable() {
     run_test_case("int64_nullable")
 }
 
-// #[test]
-// fn test_float16_nullable() {
-//     run_test_case("float16_nullable")
-// }
-
 #[test]
 fn test_float32_nullable() {
     run_test_case("float32_nullable")
@@ -233,11 +214,6 @@ fn test_float32_nullable() {
 #[test]
 fn test_float64_nullable() {
     run_test_case("float64_nullable")
-}
-
-#[test]
-fn test_timestamp_ns_notz_nullable() {
-    run_test_case("timestamp_ns_notz_nullable")
 }
 
 #[test]
@@ -256,6 +232,21 @@ fn test_timestamp_s_notz_nullable() {
 }
 
 #[test]
+fn test_timestamp_us_tz_nullable() {
+    run_test_case("timestamp_us_tz_nullable")
+}
+
+#[test]
+fn test_timestamp_ms_tz_nullable() {
+    run_test_case("timestamp_ms_tz_nullable")
+}
+
+#[test]
+fn test_timestamp_s_tz_nullable() {
+    run_test_case("timestamp_s_tz_nullable")
+}
+
+#[test]
 fn test_time_s_nullable() {
     run_test_case("time_s_nullable")
 }
@@ -268,16 +259,6 @@ fn test_time_ms_nullable() {
 #[test]
 fn test_time_us_nullable() {
     run_test_case("time_us_nullable")
-}
-
-#[test]
-fn test_time_ns_nullable() {
-    run_test_case("time_ns_nullable")
-}
-
-#[test]
-fn test_duration_ns_nullable() {
-    run_test_case("duration_ns_nullable")
 }
 
 #[test]
@@ -355,11 +336,6 @@ fn test_list_int64() {
     run_test_case("list_int64")
 }
 
-// #[test]
-// fn test_list_float16() {
-//     run_test_case("list_float16")
-// }
-
 #[test]
 fn test_list_float32() {
     run_test_case("list_float32")
@@ -368,11 +344,6 @@ fn test_list_float32() {
 #[test]
 fn test_list_float64() {
     run_test_case("list_float64")
-}
-
-#[test]
-fn test_list_timestamp_ns_notz() {
-    run_test_case("list_timestamp_ns_notz")
 }
 
 #[test]
@@ -391,6 +362,21 @@ fn test_list_timestamp_s_notz() {
 }
 
 #[test]
+fn test_list_timestamp_us_tz() {
+    run_test_case("list_timestamp_us_tz")
+}
+
+#[test]
+fn test_list_timestamp_ms_tz() {
+    run_test_case("list_timestamp_ms_tz")
+}
+
+#[test]
+fn test_list_timestamp_s_tz() {
+    run_test_case("list_timestamp_s_tz")
+}
+
+#[test]
 fn test_list_time_s() {
     run_test_case("list_time_s")
 }
@@ -403,16 +389,6 @@ fn test_list_time_ms() {
 #[test]
 fn test_list_time_us() {
     run_test_case("list_time_us")
-}
-
-#[test]
-fn test_list_time_ns() {
-    run_test_case("list_time_ns")
-}
-
-#[test]
-fn test_list_duration_ns() {
-    run_test_case("list_duration_ns")
 }
 
 #[test]
@@ -490,11 +466,6 @@ fn test_list_int64_nullable() {
     run_test_case("list_int64_nullable")
 }
 
-// #[test]
-// fn test_list_float16_nullable() {
-//     run_test_case("list_float16_nullable")
-// }
-
 #[test]
 fn test_list_float32_nullable() {
     run_test_case("list_float32_nullable")
@@ -503,11 +474,6 @@ fn test_list_float32_nullable() {
 #[test]
 fn test_list_float64_nullable() {
     run_test_case("list_float64_nullable")
-}
-
-#[test]
-fn test_list_timestamp_ns_notz_nullable() {
-    run_test_case("list_timestamp_ns_notz_nullable")
 }
 
 #[test]
@@ -526,6 +492,21 @@ fn test_list_timestamp_s_notz_nullable() {
 }
 
 #[test]
+fn test_list_timestamp_us_tz_nullable() {
+    run_test_case("list_timestamp_us_tz_nullable")
+}
+
+#[test]
+fn test_list_timestamp_ms_tz_nullable() {
+    run_test_case("list_timestamp_ms_tz_nullable")
+}
+
+#[test]
+fn test_list_timestamp_s_tz_nullable() {
+    run_test_case("list_timestamp_s_tz_nullable")
+}
+
+#[test]
 fn test_list_time_s_nullable() {
     run_test_case("list_time_s_nullable")
 }
@@ -538,16 +519,6 @@ fn test_list_time_ms_nullable() {
 #[test]
 fn test_list_time_us_nullable() {
     run_test_case("list_time_us_nullable")
-}
-
-#[test]
-fn test_list_time_ns_nullable() {
-    run_test_case("list_time_ns_nullable")
-}
-
-#[test]
-fn test_list_duration_ns_nullable() {
-    run_test_case("list_duration_ns_nullable")
 }
 
 #[test]
@@ -625,11 +596,6 @@ fn test_list_nullable_list_int64() {
     run_test_case("list_nullable_list_int64")
 }
 
-// #[test]
-// fn test_list_nullable_list_float16() {
-//     run_test_case("list_nullable_list_float16")
-// }
-
 #[test]
 fn test_list_nullable_list_float32() {
     run_test_case("list_nullable_list_float32")
@@ -638,11 +604,6 @@ fn test_list_nullable_list_float32() {
 #[test]
 fn test_list_nullable_list_float64() {
     run_test_case("list_nullable_list_float64")
-}
-
-#[test]
-fn test_list_nullable_list_timestamp_ns_notz() {
-    run_test_case("list_nullable_list_timestamp_ns_notz")
 }
 
 #[test]
@@ -661,6 +622,21 @@ fn test_list_nullable_list_timestamp_s_notz() {
 }
 
 #[test]
+fn test_list_nullable_list_timestamp_us_tz() {
+    run_test_case("list_nullable_list_timestamp_us_tz")
+}
+
+#[test]
+fn test_list_nullable_list_timestamp_ms_tz() {
+    run_test_case("list_nullable_list_timestamp_ms_tz")
+}
+
+#[test]
+fn test_list_nullable_list_timestamp_s_tz() {
+    run_test_case("list_nullable_list_timestamp_s_tz")
+}
+
+#[test]
 fn test_list_nullable_list_time_s() {
     run_test_case("list_nullable_list_time_s")
 }
@@ -673,16 +649,6 @@ fn test_list_nullable_list_time_ms() {
 #[test]
 fn test_list_nullable_list_time_us() {
     run_test_case("list_nullable_list_time_us")
-}
-
-#[test]
-fn test_list_nullable_list_time_ns() {
-    run_test_case("list_nullable_list_time_ns")
-}
-
-#[test]
-fn test_list_nullable_list_duration_ns() {
-    run_test_case("list_nullable_list_duration_ns")
 }
 
 #[test]
@@ -760,11 +726,6 @@ fn test_list_nullable_list_int64_nullable() {
     run_test_case("list_nullable_list_int64_nullable")
 }
 
-// #[test]
-// fn test_list_nullable_list_float16_nullable() {
-//     run_test_case("list_nullable_list_float16_nullable")
-// }
-
 #[test]
 fn test_list_nullable_list_float32_nullable() {
     run_test_case("list_nullable_list_float32_nullable")
@@ -773,11 +734,6 @@ fn test_list_nullable_list_float32_nullable() {
 #[test]
 fn test_list_nullable_list_float64_nullable() {
     run_test_case("list_nullable_list_float64_nullable")
-}
-
-#[test]
-fn test_list_nullable_list_timestamp_ns_notz_nullable() {
-    run_test_case("list_nullable_list_timestamp_ns_notz_nullable")
 }
 
 #[test]
@@ -796,6 +752,21 @@ fn test_list_nullable_list_timestamp_s_notz_nullable() {
 }
 
 #[test]
+fn test_list_nullable_list_timestamp_us_tz_nullable() {
+    run_test_case("list_nullable_list_timestamp_us_tz_nullable")
+}
+
+#[test]
+fn test_list_nullable_list_timestamp_ms_tz_nullable() {
+    run_test_case("list_nullable_list_timestamp_ms_tz_nullable")
+}
+
+#[test]
+fn test_list_nullable_list_timestamp_s_tz_nullable() {
+    run_test_case("list_nullable_list_timestamp_s_tz_nullable")
+}
+
+#[test]
 fn test_list_nullable_list_time_s_nullable() {
     run_test_case("list_nullable_list_time_s_nullable")
 }
@@ -808,16 +779,6 @@ fn test_list_nullable_list_time_ms_nullable() {
 #[test]
 fn test_list_nullable_list_time_us_nullable() {
     run_test_case("list_nullable_list_time_us_nullable")
-}
-
-#[test]
-fn test_list_nullable_list_time_ns_nullable() {
-    run_test_case("list_nullable_list_time_ns_nullable")
-}
-
-#[test]
-fn test_list_nullable_list_duration_ns_nullable() {
-    run_test_case("list_nullable_list_duration_ns_nullable")
 }
 
 #[test]

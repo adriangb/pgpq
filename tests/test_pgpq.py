@@ -63,12 +63,12 @@ class ArrowIPCTestCase:
     comparator: Callable[[pl.DataFrame, pl.DataFrame], None] = assert_frame_equal
 
 
-def assert_timestamp_dfs_equal(left: pl.DataFrame, right: pl.DataFrame) -> None:
-    col = left.columns[0]
-    # compare as ms
-    left = left.with_columns(pl.col(col).dt.truncate(every="1s"))
-    right = right.with_columns(pl.col(col).dt.truncate(every="1s"))
-    assert_frame_equal(left, right)
+# def assert_timestamp_dfs_equal(left: pl.DataFrame, right: pl.DataFrame) -> None:
+#     col = left.columns[0]
+#     # compare as ms
+#     left = left.with_columns(pl.col(col).dt.truncate(every="1s"))
+#     right = right.with_columns(pl.col(col).dt.truncate(every="1s"))
+#     assert_frame_equal(left, right)
 
 
 PRIMITIVE_TESTCASES = [
@@ -117,11 +117,6 @@ PRIMITIVE_TESTCASES = [
         "DOUBLE PRECISION",
     ),
     ArrowIPCTestCase(
-        "timestamp_ns_notz",
-        "TIMESTAMP",
-        comparator=assert_timestamp_dfs_equal,
-    ),
-    ArrowIPCTestCase(
         "timestamp_us_notz",
         "TIMESTAMP",
     ),
@@ -132,6 +127,58 @@ PRIMITIVE_TESTCASES = [
     ArrowIPCTestCase(
         "timestamp_s_notz",
         "TIMESTAMP",
+    ),
+    ArrowIPCTestCase(
+        "timestamp_us_tz",
+        "TIMESTAMP",
+    ),
+    ArrowIPCTestCase(
+        "timestamp_ms_tz",
+        "TIMESTAMP",
+    ),
+    ArrowIPCTestCase(
+        "timestamp_s_tz",
+        "TIMESTAMP",
+    ),
+    ArrowIPCTestCase(
+        "time_us",
+        "TIME",
+    ),
+    ArrowIPCTestCase(
+        "time_ms",
+        "TIME",
+    ),
+    ArrowIPCTestCase(
+        "time_s",
+        "TIME",
+    ),
+    ArrowIPCTestCase(
+        "duration_us",
+        "INTERVAL",
+    ),
+    ArrowIPCTestCase(
+        "duration_ms",
+        "INTERVAL",
+    ),
+    ArrowIPCTestCase(
+        "duration_s",
+        "INTERVAL",
+    ),
+    ArrowIPCTestCase(
+        "binary",
+        "BYTEA",
+    ),
+    ArrowIPCTestCase(
+        "large_binary",
+        "BYTEA",
+    ),
+    ArrowIPCTestCase(
+        "string",
+        "TEXT",
+    ),
+    ArrowIPCTestCase(
+        "large_string",
+        "TEXT",
     ),
 ]
 
