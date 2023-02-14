@@ -51,7 +51,7 @@ impl fmt::Display for Error {
             )?,
             ErrorKind::TypeNotSupported { field, tp, msg } => write!(
                 fmt,
-                "Arrow type {tp} for field {field} is not supported: {msg}"
+                "Arrow type {tp} for field {field} is not supported (detail: {msg})"
             )?,
             ErrorKind::ColumnTypeMismatch {
                 field,
