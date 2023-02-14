@@ -173,22 +173,50 @@ pub(crate) struct Float64Encoder<'a> {
 }
 impl_encode!(Float64Encoder, 8, identity, BufMut::put_f64);
 
+// Postgres starts counting on Jan 1st 2000
+// This is Jan 1st 2000 relative to the UNIX Epoch in us
+const POSTGRES_BASE_TIMESTAMP_S: i64 = 946_684_800;
+const POSTGRES_BASE_TIMESTAMP_MS: i64 = 946_684_800 * 1_000;
+const POSTGRES_BASE_TIMESTAMP_US: i64 = 946_684_800 * 1_000_000;
+const POSTGRES_BASE_TIMESTAMP_NS: i64 = 946_684_800 * 1_000_000_000;
+
+#[inline]
+fn adjust_timestamp(val: i64, offset: i64) -> Result<i64, Error> {
+    val.sub_checked(offset).map_err(|_|
+        Error::new(
+            ErrorKind::Encode {
+                reason: "Value too large to transmit".to_string()
+            },
+            None
+        )
+    )
+}
+
 #[derive(Debug, Clone)]
 pub(crate) struct TimestampNanosecondEncoder<'a> {
     arr: &'a arrow_array::TimestampNanosecondArray,
+    field: String,
 }
-impl_encode!(
+impl_encode_fallible!(
     TimestampNanosecondEncoder,
     8,
-    |v| v / 1_000_000,
+    |_: &str, v: i64| {
+        adjust_timestamp(v, POSTGRES_BASE_TIMESTAMP_NS).map(|v| v / 1_000)
+    },
     BufMut::put_i64
 );
 
 #[derive(Debug, Clone)]
 pub(crate) struct TimestampMicrosecondEncoder<'a> {
     arr: &'a arrow_array::TimestampMicrosecondArray,
+    field: String,
 }
-impl_encode!(TimestampMicrosecondEncoder, 8, identity, BufMut::put_i64);
+impl_encode_fallible!(
+    TimestampMicrosecondEncoder,
+    8,
+    |_: &str, v: i64| adjust_timestamp(v, POSTGRES_BASE_TIMESTAMP_US),
+    BufMut::put_i64
+);
 
 #[derive(Debug, Clone)]
 pub(crate) struct TimestampMillisecondEncoder<'a> {
@@ -198,12 +226,20 @@ pub(crate) struct TimestampMillisecondEncoder<'a> {
 impl_encode_fallible!(
     TimestampMillisecondEncoder,
     8,
-    |_: &str, v: i64| v.mul_checked(1_000).map_err(|_| Error::new(
-        ErrorKind::Encode {
-            reason: "Overflow encoding millisecond timestamp as microseconds".to_string()
-        },
-        None
-    )),
+    |_: &str, v: i64| {
+        let v = adjust_timestamp(v, POSTGRES_BASE_TIMESTAMP_MS)?;
+        match v.mul_checked(1_000) {
+            Ok(v) => Ok(v),
+            Err(_) => Err(
+                Error::new(
+                    ErrorKind::Encode {
+                        reason: "Overflow encoding millisecond timestamp as microseconds".to_string()
+                    },
+                    None
+                )
+            )
+        }
+    },
     BufMut::put_i64
 );
 
@@ -215,12 +251,20 @@ pub(crate) struct TimestampSecondEncoder<'a> {
 impl_encode_fallible!(
     TimestampSecondEncoder,
     8,
-    |_: &str, v: i64| v.mul_checked(1_000_000).map_err(|_| Error::new(
-        ErrorKind::Encode {
-            reason: "Overflow encoding second timestamp as microseconds".to_string()
-        },
-        None
-    )),
+    |_: &str, v: i64| {
+        let v = adjust_timestamp(v, POSTGRES_BASE_TIMESTAMP_S)?;
+        match v.mul_checked(1_000_000) {
+            Ok(v) => Ok(v),
+            Err(_) => Err(
+                Error::new(
+                    ErrorKind::Encode {
+                        reason: "Overflow encoding seconds timestamp as microseconds".to_string()
+                    },
+                    None
+                )
+            )
+        }
+    },
     BufMut::put_i64
 );
 
@@ -534,7 +578,7 @@ impl_encoder_builder_stateless!(Float64EncoderBuilder, Encoder::Float64, Float64
 pub(crate) struct TimestampNanosecondEncoderBuilder {
     field: String,
 }
-impl_encoder_builder_stateless!(
+impl_encoder_builder_stateless_with_field!(
     TimestampNanosecondEncoderBuilder,
     Encoder::TimestampNanosecond,
     TimestampNanosecondEncoder
@@ -544,7 +588,7 @@ impl_encoder_builder_stateless!(
 pub(crate) struct TimestampMicrosecondEncoderBuilder {
     field: String,
 }
-impl_encoder_builder_stateless!(
+impl_encoder_builder_stateless_with_field!(
     TimestampMicrosecondEncoderBuilder,
     Encoder::TimestampMicrosecond,
     TimestampMicrosecondEncoder
@@ -780,6 +824,7 @@ impl EncoderBuilder {
             DataType::Int16 => Self::Int16(Int16EncoderBuilder { field }),
             DataType::Int32 => Self::Int32(Int32EncoderBuilder { field }),
             DataType::Int64 => Self::Int64(Int64EncoderBuilder { field }),
+            DataType::Float16 => Self::Float16(Float16EncoderBuilder { field }),
             DataType::Float32 => Self::Float32(Float32EncoderBuilder { field }),
             DataType::Float64 => Self::Float64(Float64EncoderBuilder { field }),
             DataType::Timestamp(unit, _) => match unit {
