@@ -113,7 +113,7 @@ jobs:
       - name: Install built wheel
         if: matrix.target == 'x86_64'
         run: |
-          pip install "dist/${{ env.PACKAGE_NAME }}-*.whl[test]" --force-reinstall
+          python -m pip install "dist/$(ls -a dist/ | grep '^pgpq-.*\.whl$' | head -n 1)[test]" --force-reinstall
           pytest -v
       - name: Upload wheels
         uses: actions/upload-artifact@v2
