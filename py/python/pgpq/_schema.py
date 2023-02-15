@@ -1,12 +1,12 @@
 from __future__ import annotations
 
 import sys
-from typing import Literal, Sequence
+from typing import Sequence
 
 if sys.version_info < (3, 8):
-    from typing_extensions import TypedDict
+    from typing_extensions import Literal, TypedDict
 else:
-    from typing import TypedDict
+    from typing import Literal, TypedDict
 
 
 class DataTypeBase(TypedDict):
