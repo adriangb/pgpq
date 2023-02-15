@@ -1,14 +1,16 @@
-mod error;
-
-use crate::error::Error;
 use arrow_array::RecordBatch;
 use arrow_schema::Field as ArrowField;
 use arrow_schema::Schema;
 use bytes::{BufMut, BytesMut};
 
 mod encoders;
+pub mod pg_schema;
+mod error;
 
 use crate::encoders::{BuildEncoder, Encode, EncoderBuilder};
+use crate::error::Error;
+use crate::pg_schema::{PostgresSchema};
+
 
 pub const HEADER_MAGIC_BYTES: &[u8] = b"PGCOPY\n\xff\r\n\0";
 
@@ -23,7 +25,7 @@ enum EncoderState {
 pub struct ArrowToPostgresBinaryEncoder {
     fields: Vec<ArrowField>,
     state: EncoderState,
-    encoder_builder: Vec<EncoderBuilder>,
+    encoder_builders: Vec<EncoderBuilder>,
 }
 
 impl ArrowToPostgresBinaryEncoder {
@@ -33,14 +35,18 @@ impl ArrowToPostgresBinaryEncoder {
 
         let encoder_builders_result: Result<Vec<EncoderBuilder>, Error> = fields
             .iter()
-            .map(|f| EncoderBuilder::try_new(f.data_type(), f.name()))
+            .map(|f| EncoderBuilder::try_new(f.clone()))
             .collect();
 
         Ok(ArrowToPostgresBinaryEncoder {
             fields: fields.to_vec(),
             state: EncoderState::Created,
-            encoder_builder: encoder_builders_result?,
+            encoder_builders: encoder_builders_result?,
         })
+    }
+
+    pub fn schema(&self) -> PostgresSchema {
+        PostgresSchema { columns: self.encoder_builders.iter().map(|e| e.schema()).collect() }
     }
 
     pub fn write_header(&mut self, out: &mut BytesMut) {
@@ -65,7 +71,7 @@ impl ArrowToPostgresBinaryEncoder {
         let encoders = batch
             .columns()
             .iter()
-            .zip(&self.encoder_builder)
+            .zip(&self.encoder_builders)
             .map(|(col, builder)| builder.try_new(col))
             .collect::<Result<Vec<_>, _>>()?;
 
