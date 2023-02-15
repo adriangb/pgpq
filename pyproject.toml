@@ -17,6 +17,7 @@ classifiers=[
 ]
 dependencies = [
     "pyarrow>=11",
+    "typing-extensions>=3; python_version < '3.8'",
 ]
 requires-python = ">=3.7"
 
