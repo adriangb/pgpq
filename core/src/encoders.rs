@@ -5,8 +5,8 @@ use std::{any::type_name, convert::identity, sync::Arc};
 use arrow_array::{self, Array, ArrowNativeTypeOp, OffsetSizeTrait};
 use bytes::{BufMut, BytesMut};
 
-use crate::pg_schema::{PostgresType, Column, TypeSize};
 use crate::error::{Error, ErrorKind};
+use crate::pg_schema::{Column, PostgresType, TypeSize};
 
 #[inline]
 fn downcast_checked<'a, T: 'static>(arr: &'a dyn Array, field: &str) -> Result<&'a T, Error> {
@@ -859,7 +859,6 @@ impl_encoder_builder_stateless_with_field!(
     PostgresType::Bytea
 );
 
-
 macro_rules! impl_list_encoder_builder {
     ($struct_name:ident, $enum_name:expr, $encoder_name:ident) => {
         impl BuildEncoder for $struct_name {
@@ -877,7 +876,7 @@ macro_rules! impl_list_encoder_builder {
                 Column {
                     name: self.field.name().to_string(),
                     data_type: PostgresType::List(Box::new(
-                        self.inner_encoder_builder.schema().clone()
+                        self.inner_encoder_builder.schema().clone(),
                     )),
                     nullable: self.field.is_nullable(),
                 }
@@ -886,7 +885,6 @@ macro_rules! impl_list_encoder_builder {
     };
 }
 
-
 #[derive(Debug, Clone)]
 pub(crate) struct ListEncoderBuilder {
     field: Field,
@@ -894,14 +892,16 @@ pub(crate) struct ListEncoderBuilder {
 }
 impl_list_encoder_builder!(ListEncoderBuilder, Encoder::List, ListEncoder);
 
-
 #[derive(Debug, Clone)]
 pub(crate) struct LargeListEncoderBuilder {
     field: Field,
     inner_encoder_builder: Arc<EncoderBuilder>,
 }
-impl_list_encoder_builder!(LargeListEncoderBuilder, Encoder::LargeList, LargeListEncoder);
-
+impl_list_encoder_builder!(
+    LargeListEncoderBuilder,
+    Encoder::LargeList,
+    LargeListEncoder
+);
 
 #[enum_dispatch(BuildEncoder)]
 #[derive(Debug, Clone)]

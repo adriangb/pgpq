@@ -56,13 +56,12 @@ impl PostgresType {
             PostgresType::List(inner) => {
                 // arrays of structs and such are not supported
                 let inner_tp = inner.data_type.name().unwrap();
-               format!("{inner_tp}[]")
+                format!("{inner_tp}[]")
             }
         };
         Some(v)
     }
 }
-
 
 #[derive(Debug, Clone)]
 pub struct Column {
