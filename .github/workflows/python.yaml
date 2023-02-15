@@ -113,8 +113,8 @@ jobs:
       - name: Install built wheel
         if: matrix.target == 'x86_64'
         run: |
+          pip install -e ./py
           pip install dist/${{ env.PACKAGE_NAME }}-*.whl --force-reinstall --no-dependencies
-          pip install -r requirements-dev.txt
           pytest -v
       - name: Upload wheels
         uses: actions/upload-artifact@v2
