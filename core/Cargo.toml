@@ -1,8 +1,15 @@
 [package]
 name = "pgpq"
-version = "0.1.0"
+version = "0.1.1"
 edition = "2021"
-description = ""
+description = "Encode Apache Arrow `RecordBatch`es to Postgres' native binary format"
+license = "MIT"
+readme = "README.md"
+exclude = ["/tests"]
+homepage = "https://github.com/adriangb/pgpq"
+repository = "https://github.com/adriangb/pgpq"
+documentation = "https://github.com/adriangb/pgpq/blob/workspaces/core/README.md"
+authors = ["Adrian Garcia Badaracco <dev@adriangb.com>"]
 
 [dependencies]
 bytes = "^1.4.0"

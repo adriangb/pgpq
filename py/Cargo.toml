@@ -1,9 +1,9 @@
 [package]
 name = "_pgpq"
-version = "0.4.0"
+version = "0.4.1"
 edition = "2021"
 readme = "README.md"
-license-file = "../LICENSE.txt"
+license = "MIT"
 
 [lib]
 name = "pgpq"

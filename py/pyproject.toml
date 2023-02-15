@@ -7,6 +7,8 @@ authors = [
     {name = "Adrian Garcia Badaracco"}
 ]
 license = { text = "MIT" }
+homepage = "https://github.com/adriangb/pgpq"
+documentation = "https://github.com/adriangb/pgpq/blob/workspaces/py/README.md"
 classifiers=[
     "Development Status :: 3 - Alpha",
     "Intended Audience :: Developers",
