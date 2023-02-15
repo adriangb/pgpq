@@ -41,9 +41,7 @@ pub fn benchmark_nyc_taxi_small(c: &mut Criterion) {
     let mut group = c.benchmark_group("benchmark_nyc_taxi_small");
     let (batches, schema) = setup(Some(100));
     group.bench_function("NYC Yello Taxi 100 rows", |b| {
-        b.iter(
-            || bench(&batches, &schema),
-        )
+        b.iter(|| bench(&batches, &schema))
     });
 }
 
@@ -54,9 +52,7 @@ pub fn benchmark_nyc_taxi_full(c: &mut Criterion) {
 
     let (batches, schema) = setup(Some(100));
     group.bench_function("NYC Yello Taxi full", |b| {
-        b.iter(
-            || bench(&batches, &schema),
-        )
+        b.iter(|| bench(&batches, &schema))
     });
 }
 

@@ -1,13 +1,13 @@
 #![allow(unused)]
 
 use arrow::array::ArrayIter;
-use arrow::datatypes::{Schema, Int64Type};
+use arrow::datatypes::{Int64Type, Schema};
 use arrow::record_batch::RecordBatchReader;
-use arrow_array::{Array, RecordBatch, PrimitiveArray};
+use arrow_array::{Array, PrimitiveArray, RecordBatch};
 use arrow_schema::{DataType, Field, TimeUnit};
 use bytes::{BufMut, BytesMut};
-use criterion::{criterion_group, criterion_main, Criterion, black_box};
-use postgres_types::{Type, ToSql};
+use criterion::{black_box, criterion_group, criterion_main, Criterion};
+use postgres_types::{ToSql, Type};
 use std::fs;
 use std::sync::Arc;
 
@@ -248,7 +248,6 @@ pub fn benchmark_to_sql(c: &mut Criterion) {
     });
 }
 
-
 pub fn direct_byte_access_vs_string_wrapped(c: &mut Criterion) {
     let mut group = c.benchmark_group("direct_byte_access_vs_string_wrapped");
 
@@ -269,10 +268,14 @@ pub fn direct_byte_access_vs_string_wrapped(c: &mut Criterion) {
                 let v = (unsafe { std::str::from_utf8_unchecked(&bytes[..]) }).as_bytes();
                 black_box(v);
             }
-
         })
     });
 }
 
-criterion_group!(benches, columnar_vs_row_wise, benchmark_to_sql, direct_byte_access_vs_string_wrapped);
+criterion_group!(
+    benches,
+    columnar_vs_row_wise,
+    benchmark_to_sql,
+    direct_byte_access_vs_string_wrapped
+);
 criterion_main!(benches);

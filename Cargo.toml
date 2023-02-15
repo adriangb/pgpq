@@ -1,22 +1,5 @@
-[package]
-name = "_pgpq"
-version = "0.3.0"
-edition = "2021"
-readme = "README.md"
-license-file = "LICENSE.txt"
+[workspace]
+members = ["core", "py"]
 
-[lib]
-name = "pgpq"
-crate-type = ["cdylib"]
-
-[dependencies]
-arrow = {version = "^33.0.0", features = ["pyarrow"] }
-bytes = "^1.4.0"
-pgpq = { path = "./pgpq" }
-
-[dependencies.pyo3]
-version = "^0.18.0"
-features = ["extension-module", "abi3-py37"]
-
-[package.metadata.maturin]
-name = "pgpq._pgpq"
+[profile.bench.package.pgpq]
+debug = true

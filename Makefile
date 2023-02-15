@@ -3,7 +3,7 @@ PHONY: init build test
 .init:
 	rm -rf .venv
 	python -m venv .venv
-	./.venv/bin/pip install -r requirements-dev.txt -r requirements-bench.txt
+	./.venv/bin/pip install -e ./py[test,bench]
 	./.venv/bin/pre-commit install
 	touch .init
 
@@ -13,9 +13,10 @@ PHONY: init build test
 init: .clean .init
 
 build-develop: .init
-	. ./.venv/bin/activate && maturin develop
+	. ./.venv/bin/activate && maturin develop -m py/Cargo.toml
 
 test: build-develop
+	cargo test
 	./.venv/bin/python -m pytest
 
 lint: build-develop

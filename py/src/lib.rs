@@ -6,7 +6,6 @@ use arrow::datatypes::Schema;
 use arrow::pyarrow::PyArrowConvert;
 use arrow::record_batch::RecordBatch;
 use bytes::BytesMut;
-use pgpq;
 
 #[pyclass]
 #[derive(Debug)]
@@ -81,7 +80,7 @@ fn get_py_data_type(tp: &pgpq::pg_schema::PostgresType, py: Python) -> Py<PyDict
     match tp {
         pgpq::pg_schema::PostgresType::List(inner) => {
             res.set_item("type", "LIST").unwrap();
-            res.set_item("inner", get_py_col(&inner, py)).unwrap();
+            res.set_item("inner", get_py_col(inner, py)).unwrap();
         }
         tp => res.set_item("type", tp.name()).unwrap(),
     };

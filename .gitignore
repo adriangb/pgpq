@@ -2,15 +2,10 @@
 
 !/.gitignore
 !/src
-!/pgpq
+!/core
+!/py
 !/Cargo.toml
 !/Cargo.lock
-!/pyproject.toml
-!/python
-!/tests
-!/bench.ipynb
-!/requirements-dev.txt
-!/requirements-bench.txt
 !/.pre-commit-config.yaml
 !/Makefile
 !/README.md

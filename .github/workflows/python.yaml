@@ -1,4 +1,4 @@
-name: Test & Release
+name: Python CI
 
 on:
   push:
@@ -17,6 +17,7 @@ env:
 
 jobs:
   macos:
+    name: Build / MacOS
     runs-on: macos-latest
     steps:
       - uses: actions/checkout@v3
@@ -36,7 +37,7 @@ jobs:
         uses: messense/maturin-action@v1
         with:
           target: x86_64
-          args: --release --out dist --sdist
+          args: -m py/Cargo.toml --release --out dist --sdist
           maturin-version: ${{ env.MATURIN_VERSION }}
       - name: Install built wheel - x86_64
         run: |
@@ -44,7 +45,7 @@ jobs:
       - name: Build wheels - universal2
         uses: messense/maturin-action@v1
         with:
-          args: --release --universal2 --out dist
+          args: -m py/Cargo.toml --release --universal2 --out dist
           maturin-version: ${{ env.MATURIN_VERSION }}
       - name: Install built wheel - universal2
         run: |
@@ -56,6 +57,7 @@ jobs:
           path: dist
 
   windows:
+    name: Build / Windows (${{ matrix.target }})
     runs-on: windows-latest
     strategy:
       matrix:
@@ -78,7 +80,7 @@ jobs:
         uses: messense/maturin-action@v1
         with:
           target: ${{ matrix.target }}
-          args: --release --out dist
+          args: -m py/Cargo.toml --release --out dist
           maturin-version: ${{ env.MATURIN_VERSION }}
       - name: Install built wheel
         shell: bash
@@ -91,6 +93,7 @@ jobs:
           path: dist
 
   linux:
+    name: Build & Test / Linux (${{ matrix.target }})
     runs-on: ubuntu-latest
     strategy:
       matrix:
@@ -108,13 +111,12 @@ jobs:
         with:
           target: ${{ matrix.target }}
           manylinux: auto
-          args: --release --out dist
+          args: -m py/Cargo.toml --release --out dist
           maturin-version: ${{ env.MATURIN_VERSION }}
       - name: Install built wheel
         if: matrix.target == 'x86_64'
         run: |
-          pip install dist/${{ env.PACKAGE_NAME }}-*.whl --force-reinstall --no-dependencies
-          pip install -r requirements-dev.txt
+          python -m pip install "dist/$(ls -a dist/ | grep '^pgpq-.*\.whl$' | head -n 1)[test]" --force-reinstall
           pytest -v
       - name: Upload wheels
         uses: actions/upload-artifact@v2
@@ -123,6 +125,7 @@ jobs:
           path: dist
 
   linux-cross:
+    name: Build / Linux (${{ matrix.target }})
     runs-on: ubuntu-latest
     strategy:
       matrix:
@@ -139,7 +142,7 @@ jobs:
         with:
           target: ${{ matrix.target }}
           manylinux: auto
-          args: --release --out dist
+          args: -m py/Cargo.toml --release --out dist
           maturin-version: ${{ env.MATURIN_VERSION }}
       - uses: uraimo/run-on-arch-action@v2.0.5
         if: matrix.target != 'ppc64'
@@ -161,6 +164,7 @@ jobs:
           path: dist
 
   musllinux:
+    name: Build / Linux (${{ matrix.target }})
     runs-on: ubuntu-latest
     strategy:
       matrix:
@@ -180,7 +184,7 @@ jobs:
         with:
           target: ${{ matrix.target }}
           manylinux: musllinux_1_2
-          args: --release --out dist
+          args: -m py/Cargo.toml --release --out dist
           maturin-version: ${{ env.MATURIN_VERSION }}
       - name: Install built wheel
         if: matrix.target == 'x86_64-unknown-linux-musl'
@@ -198,6 +202,7 @@ jobs:
           path: dist
 
   musllinux-cross:
+    name: Build / Linux (${{ matrix.target }})
     runs-on: ubuntu-latest
     strategy:
       matrix:
@@ -218,7 +223,7 @@ jobs:
         with:
           target: ${{ matrix.platform.target }}
           manylinux: musllinux_1_2
-          args: --release --out dist
+          args: -m py/Cargo.toml --release --out dist
           maturin-version: ${{ env.MATURIN_VERSION }}
       - uses: uraimo/run-on-arch-action@master
         name: Install built wheel
@@ -237,6 +242,7 @@ jobs:
           path: dist
 
   pypy:
+    name: Build / PyPy (${{ matrix.os }}, ${{ matrix.target }})
     runs-on: ${{ matrix.os }}
     strategy:
       matrix:
@@ -262,7 +268,7 @@ jobs:
           maturin-version: ${{ env.MATURIN_VERSION }}
           target: ${{ matrix.target }}
           manylinux: auto
-          args: --release --out dist -i pypy${{ matrix.python-version }}
+          args: -m py/Cargo.toml --release --out dist -i pypy${{ matrix.python-version }}
       - name: Install built wheel
         if: matrix.target == 'x86_64'
         run: |
@@ -274,13 +280,14 @@ jobs:
           path: dist
 
   lint:
+    name: Lint (${{ matrix.python }})
     runs-on: ubuntu-latest
     strategy:
       matrix:
         # Lint on earliest and latest
         python: ["3.7", "3.x"]
     steps:
-      - uses: actions/checkout@v2
+      - uses: actions/checkout@v3
         with:
           lfs: true
       - name: Set up Python
@@ -296,6 +303,7 @@ jobs:
       - name: Lint
         run: |
           make lint
+
   release:
     name: Release
     runs-on: ubuntu-latest

@@ -96,7 +96,7 @@ PRIMITIVE_NULL_TESTCASES = [f"{case}_nullable" for case in PRIMITIVE_TESTCASES]
     ],
 )
 def test_encode_record_batch(dbconn: Connection, testcase: str) -> None:
-    path = Path("pgpq/tests/testdata") / f"{testcase}.arrow"
+    path = Path("core/tests/testdata") / f"{testcase}.arrow"
     arrow_table = paipc.open_file(path).read_all()
     encoder = ArrowToPostgresBinaryEncoder(arrow_table.schema)
     buffer = bytearray()

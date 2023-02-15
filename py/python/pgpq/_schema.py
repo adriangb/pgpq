@@ -1,12 +1,12 @@
 from __future__ import annotations
 
 import sys
-from typing import Literal, Sequence
+from typing import Sequence, Union
 
 if sys.version_info < (3, 8):
-    from typing_extensions import TypedDict
+    from typing_extensions import Literal, TypedDict
 else:
-    from typing import TypedDict
+    from typing import Literal, TypedDict
 
 
 class DataTypeBase(TypedDict):
@@ -66,21 +66,21 @@ class ListType(DataTypeBase):
     inner: Column
 
 
-DataType = (
-    BoolType
-    | Int2Type
-    | Int4Type
-    | Int8Type
-    | Float4ype
-    | Float8ype
-    | DateType
-    | TimeType
-    | TimestampType
-    | IntervalType
-    | TextType
-    | ByteaType
-    | ListType
-)
+DataType = Union[
+    BoolType,
+    Int2Type,
+    Int4Type,
+    Int8Type,
+    Float4ype,
+    Float8ype,
+    DateType,
+    TimeType,
+    TimestampType,
+    IntervalType,
+    TextType,
+    ByteaType,
+    ListType,
+]
 
 
 class Column(TypedDict):
