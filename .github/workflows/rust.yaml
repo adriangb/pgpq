@@ -1,10 +1,10 @@
 on: [push, pull_request]
 
-name: Continuous integration
+name: Rust CI
 
 jobs:
   check:
-    name: Rust / Check
+    name: Check
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v3
@@ -20,7 +20,7 @@ jobs:
           command: check
 
   test:
-    name: Rust / Test Suite
+    name: Test Suite
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v3
@@ -35,7 +35,7 @@ jobs:
         with:
           command: test
   release:
-    name: Rust / Release
+    name: Release
     runs-on: ubuntu-latest
     needs:
       - lint
