@@ -1,5 +1,5 @@
 [workspace]
 members = ["core", "py"]
 
-[profile.bench.package.core]
+[profile.bench.package.pgpq]
 debug = true
