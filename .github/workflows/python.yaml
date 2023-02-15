@@ -74,10 +74,6 @@ jobs:
           toolchain: stable
           profile: minimal
           default: true
-      - name: Debug
-        run: |
-          echo $PWD
-          ls -a .
       - name: Build wheels
         uses: messense/maturin-action@v1
         with:
@@ -114,6 +110,10 @@ jobs:
           manylinux: auto
           args: -m py/Cargo.toml --release --out dist
           maturin-version: ${{ env.MATURIN_VERSION }}
+      - name: Debug
+        run: |
+          echo $PWD
+          ls -a .
       - name: Install built wheel
         if: matrix.target == 'x86_64'
         run: |
