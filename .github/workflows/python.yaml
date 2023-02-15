@@ -74,6 +74,10 @@ jobs:
           toolchain: stable
           profile: minimal
           default: true
+      - name: Debug
+        run: |
+          echo $PWD
+          ls -a .
       - name: Build wheels
         uses: messense/maturin-action@v1
         with:
