@@ -110,15 +110,10 @@ jobs:
           manylinux: auto
           args: -m py/Cargo.toml --release --out dist
           maturin-version: ${{ env.MATURIN_VERSION }}
-      - name: Debug
-        run: |
-          echo $PWD
-          ls -a .
       - name: Install built wheel
         if: matrix.target == 'x86_64'
         run: |
-          pip install -e ./py
-          pip install dist/${{ env.PACKAGE_NAME }}-*.whl --force-reinstall --no-dependencies
+          pip install "dist/${{ env.PACKAGE_NAME }}-*.whl[test]" --force-reinstall
           pytest -v
       - name: Upload wheels
         uses: actions/upload-artifact@v2
