@@ -12,13 +12,15 @@ Loading data from CSVs is convenient but has a lot of problems:
 - CSV has no standard for missing values. You have to configure the load with a specific string (or lack thereof) to interpret as null.
 - CSV is untyped so you can end up loading a float as an int and such.
 - There is no standard for quoting delimiters in text columns, leading to the need to escape characters or sanitize the data before loading it.
-- CSV files don't natively support any sort of compression. This results in larger files in storage and more data transfered compared to compressible formats.
+- CSV files don't natively support any sort of compression. This results in larger files in storage and more data transferred compared to compressible formats.
 
 Other data systems, particularly data warehouses like BigQuery and Redshift, have robust support for exporting data to Parquet and CSV.
 Exporting to CSV has the same pitfalls as loading from CSV, and sometimes even conflicting semantics for nulls, escaped delimiters, quotation and type conversions.
 
 Since Postgres does not natively support loading from Parquet this library provides an io-free encoder that can convert from Parquet to Postgres' binary format on the fly.
-It accepts Arrow data as an input which means great support for reading Parquet files from all sorts of sources (disk, HTTP, object stores, etc.) in an efficient and performance manner.
+It accepts Arrow data as an input which means great support for reading Parquet files from all sorts of sources (disk, HTTP, object stores, etc.) in an efficient and performant manner.
+
+Benchmarks using the NYC Yellow Cab dataset show that it takes `pgpq` [less than 1 second to encode 1M rows](py/benches/encode.ipynb) and that the [cost of encoding + binary copy is lower than the cost of a native CSV copy](py/benches/copy.ipynb) (which ignores the cost of a CSV export if the data was a Parquet file in the first place).
 
 ## Python distribution
 
