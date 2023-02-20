@@ -9,14 +9,33 @@ use criterion::{black_box, criterion_group, criterion_main, Criterion};
 use parquet::arrow::arrow_reader::{ParquetRecordBatchReader, ParquetRecordBatchReaderBuilder};
 use pgpq::ArrowToPostgresBinaryEncoder;
 use std::fs;
+use std::fs::File;
+use std::io;
 use std::path::PathBuf;
+use ureq;
+
+fn download_dataset() -> File {
+    let path = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+        .parent()
+        .unwrap()
+        .parent()
+        .unwrap()
+        .join("yellow_tripdata_2022-01.parquet");
+    if !path.exists() {
+        let mut file = File::create(path.clone()).expect("failed to create file");
+        let mut resp = ureq::get(
+            "https://d37ci6vzurychx.cloudfront.net/trip-data/yellow_tripdata_2022-01.parquet",
+        )
+        .call()
+        .expect("request failed");
+        io::copy(&mut resp.into_reader(), &mut file).expect("failed to copy content");
+    }
+    let mut file = File::open(path.clone()).expect("failed to create file");
+    file
+}
 
 fn setup(row_limit: Option<usize>) -> (Vec<RecordBatch>, Schema) {
-    let file = fs::File::open(
-        PathBuf::from(env!("CARGO_MANIFEST_DIR"))
-            .join("tests/testdata/yellow_tripdata_2022-01.parquet"),
-    )
-    .unwrap();
+    let mut file = download_dataset();
     let builder = ParquetRecordBatchReaderBuilder::try_new(file).unwrap();
     let mut reader = builder.build().unwrap();
     let schema = Schema::new(reader.schema().fields().clone());

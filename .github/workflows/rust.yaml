@@ -8,8 +8,6 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v3
-        with:
-          lfs: true
       - uses: actions-rs/toolchain@v1
         with:
           profile: minimal
@@ -56,8 +54,6 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v3
-        with:
-          lfs: true
       - uses: actions-rs/toolchain@v1
         with:
           profile: minimal
@@ -76,8 +72,6 @@ jobs:
     if: ${{ github.ref == 'refs/heads/main' }}
     steps:
       - uses: actions/checkout@v3
-        with:
-          lfs: true
       - uses: actions-rs/toolchain@v1
         with:
           profile: minimal

@@ -27,6 +27,7 @@ criterion = ">=0.4.0"
 arrow = { version = ">=32.0.0", features = ["ipc"]}
 arrow-ipc = ">=33.0.0"
 postgres-types = {version = ">=0.2.4", features = ["with-chrono-0_4"]}
+ureq = "2.6.2"
 
 [[bench]]
 name = "yellow_cab_dataset"

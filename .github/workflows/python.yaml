@@ -21,8 +21,6 @@ jobs:
     runs-on: macos-latest
     steps:
       - uses: actions/checkout@v3
-        with:
-          lfs: true
       - uses: actions/setup-python@v4
         with:
           python-version: ${{ env.PYTHON_VERSION }}
@@ -64,8 +62,6 @@ jobs:
         target: [x64, x86]
     steps:
       - uses: actions/checkout@v3
-        with:
-          lfs: true
       - uses: actions/setup-python@v4
         with:
           python-version: ${{ env.PYTHON_VERSION }}
@@ -100,8 +96,6 @@ jobs:
         target: [x86_64, i686]
     steps:
       - uses: actions/checkout@v3
-        with:
-          lfs: true
       - uses: actions/setup-python@v4
         with:
           python-version: ${{ env.PYTHON_VERSION }}
@@ -132,8 +126,6 @@ jobs:
         target: [aarch64, armv7, s390x, ppc64le, ppc64]
     steps:
       - uses: actions/checkout@v3
-        with:
-          lfs: true
       - uses: actions/setup-python@v4
         with:
           python-version: ${{ env.PYTHON_VERSION }}
@@ -173,8 +165,6 @@ jobs:
           - i686-unknown-linux-musl
     steps:
       - uses: actions/checkout@v3
-        with:
-          lfs: true
       - uses: actions/setup-python@v4
         with:
           python-version: ${{ env.PYTHON_VERSION }}
@@ -213,8 +203,6 @@ jobs:
             arch: armv7
     steps:
       - uses: actions/checkout@v3
-        with:
-          lfs: true
       - uses: actions/setup-python@v4
         with:
           python-version: ${{ env.PYTHON_VERSION }}
@@ -257,8 +245,6 @@ jobs:
             target: aarch64
     steps:
       - uses: actions/checkout@v3
-        with:
-          lfs: true
       - uses: actions/setup-python@v4
         with:
           python-version: pypy${{ matrix.python-version }}
@@ -288,8 +274,6 @@ jobs:
         python: ["3.7", "3.x"]
     steps:
       - uses: actions/checkout@v3
-        with:
-          lfs: true
       - name: Set up Python
         uses: actions/setup-python@v2
         with:
