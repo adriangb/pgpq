@@ -1,6 +1,6 @@
 [package]
 name = "pgpq"
-version = "0.1.2"
+version = "0.5.0"
 edition = "2021"
 description = "Encode Apache Arrow `RecordBatch`es to Postgres' native binary format"
 license = "MIT"
