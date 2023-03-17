@@ -18,5 +18,8 @@ pgpq = { path = "../core" }
 version = "^0.18.0"
 features = ["extension-module", "abi3-py37"]
 
+[build-dependencies.pyo3-build-config]
+version = "^0.18.0"
+
 [package.metadata.maturin]
 name = "pgpq._pgpq"

@@ -10,6 +10,7 @@ dependencies = [
  "bytes",
  "pgpq",
  "pyo3",
+ "pyo3-build-config",
 ]
 
 [[package]]
