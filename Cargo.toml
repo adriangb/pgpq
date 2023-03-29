@@ -1,5 +1,5 @@
 [workspace]
-members = ["core", "py"]
+members = ["core", "py", "json"]
 
 [profile.bench.package.pgpq]
 debug = true
