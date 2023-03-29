@@ -1,114 +1,84 @@
 use arrow_schema::DataType;
-use std::error;
-use std::fmt;
+use thiserror::Error;
 
-#[derive(Debug, PartialEq)]
+use crate::pg_schema::PostgresType;
+
+#[derive(Debug, Error)]
 pub enum ErrorKind {
+    #[error("Type mismatch for column {field}: expected {expected} but got {actual:?}")]
     ColumnTypeMismatch {
         field: String,
         expected: String,
         actual: DataType,
     },
+    #[error("Arrow type {tp} for field {field} is not supported (detail: {msg})")]
     TypeNotSupported {
         field: String,
         tp: DataType,
         msg: String,
     },
-    FieldTooLarge {
-        field: String,
-        size: usize,
-    }, // Postgres' binary format only supports fields up to 32bits
+    #[error("field {field} exceeds the maximum allowed size for binary copy ({size} bytes)")]
+    FieldTooLarge { field: String, size: usize },
+    #[error("error encoding message: {reason}")]
     Encode {
+        // E.g. because Postgres' binary format only supports fields up to 32bits
         reason: String,
     },
+    #[error("Type {tp:?} for {field} not supported; supported types are {allowed:?}")]
+    EncodingNotSupported {
+        field: String,
+        tp: PostgresType,
+        allowed: Vec<PostgresType>,
+    },
+    #[error("Encoder {encoder:?} does not support field type {tp:?} for field {field:?}")]
+    FieldTypeNotSupported {
+        encoder: String,
+        tp: DataType,
+        field: String,
+    },
+    #[error("Missing encoder for field {field}")]
+    EncoderMissing { field: String },
+    #[error("No fields match supplied encoder fields: {fields:?}")]
+    UnknownFields { fields: Vec<String> },
 }
 
-#[derive(Debug)]
-struct ErrorInner {
-    kind: ErrorKind,
-    cause: Option<Box<dyn error::Error + Sync + Send>>,
-}
-
-/// An error communicating with the Postgres server.
-pub struct Error(Box<ErrorInner>);
-
-impl fmt::Debug for Error {
-    fn fmt(&self, fmt: &mut fmt::Formatter<'_>) -> fmt::Result {
-        fmt.debug_struct("Error")
-            .field("kind", &self.0.kind)
-            .field("cause", &self.0.cause)
-            .finish()
-    }
-}
-
-impl fmt::Display for Error {
-    fn fmt(&self, fmt: &mut fmt::Formatter<'_>) -> fmt::Result {
-        match &self.0.kind {
-            ErrorKind::Encode { reason } => write!(fmt, "error encoding message: {reason}")?,
-            ErrorKind::FieldTooLarge { field, size } => write!(
-                fmt,
-                "field {field} exceeds the maximum allowed size for binary copy ({size} bytes)"
-            )?,
-            ErrorKind::TypeNotSupported { field, tp, msg } => write!(
-                fmt,
-                "Arrow type {tp} for field {field} is not supported (detail: {msg})"
-            )?,
-            ErrorKind::ColumnTypeMismatch {
-                field,
-                expected,
-                actual,
-            } => write!(
-                fmt,
-                "Type mismatch for column {field}: expected {expected} but got {actual:?}"
-            )?,
-        };
-        if let Some(ref cause) = self.0.cause {
-            write!(fmt, ": {cause}")?;
+impl ErrorKind {
+    pub(crate) fn field_too_large(field: &str, size: usize) -> ErrorKind {
+        ErrorKind::FieldTooLarge {
+            field: field.to_string(),
+            size,
         }
-        Ok(())
-    }
-}
-
-impl error::Error for Error {
-    fn source(&self) -> Option<&(dyn error::Error + 'static)> {
-        self.0.cause.as_ref().map(|e| &**e as _)
-    }
-}
-
-impl Error {
-    pub fn new(kind: ErrorKind, cause: Option<Box<dyn error::Error + Sync + Send>>) -> Error {
-        Error(Box::new(ErrorInner { kind, cause }))
     }
 
-    pub(crate) fn field_too_large(field: &str, size: usize) -> Error {
-        Error::new(
-            ErrorKind::FieldTooLarge {
-                field: field.to_string(),
-                size,
-            },
-            None,
-        )
+    pub(crate) fn type_unsupported(field: &str, tp: &DataType, msg: &str) -> ErrorKind {
+        ErrorKind::TypeNotSupported {
+            field: field.to_string(),
+            tp: tp.clone(),
+            msg: msg.to_string(),
+        }
     }
 
-    pub(crate) fn type_unsupported(field: &str, tp: &DataType, msg: &str) -> Error {
-        Error::new(
-            ErrorKind::TypeNotSupported {
-                field: field.to_string(),
-                tp: tp.clone(),
-                msg: msg.to_string(),
-            },
-            None,
-        )
+    pub(crate) fn unsupported_encoding(
+        field: &str,
+        tp: &PostgresType,
+        allowed: &[PostgresType],
+    ) -> ErrorKind {
+        ErrorKind::EncodingNotSupported {
+            field: field.to_string(),
+            tp: tp.clone(),
+            allowed: allowed.to_owned(),
+        }
     }
 
-    pub(crate) fn mismatched_column_type(field: &str, expected: &str, actual: &DataType) -> Error {
-        Error::new(
-            ErrorKind::ColumnTypeMismatch {
-                field: field.to_string(),
-                expected: expected.to_string(),
-                actual: actual.clone(),
-            },
-            None,
-        )
+    pub(crate) fn mismatched_column_type(
+        field: &str,
+        expected: &str,
+        actual: &DataType,
+    ) -> ErrorKind {
+        ErrorKind::ColumnTypeMismatch {
+            field: field.to_string(),
+            expected: expected.to_string(),
+            actual: actual.clone(),
+        }
     }
 }

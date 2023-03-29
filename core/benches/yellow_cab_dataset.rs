@@ -12,7 +12,6 @@ use std::fs;
 use std::fs::File;
 use std::io;
 use std::path::PathBuf;
-use ureq;
 
 fn download_dataset() -> File {
     let path = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
@@ -30,8 +29,8 @@ fn download_dataset() -> File {
         .expect("request failed");
         io::copy(&mut resp.into_reader(), &mut file).expect("failed to copy content");
     }
-    let mut file = File::open(path.clone()).expect("failed to create file");
-    file
+
+    File::open(path).expect("failed to create file")
 }
 
 fn setup(row_limit: Option<usize>) -> (Vec<RecordBatch>, Schema) {
@@ -40,8 +39,8 @@ fn setup(row_limit: Option<usize>) -> (Vec<RecordBatch>, Schema) {
     let mut reader = builder.build().unwrap();
     let schema = Schema::new(reader.schema().fields().clone());
     let data: Vec<RecordBatch> = match row_limit {
-        Some(n) => reader.into_iter().take(n).map(|v| v.unwrap()).collect(),
-        None => reader.into_iter().map(|v| v.unwrap()).collect(),
+        Some(n) => reader.take(n).map(|v| v.unwrap()).collect(),
+        None => reader.map(|v| v.unwrap()).collect(),
     };
     (data, schema)
 }

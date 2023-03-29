@@ -1,0 +1,49 @@
+
+[project]
+name = "arrow-json"
+description = "Arrow -> JSON encoder"
+authors = [
+    {name = "Adrian Garcia Badaracco"}
+]
+license = { text = "MIT" }
+classifiers=[
+    "Development Status :: 3 - Alpha",
+    "Intended Audience :: Developers",
+    "License :: OSI Approved :: MIT License",
+    "Topic :: Software Development",
+    "Topic :: Software Development :: Libraries",
+    "Topic :: Software Development :: Libraries :: Python Modules",
+]
+dependencies = [
+    "pyarrow>=11",
+    "typing-extensions>=3; python_version < '3.8'",
+]
+requires-python = ">=3.7"
+
+[project.optional-dependencies]
+test = [
+  "pytest >=7.0.0",
+  "maturin >= 0.14.0",
+  "pre-commit>=2.16.0",
+  "pyarrow >= 11.0.0",
+  "polars >= 0.16.1",
+]
+bench = []
+
+[project.urls]
+homepage = "https://github.com/adriangb/pgpq"
+documentation = "https://github.com/adriangb/pgpq/README.md"
+repository = "https://github.com/adriangb/pgpq"
+
+[build-system]
+requires = ["maturin>=0.13.0<14"]
+build-backend = "maturin"
+
+[tool.maturin]
+sdist-include = ["Cargo.lock"]
+strip = true
+python-source = "python"
+profile = "release"
+
+[tool.isort]
+profile = "black"

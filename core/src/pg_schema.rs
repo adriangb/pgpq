@@ -1,17 +1,19 @@
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq)]
 pub enum TypeSize {
     Fixed(usize),
     Variable,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq)]
 pub enum PostgresType {
     Bool,
     Bytea,
     Int8,
     Int2,
     Int4,
+    Char,
     Text,
+    Jsonb,
     Float4,
     Float8,
     Date,
@@ -29,7 +31,9 @@ impl PostgresType {
             PostgresType::Int2 => TypeSize::Fixed(2),
             PostgresType::Int4 => TypeSize::Fixed(4),
             PostgresType::Int8 => TypeSize::Fixed(8),
+            PostgresType::Char => TypeSize::Fixed(2),
             PostgresType::Text => TypeSize::Variable,
+            PostgresType::Jsonb => TypeSize::Variable,
             PostgresType::Float4 => TypeSize::Fixed(4),
             PostgresType::Float8 => TypeSize::Fixed(8),
             PostgresType::Date => TypeSize::Fixed(4),
@@ -46,7 +50,9 @@ impl PostgresType {
             PostgresType::Int8 => "INT8".to_string(),
             PostgresType::Int2 => "INT2".to_string(),
             PostgresType::Int4 => "INT4".to_string(),
+            PostgresType::Char => "CHAR".to_string(),
             PostgresType::Text => "TEXT".to_string(),
+            PostgresType::Jsonb => "JSONB".to_string(),
             PostgresType::Float4 => "FLOAT4".to_string(),
             PostgresType::Float8 => "FLOAT8".to_string(),
             PostgresType::Date => "DATE".to_string(),
@@ -63,14 +69,13 @@ impl PostgresType {
     }
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct Column {
-    pub name: String,
     pub data_type: PostgresType,
     pub nullable: bool,
 }
 
 #[derive(Debug, Clone)]
 pub struct PostgresSchema {
-    pub columns: Vec<Column>,
+    pub columns: Vec<(String, Column)>,
 }

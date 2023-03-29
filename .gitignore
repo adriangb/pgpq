@@ -1,9 +1,9 @@
 /*
 
 !/.gitignore
-!/src
 !/core
 !/py
+!/json
 !/Cargo.toml
 !/Cargo.lock
 !/.pre-commit-config.yaml
