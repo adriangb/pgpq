@@ -1,5 +1,7 @@
 use crate::utils::PythonRepr;
+use pyo3::class::basic::CompareOp;
 use pyo3::prelude::*;
+use pyo3::types::PyList;
 
 macro_rules! impl_simple {
     ($struct:ident, $pg_type:path) => {
@@ -14,6 +16,22 @@ macro_rules! impl_simple {
             }
             fn __str__(&self, py: Python) -> String {
                 self.__repr__(py)
+            }
+            fn __richcmp__(
+                &self,
+                other: &Self,
+                op: CompareOp,
+                py: Python<'_>,
+            ) -> PyResult<PyObject> {
+                let res = match op {
+                    CompareOp::Eq => (self == other).into_py(py),
+                    CompareOp::Ne => (self != other).into_py(py),
+                    _ => py.NotImplemented(),
+                };
+                Ok(res)
+            }
+            fn ddl(&self) -> Option<String> {
+                pgpq::pg_schema::PostgresType::from(self.clone()).name()
             }
         }
         impl From<$struct> for pgpq::pg_schema::PostgresType {
@@ -30,77 +48,77 @@ macro_rules! impl_simple {
 }
 
 #[pyclass(module = "pgpq._pgpq")]
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct Bool;
 impl_simple!(Bool, pgpq::pg_schema::PostgresType::Bool);
 
 #[pyclass(module = "pgpq._pgpq")]
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct Bytea;
 impl_simple!(Bytea, pgpq::pg_schema::PostgresType::Bytea);
 
 #[pyclass(module = "pgpq._pgpq")]
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct Int8;
 impl_simple!(Int8, pgpq::pg_schema::PostgresType::Int8);
 
 #[pyclass(module = "pgpq._pgpq")]
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct Int2;
 impl_simple!(Int2, pgpq::pg_schema::PostgresType::Int2);
 
 #[pyclass(module = "pgpq._pgpq")]
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct Int4;
 impl_simple!(Int4, pgpq::pg_schema::PostgresType::Int4);
 
 #[pyclass(module = "pgpq._pgpq")]
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct Char;
 impl_simple!(Char, pgpq::pg_schema::PostgresType::Char);
 
 #[pyclass(module = "pgpq._pgpq")]
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct Text;
 impl_simple!(Text, pgpq::pg_schema::PostgresType::Text);
 
 #[pyclass(module = "pgpq._pgpq")]
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct Jsonb;
 impl_simple!(Jsonb, pgpq::pg_schema::PostgresType::Jsonb);
 
 #[pyclass(module = "pgpq._pgpq")]
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct Float4;
 impl_simple!(Float4, pgpq::pg_schema::PostgresType::Float4);
 
 #[pyclass(module = "pgpq._pgpq")]
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct Float8;
 impl_simple!(Float8, pgpq::pg_schema::PostgresType::Float8);
 
 #[pyclass(module = "pgpq._pgpq")]
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct Date;
 impl_simple!(Date, pgpq::pg_schema::PostgresType::Date);
 
 #[pyclass(module = "pgpq._pgpq")]
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct Time;
 impl_simple!(Time, pgpq::pg_schema::PostgresType::Time);
 
 #[pyclass(module = "pgpq._pgpq")]
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct Timestamp;
 impl_simple!(Timestamp, pgpq::pg_schema::PostgresType::Timestamp);
 
 #[pyclass(module = "pgpq._pgpq")]
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct Interval;
 impl_simple!(Interval, pgpq::pg_schema::PostgresType::Interval);
 
 #[pyclass(module = "pgpq._pgpq")]
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct List {
     inner: Box<Column>,
 }
@@ -112,6 +130,23 @@ impl List {
         Self {
             inner: Box::new(inner),
         }
+    }
+    fn __repr__(&self, py: Python) -> String {
+        self.py_repr(py)
+    }
+    fn __str__(&self, py: Python) -> String {
+        self.__repr__(py)
+    }
+    fn __richcmp__(&self, other: &Self, op: CompareOp, py: Python<'_>) -> PyResult<PyObject> {
+        let res = match op {
+            CompareOp::Eq => (self == other).into_py(py),
+            CompareOp::Ne => (self != other).into_py(py),
+            _ => py.NotImplemented(),
+        };
+        Ok(res)
+    }
+    fn ddl(&self) -> Option<String> {
+        pgpq::pg_schema::PostgresType::from(self.clone()).name()
     }
 }
 
@@ -128,7 +163,7 @@ impl PythonRepr for List {
     }
 }
 
-#[derive(FromPyObject, Debug, Clone)]
+#[derive(FromPyObject, Debug, Clone, PartialEq)]
 pub enum PostgresType {
     Bool(Bool),
     Bytea(Bytea),
@@ -216,10 +251,56 @@ impl PythonRepr for PostgresType {
 }
 
 #[pyclass(module = "pgpq._pgpq")]
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct Column {
     data_type: PostgresType,
+    #[pyo3(get)]
     nullable: bool,
+}
+
+#[pymethods]
+impl Column {
+    #[new]
+    fn new(nullable: bool, data_type: PostgresType) -> Self {
+        Self {
+            nullable,
+            data_type,
+        }
+    }
+    #[getter]
+    fn get_data_type(&self, py: Python) -> Py<PyAny> {
+        match &self.data_type {
+            PostgresType::Bool(inner) => inner.clone().into_py(py),
+            PostgresType::Bytea(inner) => inner.clone().into_py(py),
+            PostgresType::Int2(inner) => inner.clone().into_py(py),
+            PostgresType::Int4(inner) => inner.clone().into_py(py),
+            PostgresType::Int8(inner) => inner.clone().into_py(py),
+            PostgresType::Char(inner) => inner.clone().into_py(py),
+            PostgresType::Text(inner) => inner.clone().into_py(py),
+            PostgresType::Jsonb(inner) => inner.clone().into_py(py),
+            PostgresType::Float4(inner) => inner.clone().into_py(py),
+            PostgresType::Float8(inner) => inner.clone().into_py(py),
+            PostgresType::Date(inner) => inner.clone().into_py(py),
+            PostgresType::Time(inner) => inner.clone().into_py(py),
+            PostgresType::Timestamp(inner) => inner.clone().into_py(py),
+            PostgresType::Interval(inner) => inner.clone().into_py(py),
+            PostgresType::List(inner) => inner.clone().into_py(py),
+        }
+    }
+    fn __repr__(&self, py: Python) -> String {
+        self.py_repr(py)
+    }
+    fn __str__(&self, py: Python) -> String {
+        self.__repr__(py)
+    }
+    fn __richcmp__(&self, other: &Self, op: CompareOp, py: Python<'_>) -> PyResult<PyObject> {
+        let res = match op {
+            CompareOp::Eq => (self == other).into_py(py),
+            CompareOp::Ne => (self != other).into_py(py),
+            _ => py.NotImplemented(),
+        };
+        Ok(res)
+    }
 }
 
 impl From<pgpq::pg_schema::Column> for Column {
@@ -242,18 +323,37 @@ impl From<Column> for pgpq::pg_schema::Column {
 
 impl PythonRepr for Column {
     fn py_repr(&self, py: Python) -> String {
-        format!(
-            "Column(data_type={}, nullable={})",
-            self.data_type.py_repr(py),
-            self.nullable
-        )
+        format!("Column({}, {})", self.data_type.py_repr(py), self.nullable)
     }
 }
 
 #[pyclass(module = "pgpq._pgpq")]
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct PostgresSchema {
+    #[pyo3(get)]
     columns: Vec<(String, Column)>,
+}
+
+#[pymethods]
+impl PostgresSchema {
+    #[new]
+    fn new(columns: Vec<(String, Column)>) -> Self {
+        Self { columns }
+    }
+    fn __repr__(&self, py: Python) -> String {
+        self.py_repr(py)
+    }
+    fn __str__(&self, py: Python) -> String {
+        self.__repr__(py)
+    }
+    fn __richcmp__(&self, other: &Self, op: CompareOp, py: Python<'_>) -> PyResult<PyObject> {
+        let res = match op {
+            CompareOp::Eq => (self == other).into_py(py),
+            CompareOp::Ne => (self != other).into_py(py),
+            _ => py.NotImplemented(),
+        };
+        Ok(res)
+    }
 }
 
 impl From<pgpq::pg_schema::PostgresSchema> for PostgresSchema {
@@ -277,5 +377,24 @@ impl From<PostgresSchema> for pgpq::pg_schema::PostgresSchema {
                 .map(|(field_name, col)| (field_name.clone(), col.clone().into()))
                 .collect(),
         }
+    }
+}
+
+impl PythonRepr for PostgresSchema {
+    fn py_repr(&self, py: Python) -> String {
+        let columns: Vec<(String, Py<PyAny>)> = self
+            .columns
+            .iter()
+            .map(|(f_name, col)| {
+                (
+                    f_name.clone(),
+                    Py::new(py, col.clone()).unwrap().into_ref(py).into(),
+                )
+            })
+            .collect();
+        format!(
+            "PostgresSchema({})",
+            PyList::new(py, columns).repr().unwrap()
+        )
     }
 }

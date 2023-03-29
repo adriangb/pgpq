@@ -1,57 +1,64 @@
-from typing import Mapping, Protocol, Union
+from typing import Mapping, Union
 
 import pyarrow
 
 class Bool:
-    pass
+    def ddl(self) -> str | None: ...
 
 class Bytea:
-    pass
+    def ddl(self) -> str | None: ...
 
 class Int8:
-    pass
+    def ddl(self) -> str | None: ...
 
 class Int2:
-    pass
+    def ddl(self) -> str | None: ...
 
 class Int4:
-    pass
+    def ddl(self) -> str | None: ...
 
 class Char:
-    pass
+    def ddl(self) -> str | None: ...
 
 class Text:
-    pass
+    def ddl(self) -> str | None: ...
 
 class Jsonb:
-    pass
+    def ddl(self) -> str | None: ...
 
 class Float4:
-    pass
+    def ddl(self) -> str | None: ...
 
 class Float8:
-    pass
+    def ddl(self) -> str | None: ...
 
 class Date:
-    pass
+    def ddl(self) -> str | None: ...
 
 class Time:
-    pass
+    def ddl(self) -> str | None: ...
 
 class Timestamp:
-    pass
+    def ddl(self) -> str | None: ...
 
 class Interval:
-    pass
+    def ddl(self) -> str | None: ...
 
 class List:
-    def __init__(self, __type: PostgresType) -> None: ...
+    def __init__(self, __type: Column) -> None: ...
+    def ddl(self) -> str | None: ...
 
 class Column:
     def __init__(self, __nullable: bool, __type: PostgresType) -> None: ...
+    @property
+    def data_type(self) -> PostgresType: ...
+    @property
+    def nullable(self) -> bool: ...
 
-class PostgresSchema(Protocol):
-    columns: list[tuple[str, Column]]
+class PostgresSchema:
+    def __init__(self, columns: list[tuple[str, Column]]) -> None: ...
+    @property
+    def columns(self) -> list[tuple[str, Column]]: ...
 
 PostgresType = Union[
     Bool,

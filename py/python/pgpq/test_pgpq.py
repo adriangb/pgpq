@@ -12,9 +12,10 @@ from polars.testing import assert_frame_equal
 from testing.postgresql import Postgresql
 import psycopg
 
+import pgpq.schema
+import pgpq.encoders
 from pgpq import ArrowToPostgresBinaryEncoder
 from pgpq.schema import PostgresSchema
-from pgpq import encoders
 
 
 @pytest.fixture(scope="session")
@@ -35,7 +36,7 @@ def dbconn(postgres: Postgresql) -> Iterator[Connection]:
 def copy_buffer_and_get_rows(
     schema: PostgresSchema, buffer: bytes, dbconn: Connection
 ) -> List[Tuple[Any, ...]]:
-    cols = [f"\"{col['name']}\" {col['data_type']['ddl']}" for col in schema["columns"]]
+    cols = [f'"{col_name}" {col.data_type.ddl()}' for col_name, col in schema.columns]
     ddl = f"CREATE TEMP TABLE data ({','.join(cols)})"
     try:
         with dbconn.cursor() as cursor:
@@ -153,46 +154,36 @@ def test_schema(dbconn: Connection) -> None:
     encoder = ArrowToPostgresBinaryEncoder(batch.schema)
     schema = encoder.schema()
 
-    assert schema == {
-        "columns": [
-            {
-                "name": "int",
-                "nullable": True,
-                "data_type": {"type": "INT4", "ddl": "INT4"},
-            },
-            {
-                "name": "nullable bool",
-                "nullable": True,
-                "data_type": {"type": "BOOL", "ddl": "BOOL"},
-            },
-            {
-                "name": "a nullable list of strings",
-                "nullable": True,
-                "data_type": {
-                    "type": "LIST",
-                    "inner": {
-                        "name": "field",
-                        "nullable": False,
-                        "data_type": {"type": "TEXT", "ddl": "TEXT"},
-                    },
-                    "ddl": "TEXT[]",
-                },
-            },
-            {
-                "name": "a list of nullable strings",
-                "nullable": False,
-                "data_type": {
-                    "type": "LIST",
-                    "inner": {
-                        "name": "field",
-                        "nullable": True,
-                        "data_type": {"type": "TEXT", "ddl": "TEXT"},
-                    },
-                    "ddl": "TEXT[]",
-                },
-            },
+    assert schema == pgpq.schema.PostgresSchema(
+        [
+            ("int", pgpq.schema.Column(True, pgpq.schema.Int4())),
+            ("nullable bool", pgpq.schema.Column(True, pgpq.schema.Bool())),
+            (
+                "a nullable list of strings",
+                pgpq.schema.Column(
+                    True,
+                    pgpq.schema.List(
+                        pgpq.schema.Column(
+                            False,
+                            pgpq.schema.Text(),
+                        )
+                    ),
+                ),
+            ),
+            (
+                "a list of nullable strings",
+                pgpq.schema.Column(
+                    False,
+                    pgpq.schema.List(
+                        pgpq.schema.Column(
+                            True,
+                            pgpq.schema.Text(),
+                        )
+                    ),
+                ),
+            ),
         ]
-    }
+    )
 
 
 def test_infer_encoder() -> None:
@@ -221,29 +212,29 @@ def test_infer_encoder() -> None:
         ),
     )
 
-    enc = {
+    encoders = {
         field_name: ArrowToPostgresBinaryEncoder.infer_encoder(
             batch.schema.field(field_name)
         )
         for field_name in batch.schema.names
     }
 
-    assert enc == {
-        "int": encoders.Int32EncoderBuilder(batch.schema.field("int")),
-        "nullable bool": encoders.BooleanEncoderBuilder(
+    assert encoders == {
+        "int": pgpq.encoders.Int32EncoderBuilder(batch.schema.field("int")),
+        "nullable bool": pgpq.encoders.BooleanEncoderBuilder(
             batch.schema.field("nullable bool")
         ),
-        "a nullable list of strings": encoders.ListEncoderBuilder.new_with_inner(
+        "a nullable list of strings": pgpq.encoders.ListEncoderBuilder.new_with_inner(
             batch.schema.field("a nullable list of strings"),
-            encoders.StringEncoderBuilder(
+            pgpq.encoders.StringEncoderBuilder(
                 batch.schema.field("a nullable list of strings").type.value_field
             ),
         ),
-        "a list of nullable strings": encoders.ListEncoderBuilder.new_with_inner(
+        "a list of nullable strings": pgpq.encoders.ListEncoderBuilder.new_with_inner(
             batch.schema.field(
                 "a list of nullable strings",
             ),
-            encoders.StringEncoderBuilder(
+            pgpq.encoders.StringEncoderBuilder(
                 batch.schema.field("a list of nullable strings").type.value_field
             ),
         ),

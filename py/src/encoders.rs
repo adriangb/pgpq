@@ -45,7 +45,7 @@ macro_rules! impl_passthrough_encoder_builder {
             ) -> PyResult<PyObject> {
                 let res = match op {
                     CompareOp::Eq => (&self.inner == &other.inner).into_py(py),
-                    CompareOp::Ne => (&self.inner == &other.inner).into_py(py),
+                    CompareOp::Ne => (&self.inner != &other.inner).into_py(py),
                     _ => py.NotImplemented(),
                 };
                 Ok(res)
@@ -126,7 +126,7 @@ macro_rules! impl_passthrough_encoder_builder_variable_output {
             ) -> PyResult<PyObject> {
                 let res = match op {
                     CompareOp::Eq => (&self.inner == &other.inner).into_py(py),
-                    CompareOp::Ne => (&self.inner == &other.inner).into_py(py),
+                    CompareOp::Ne => (&self.inner != &other.inner).into_py(py),
                     _ => py.NotImplemented(),
                 };
                 Ok(res)
@@ -421,7 +421,7 @@ macro_rules! impl_list {
             ) -> PyResult<PyObject> {
                 let res = match op {
                     CompareOp::Eq => (&self.inner == &other.inner).into_py(py),
-                    CompareOp::Ne => (&self.inner == &other.inner).into_py(py),
+                    CompareOp::Ne => (&self.inner != &other.inner).into_py(py),
                     _ => py.NotImplemented(),
                 };
                 Ok(res)
