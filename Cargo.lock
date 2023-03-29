@@ -4,7 +4,7 @@ version = 3
 
 [[package]]
 name = "_arrow_json"
-version = "0.6.0"
+version = "0.6.1"
 dependencies = [
  "arrow",
  "pyo3",
@@ -14,7 +14,7 @@ dependencies = [
 
 [[package]]
 name = "_pgpq"
-version = "0.6.0"
+version = "0.6.1"
 dependencies = [
  "arrow",
  "bytes",
@@ -1354,7 +1354,7 @@ checksum = "478c572c3d73181ff3c2539045f6eb99e5491218eae919370993b890cdbdd98e"
 
 [[package]]
 name = "pgpq"
-version = "0.6.0"
+version = "0.6.1"
 dependencies = [
  "anyhow",
  "arrow",
