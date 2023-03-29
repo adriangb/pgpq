@@ -479,14 +479,28 @@ impl<'a, T: OffsetSizeTrait> Encode for GenericListEncoder<'a, T> {
         } else {
             let val = self.arr.value(row);
             let inner_encoder = self.inner_encoder_builder.try_new(&val)?;
-            let size = inner_encoder.size_hint()?;
-            match i32::try_from(size) {
-                Ok(v) => buf.put_i32(v),
-                Err(_) => return Err(ErrorKind::field_too_large(&self.field, size)),
-            };
+
+            let base_idx = buf.len();
+            buf.put_i32(0); // the total number of bytes this element takes up, insert later
+            buf.put_i32(1); // num dimensions, we only support 1
+            buf.put_i32((val.null_count() != 0) as i32); // nulls flag, true if any item is null
+            let inner_tp_oid = self.inner_encoder_builder.schema().data_type.oid().unwrap();
+            buf.put_i32(inner_tp_oid as i32);
+            // put the dimension length
+            buf.put_i32(val.len() as i32);
+            // put the dimension lower bound, always 1
+            buf.put_i32(1);
+
             for inner_row in 0..val.len() {
-                inner_encoder.encode(inner_row, buf)?
+                inner_encoder.encode(inner_row, buf)?;
             }
+
+            let total_len = buf.len() - base_idx - 4; // end - start - 4 bytes for the size i32 itself
+
+            match i32::try_from(total_len) {
+                Ok(v) => buf[base_idx..base_idx + 4].copy_from_slice(&v.to_be_bytes()),
+                Err(_) => return Err(ErrorKind::field_too_large(&self.field, total_len)),
+            };
         }
         Ok(())
     }

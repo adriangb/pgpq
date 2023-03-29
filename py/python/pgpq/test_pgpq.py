@@ -239,3 +239,42 @@ def test_infer_encoder() -> None:
             ),
         ),
     }
+
+
+def test_custom_encoding(dbconn: Connection) -> None:
+    batch = pa.RecordBatch.from_arrays(
+        [
+            pa.array(
+                [["[]"], ['{"foo":"bar"}'], ["123"]],
+                type=pa.list_(pa.field("field", pa.string())),
+            ),
+        ],
+        schema=pa.schema(
+            [
+                pa.field(
+                    "json_list",
+                    pa.list_(pa.field("field", pa.string())),
+                ),
+            ]
+        ),
+    )
+
+    encoders = {
+        "json_list": pgpq.encoders.ListEncoderBuilder.new_with_inner(
+            batch.schema.field("json_list"),
+            pgpq.encoders.StringEncoderBuilder.new_with_output(
+                batch.schema.field("json_list").type.value_field, pgpq.schema.Text()
+            ),
+        )
+    }
+
+    encoder = ArrowToPostgresBinaryEncoder.new_with_encoders(batch.schema, encoders)
+    buffer = bytearray()
+    buffer.extend(encoder.write_header())
+    buffer.extend(encoder.write_batch(batch))
+    buffer.extend(encoder.finish())
+
+    pg_schema = encoder.schema()
+
+    rows = copy_buffer_and_get_rows(pg_schema, buffer, dbconn)
+    print(rows)

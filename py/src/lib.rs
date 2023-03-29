@@ -65,10 +65,10 @@ impl ArrowToPostgresBinaryEncoder {
         self.encoder.write_header(&mut self.buf);
         PyBytes::new(py, &self.buf.split()[..]).into()
     }
-    fn write_batch(&mut self, batch: &PyAny) -> Py<PyAny> {
-        self.encoder
-            .write_batch(&RecordBatch::from_pyarrow(batch).unwrap(), &mut self.buf)
-            .unwrap();
+    fn write_batch(&mut self, py_batch: &PyAny) -> Py<PyAny> {
+        let batch = &RecordBatch::from_pyarrow(py_batch).unwrap();
+        self.encoder.write_batch(batch, &mut self.buf).unwrap();
+
         if self.buf.len() > BUFF_SIZE {
             Python::with_gil(|py| PyBytes::new(py, &self.buf.split()[..]).into())
         } else {

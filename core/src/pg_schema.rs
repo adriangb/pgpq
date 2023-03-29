@@ -43,6 +43,25 @@ impl PostgresType {
             PostgresType::List(_) => TypeSize::Variable,
         }
     }
+    pub fn oid(&self) -> Option<u32> {
+        match &self {
+            PostgresType::Bool => Some(16),
+            PostgresType::Bytea => Some(17),
+            PostgresType::Int8 => Some(20),
+            PostgresType::Int2 => Some(21),
+            PostgresType::Int4 => Some(23),
+            PostgresType::Char => Some(18),
+            PostgresType::Text => Some(25),
+            PostgresType::Jsonb => Some(3802),
+            PostgresType::Float4 => Some(700),
+            PostgresType::Float8 => Some(701),
+            PostgresType::Date => Some(1082),
+            PostgresType::Time => Some(1083),
+            PostgresType::Timestamp => Some(1114),
+            PostgresType::Interval => Some(1186),
+            PostgresType::List(_) => None,
+        }
+    }
     pub fn name(&self) -> Option<String> {
         let v = match &self {
             PostgresType::Bool => "BOOL".to_string(),
