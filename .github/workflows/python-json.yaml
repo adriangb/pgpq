@@ -11,10 +11,10 @@ concurrency:
   cancel-in-progress: true
 
 env:
-  PACKAGE_NAME: pgpq
+  PACKAGE_NAME: arrow-json
   PYTHON_VERSION: "3.7" # to build abi3 wheels
   MATURIN_VERSION: "v0.14.2"
-  PACKAGE_DIR: py
+  PACKAGE_DIR: json
 
 jobs:
   macos:
