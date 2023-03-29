@@ -1,4 +1,4 @@
-name: Python CI
+name: Python pgpq CI
 
 on:
   push:
