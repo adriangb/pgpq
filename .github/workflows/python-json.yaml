@@ -40,7 +40,7 @@ jobs:
           maturin-version: ${{ env.MATURIN_VERSION }}
       - name: Install built wheel - x86_64
         run: |
-          pip install dist/${{ env.PACKAGE_NAME }}-*.whl --force-reinstall --no-dependencies
+          python -m pip install "$(find dist  -name '*.whl' -type f | head -n 1)" --force-reinstall --no-dependencies
       - name: Build wheels - universal2
         uses: messense/maturin-action@v1
         with:
@@ -48,7 +48,7 @@ jobs:
           maturin-version: ${{ env.MATURIN_VERSION }}
       - name: Install built wheel - universal2
         run: |
-          pip install dist/${{ env.PACKAGE_NAME }}-*universal2.whl --force-reinstall --no-dependencies
+          python -m pip install "$(find dist  -name '*-universal2.whl' -type f | head -n 1)" --force-reinstall --no-dependencies
       - name: Upload wheels
         uses: actions/upload-artifact@v2
         with:
@@ -82,7 +82,7 @@ jobs:
       - name: Install built wheel
         shell: bash
         run: |
-          python -m pip install dist/${{ env.PACKAGE_NAME }}-*.whl --force-reinstall --no-dependencies
+          python -m pip install "$(find dist  -name '*.whl' -type f | head -n 1)" --force-reinstall --no-dependencies
       - name: Upload wheels
         uses: actions/upload-artifact@v2
         with:
@@ -108,10 +108,10 @@ jobs:
           manylinux: auto
           args: -m ${{ env.PACKAGE_DIR }}/Cargo.toml --release --out dist
           maturin-version: ${{ env.MATURIN_VERSION }}
-      - name: Install built wheel
+      - name: Install built wheel and test
         if: matrix.target == 'x86_64'
         run: |
-          python -m pip install "dist/$(ls -a dist/ | grep '^${{ env.PACKAGE_NAME }}-.*\.whl$' | head -n 1)[test]" --force-reinstall
+          python -m pip install "$(find dist  -name '*.whl' -type f | head -n 1)[test]" --force-reinstall
           pytest -v ${{ env.PACKAGE_DIR }}
       - name: Upload wheels
         uses: actions/upload-artifact@v2
@@ -259,7 +259,7 @@ jobs:
       - name: Install built wheel
         if: matrix.target == 'x86_64'
         run: |
-          pip install dist/${{ env.PACKAGE_NAME }}-*.whl --force-reinstall --no-dependencies --no-dependencies
+          python -m pip install "$(find dist  -name '*.whl' -type f | head -n 1)" --force-reinstall --no-dependencies
       - name: Upload wheels
         uses: actions/upload-artifact@v2
         with:
