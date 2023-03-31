@@ -1205,7 +1205,9 @@ impl EncoderBuilder {
                 output: PostgresType::Text,
             }),
             DataType::Binary => Self::Binary(BinaryEncoderBuilder { field }),
-            DataType::LargeBinary => Self::LargeBinary(LargeBinaryEncoderBuilder { field }),
+            DataType::LargeBinary | DataType::FixedSizeBinary(_) => {
+                Self::LargeBinary(LargeBinaryEncoderBuilder { field })
+            }
             DataType::List(inner) => {
                 if matches!(
                     inner.data_type(),
@@ -1223,7 +1225,7 @@ impl EncoderBuilder {
                     inner_encoder_builder: Arc::new(inner),
                 })
             }
-            DataType::LargeList(inner) => {
+            DataType::LargeList(inner) | DataType::FixedSizeList(inner, _) => {
                 if matches!(
                     inner.data_type(),
                     DataType::List(_) | DataType::LargeList(_)

@@ -86,13 +86,40 @@ nullable_primitives = [
 ]
 
 list_cols = [
-    (pa.field(f"list_{f.name}", pa.list_(f.type), nullable=f.nullable), [data])
+    (pa.field(f"list_{f.name}", pa.list_(f), nullable=False), [data])
     for f, data in [*primitive_cols, *nullable_primitives]
 ]
 
 nullable_list_cols = [
-    (pa.field(f"list_nullable_{f.name}", f.type, nullable=True), [*data, None])
-    for f, data in list_cols
+    (pa.field(f"list_nullable_{f.name}", pa.list_(f), nullable=True), [data, None])
+    for f, data in [*primitive_cols, *nullable_primitives]
+]
+
+
+large_list_cols = [
+    (pa.field(f"list_{f.name}", pa.large_list(f), nullable=False), [data])
+    for f, data in [*primitive_cols, *nullable_primitives]
+]
+
+large_nullable_list_cols = [
+    (pa.field(f"list_nullable_{f.name}", pa.large_list(f), nullable=True), [data, None])
+    for f, data in [*primitive_cols, *nullable_primitives]
+]
+
+fixed_size_list_cols = [
+    (
+        pa.field(f"list_fixed_size_{f.name}", pa.list_(f, 5), nullable=False),
+        [(data * 10)[:5]],
+    )
+    for f, data in [*primitive_cols, *nullable_primitives]
+]
+
+fixed_size_nullable_list_cols = [
+    (
+        pa.field(f"list_fixed_size_nullable_{f.name}", pa.list_(f, 5), nullable=True),
+        [(data * 10)[:5], None],
+    )
+    for f, data in [*primitive_cols, *nullable_primitives]
 ]
 
 all_cols = [
