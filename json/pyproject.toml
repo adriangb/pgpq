@@ -36,7 +36,7 @@ documentation = "https://github.com/adriangb/pgpq/README.md"
 repository = "https://github.com/adriangb/pgpq"
 
 [build-system]
-requires = ["maturin>=0.14.6<15"]
+requires = ["maturin>=0.13.0<14"]
 build-backend = "maturin"
 
 [tool.maturin]
@@ -44,7 +44,6 @@ sdist-include = ["Cargo.lock"]
 strip = true
 python-source = "python"
 profile = "release"
-module-name = "arrow_json._arrow_json"
 
 [tool.isort]
 profile = "black"
