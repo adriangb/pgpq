@@ -1,14 +1,12 @@
 from __future__ import annotations
 
-from dataclasses import dataclass
+from glob import glob
 from pathlib import Path
 from typing import Any, Iterator, List, Tuple
 
 import pyarrow as pa
 import pyarrow.ipc as paipc
 import pytest
-import polars as pl
-from polars.testing import assert_frame_equal
 from testing.postgresql import Postgresql
 import psycopg
 
@@ -50,53 +48,14 @@ def copy_buffer_and_get_rows(
     return rows
 
 
-@dataclass
-class PostgresColumnInfo:
-    data_type: str
-
-
-@dataclass
-class ArrowIPCTestCase:
-    name: str
-
-
-PRIMITIVE_TESTCASES = [
-    "bool",
-    "uint8",
-    "uint16",
-    "uint32",
-    "int8",
-    "int16",
-    "int32",
-    "int64",
-    "float32",
-    "timestamp_us_notz",
-    "timestamp_ms_notz",
-    "timestamp_s_notz",
-    "timestamp_us_tz",
-    "timestamp_ms_tz",
-    "timestamp_s_tz",
-    "time_us",
-    "time_ms",
-    "time_s",
-    "duration_us",
-    "duration_ms",
-    "duration_s",
-    "binary",
-    "large_binary",
-    "string",
-    "large_string",
+TESTCASES = [
+    f.strip(".bin").split("/")[-1] for f in sorted(glob("core/tests/snapshots/*"))
 ]
-
-PRIMITIVE_NULL_TESTCASES = [f"{case}_nullable" for case in PRIMITIVE_TESTCASES]
 
 
 @pytest.mark.parametrize(
     "testcase",
-    [
-        *PRIMITIVE_TESTCASES,
-        *PRIMITIVE_NULL_TESTCASES,
-    ],
+    TESTCASES,
 )
 def test_encode_record_batch(dbconn: Connection, testcase: str) -> None:
     path = Path("core/tests/testdata") / f"{testcase}.arrow"
@@ -116,13 +75,7 @@ def test_encode_record_batch(dbconn: Connection, testcase: str) -> None:
         [{col: row[0]} for row in rows], schema=arrow_table.schema
     )
 
-    original_df: pl.DataFrame = pl.from_arrow(arrow_table)
-    new_df: pl.DataFrame = pl.from_arrow(new_table)
-
-    assert_frame_equal(
-        original_df,
-        new_df,
-    )
+    assert arrow_table == new_table
 
 
 def test_schema(dbconn: Connection) -> None:

@@ -47,6 +47,16 @@ fn run_test_case(case: &str) {
 // These tests are generated in generate_test_data.py
 
 #[test]
+fn test_bool() {
+    run_test_case("bool")
+}
+
+#[test]
+fn test_uint8() {
+    run_test_case("uint8")
+}
+
+#[test]
 fn test_uint16() {
     run_test_case("uint16")
 }
@@ -557,261 +567,261 @@ fn test_list_large_string_nullable() {
 }
 
 #[test]
-fn test_list_nullable_list_bool() {
-    run_test_case("list_nullable_list_bool")
+fn test_list_nullable_bool() {
+    run_test_case("list_nullable_bool")
 }
 
 #[test]
-fn test_list_nullable_list_uint8() {
-    run_test_case("list_nullable_list_uint8")
+fn test_list_nullable_uint8() {
+    run_test_case("list_nullable_uint8")
 }
 
 #[test]
-fn test_list_nullable_list_uint16() {
-    run_test_case("list_nullable_list_uint16")
+fn test_list_nullable_uint16() {
+    run_test_case("list_nullable_uint16")
 }
 
 #[test]
-fn test_list_nullable_list_uint32() {
-    run_test_case("list_nullable_list_uint32")
+fn test_list_nullable_uint32() {
+    run_test_case("list_nullable_uint32")
 }
 
 #[test]
-fn test_list_nullable_list_int8() {
-    run_test_case("list_nullable_list_int8")
+fn test_list_nullable_int8() {
+    run_test_case("list_nullable_int8")
 }
 
 #[test]
-fn test_list_nullable_list_int16() {
-    run_test_case("list_nullable_list_int16")
+fn test_list_nullable_int16() {
+    run_test_case("list_nullable_int16")
 }
 
 #[test]
-fn test_list_nullable_list_int32() {
-    run_test_case("list_nullable_list_int32")
+fn test_list_nullable_int32() {
+    run_test_case("list_nullable_int32")
 }
 
 #[test]
-fn test_list_nullable_list_int64() {
-    run_test_case("list_nullable_list_int64")
+fn test_list_nullable_int64() {
+    run_test_case("list_nullable_int64")
 }
 
 #[test]
-fn test_list_nullable_list_float32() {
-    run_test_case("list_nullable_list_float32")
+fn test_list_nullable_float32() {
+    run_test_case("list_nullable_float32")
 }
 
 #[test]
-fn test_list_nullable_list_float64() {
-    run_test_case("list_nullable_list_float64")
+fn test_list_nullable_float64() {
+    run_test_case("list_nullable_float64")
 }
 
 #[test]
-fn test_list_nullable_list_timestamp_us_notz() {
-    run_test_case("list_nullable_list_timestamp_us_notz")
+fn test_list_nullable_timestamp_us_notz() {
+    run_test_case("list_nullable_timestamp_us_notz")
 }
 
 #[test]
-fn test_list_nullable_list_timestamp_ms_notz() {
-    run_test_case("list_nullable_list_timestamp_ms_notz")
+fn test_list_nullable_timestamp_ms_notz() {
+    run_test_case("list_nullable_timestamp_ms_notz")
 }
 
 #[test]
-fn test_list_nullable_list_timestamp_s_notz() {
-    run_test_case("list_nullable_list_timestamp_s_notz")
+fn test_list_nullable_timestamp_s_notz() {
+    run_test_case("list_nullable_timestamp_s_notz")
 }
 
 #[test]
-fn test_list_nullable_list_timestamp_us_tz() {
-    run_test_case("list_nullable_list_timestamp_us_tz")
+fn test_list_nullable_timestamp_us_tz() {
+    run_test_case("list_nullable_timestamp_us_tz")
 }
 
 #[test]
-fn test_list_nullable_list_timestamp_ms_tz() {
-    run_test_case("list_nullable_list_timestamp_ms_tz")
+fn test_list_nullable_timestamp_ms_tz() {
+    run_test_case("list_nullable_timestamp_ms_tz")
 }
 
 #[test]
-fn test_list_nullable_list_timestamp_s_tz() {
-    run_test_case("list_nullable_list_timestamp_s_tz")
+fn test_list_nullable_timestamp_s_tz() {
+    run_test_case("list_nullable_timestamp_s_tz")
 }
 
 #[test]
-fn test_list_nullable_list_time_s() {
-    run_test_case("list_nullable_list_time_s")
+fn test_list_nullable_time_s() {
+    run_test_case("list_nullable_time_s")
 }
 
 #[test]
-fn test_list_nullable_list_time_ms() {
-    run_test_case("list_nullable_list_time_ms")
+fn test_list_nullable_time_ms() {
+    run_test_case("list_nullable_time_ms")
 }
 
 #[test]
-fn test_list_nullable_list_time_us() {
-    run_test_case("list_nullable_list_time_us")
+fn test_list_nullable_time_us() {
+    run_test_case("list_nullable_time_us")
 }
 
 #[test]
-fn test_list_nullable_list_duration_us() {
-    run_test_case("list_nullable_list_duration_us")
+fn test_list_nullable_duration_us() {
+    run_test_case("list_nullable_duration_us")
 }
 
 #[test]
-fn test_list_nullable_list_duration_ms() {
-    run_test_case("list_nullable_list_duration_ms")
+fn test_list_nullable_duration_ms() {
+    run_test_case("list_nullable_duration_ms")
 }
 
 #[test]
-fn test_list_nullable_list_duration_s() {
-    run_test_case("list_nullable_list_duration_s")
+fn test_list_nullable_duration_s() {
+    run_test_case("list_nullable_duration_s")
 }
 
 #[test]
-fn test_list_nullable_list_binary() {
-    run_test_case("list_nullable_list_binary")
+fn test_list_nullable_binary() {
+    run_test_case("list_nullable_binary")
 }
 
 #[test]
-fn test_list_nullable_list_large_binary() {
-    run_test_case("list_nullable_list_large_binary")
+fn test_list_nullable_large_binary() {
+    run_test_case("list_nullable_large_binary")
 }
 
 #[test]
-fn test_list_nullable_list_string() {
-    run_test_case("list_nullable_list_string")
+fn test_list_nullable_string() {
+    run_test_case("list_nullable_string")
 }
 
 #[test]
-fn test_list_nullable_list_large_string() {
-    run_test_case("list_nullable_list_large_string")
+fn test_list_nullable_large_string() {
+    run_test_case("list_nullable_large_string")
 }
 
 #[test]
-fn test_list_nullable_list_bool_nullable() {
-    run_test_case("list_nullable_list_bool_nullable")
+fn test_list_nullable_bool_nullable() {
+    run_test_case("list_nullable_bool_nullable")
 }
 
 #[test]
-fn test_list_nullable_list_uint8_nullable() {
-    run_test_case("list_nullable_list_uint8_nullable")
+fn test_list_nullable_uint8_nullable() {
+    run_test_case("list_nullable_uint8_nullable")
 }
 
 #[test]
-fn test_list_nullable_list_uint16_nullable() {
-    run_test_case("list_nullable_list_uint16_nullable")
+fn test_list_nullable_uint16_nullable() {
+    run_test_case("list_nullable_uint16_nullable")
 }
 
 #[test]
-fn test_list_nullable_list_uint32_nullable() {
-    run_test_case("list_nullable_list_uint32_nullable")
+fn test_list_nullable_uint32_nullable() {
+    run_test_case("list_nullable_uint32_nullable")
 }
 
 #[test]
-fn test_list_nullable_list_int8_nullable() {
-    run_test_case("list_nullable_list_int8_nullable")
+fn test_list_nullable_int8_nullable() {
+    run_test_case("list_nullable_int8_nullable")
 }
 
 #[test]
-fn test_list_nullable_list_int16_nullable() {
-    run_test_case("list_nullable_list_int16_nullable")
+fn test_list_nullable_int16_nullable() {
+    run_test_case("list_nullable_int16_nullable")
 }
 
 #[test]
-fn test_list_nullable_list_int32_nullable() {
-    run_test_case("list_nullable_list_int32_nullable")
+fn test_list_nullable_int32_nullable() {
+    run_test_case("list_nullable_int32_nullable")
 }
 
 #[test]
-fn test_list_nullable_list_int64_nullable() {
-    run_test_case("list_nullable_list_int64_nullable")
+fn test_list_nullable_int64_nullable() {
+    run_test_case("list_nullable_int64_nullable")
 }
 
 #[test]
-fn test_list_nullable_list_float32_nullable() {
-    run_test_case("list_nullable_list_float32_nullable")
+fn test_list_nullable_float32_nullable() {
+    run_test_case("list_nullable_float32_nullable")
 }
 
 #[test]
-fn test_list_nullable_list_float64_nullable() {
-    run_test_case("list_nullable_list_float64_nullable")
+fn test_list_nullable_float64_nullable() {
+    run_test_case("list_nullable_float64_nullable")
 }
 
 #[test]
-fn test_list_nullable_list_timestamp_us_notz_nullable() {
-    run_test_case("list_nullable_list_timestamp_us_notz_nullable")
+fn test_list_nullable_timestamp_us_notz_nullable() {
+    run_test_case("list_nullable_timestamp_us_notz_nullable")
 }
 
 #[test]
-fn test_list_nullable_list_timestamp_ms_notz_nullable() {
-    run_test_case("list_nullable_list_timestamp_ms_notz_nullable")
+fn test_list_nullable_timestamp_ms_notz_nullable() {
+    run_test_case("list_nullable_timestamp_ms_notz_nullable")
 }
 
 #[test]
-fn test_list_nullable_list_timestamp_s_notz_nullable() {
-    run_test_case("list_nullable_list_timestamp_s_notz_nullable")
+fn test_list_nullable_timestamp_s_notz_nullable() {
+    run_test_case("list_nullable_timestamp_s_notz_nullable")
 }
 
 #[test]
-fn test_list_nullable_list_timestamp_us_tz_nullable() {
-    run_test_case("list_nullable_list_timestamp_us_tz_nullable")
+fn test_list_nullable_timestamp_us_tz_nullable() {
+    run_test_case("list_nullable_timestamp_us_tz_nullable")
 }
 
 #[test]
-fn test_list_nullable_list_timestamp_ms_tz_nullable() {
-    run_test_case("list_nullable_list_timestamp_ms_tz_nullable")
+fn test_list_nullable_timestamp_ms_tz_nullable() {
+    run_test_case("list_nullable_timestamp_ms_tz_nullable")
 }
 
 #[test]
-fn test_list_nullable_list_timestamp_s_tz_nullable() {
-    run_test_case("list_nullable_list_timestamp_s_tz_nullable")
+fn test_list_nullable_timestamp_s_tz_nullable() {
+    run_test_case("list_nullable_timestamp_s_tz_nullable")
 }
 
 #[test]
-fn test_list_nullable_list_time_s_nullable() {
-    run_test_case("list_nullable_list_time_s_nullable")
+fn test_list_nullable_time_s_nullable() {
+    run_test_case("list_nullable_time_s_nullable")
 }
 
 #[test]
-fn test_list_nullable_list_time_ms_nullable() {
-    run_test_case("list_nullable_list_time_ms_nullable")
+fn test_list_nullable_time_ms_nullable() {
+    run_test_case("list_nullable_time_ms_nullable")
 }
 
 #[test]
-fn test_list_nullable_list_time_us_nullable() {
-    run_test_case("list_nullable_list_time_us_nullable")
+fn test_list_nullable_time_us_nullable() {
+    run_test_case("list_nullable_time_us_nullable")
 }
 
 #[test]
-fn test_list_nullable_list_duration_us_nullable() {
-    run_test_case("list_nullable_list_duration_us_nullable")
+fn test_list_nullable_duration_us_nullable() {
+    run_test_case("list_nullable_duration_us_nullable")
 }
 
 #[test]
-fn test_list_nullable_list_duration_ms_nullable() {
-    run_test_case("list_nullable_list_duration_ms_nullable")
+fn test_list_nullable_duration_ms_nullable() {
+    run_test_case("list_nullable_duration_ms_nullable")
 }
 
 #[test]
-fn test_list_nullable_list_duration_s_nullable() {
-    run_test_case("list_nullable_list_duration_s_nullable")
+fn test_list_nullable_duration_s_nullable() {
+    run_test_case("list_nullable_duration_s_nullable")
 }
 
 #[test]
-fn test_list_nullable_list_binary_nullable() {
-    run_test_case("list_nullable_list_binary_nullable")
+fn test_list_nullable_binary_nullable() {
+    run_test_case("list_nullable_binary_nullable")
 }
 
 #[test]
-fn test_list_nullable_list_large_binary_nullable() {
-    run_test_case("list_nullable_list_large_binary_nullable")
+fn test_list_nullable_large_binary_nullable() {
+    run_test_case("list_nullable_large_binary_nullable")
 }
 
 #[test]
-fn test_list_nullable_list_string_nullable() {
-    run_test_case("list_nullable_list_string_nullable")
+fn test_list_nullable_string_nullable() {
+    run_test_case("list_nullable_string_nullable")
 }
 
 #[test]
-fn test_list_nullable_list_large_string_nullable() {
-    run_test_case("list_nullable_list_large_string_nullable")
+fn test_list_nullable_large_string_nullable() {
+    run_test_case("list_nullable_large_string_nullable")
 }
