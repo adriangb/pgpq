@@ -1207,6 +1207,16 @@ impl EncoderBuilder {
             DataType::Binary => Self::Binary(BinaryEncoderBuilder { field }),
             DataType::LargeBinary => Self::LargeBinary(LargeBinaryEncoderBuilder { field }),
             DataType::List(inner) => {
+                if matches!(
+                    inner.data_type(),
+                    DataType::List(_) | DataType::LargeList(_)
+                ) {
+                    return Err(ErrorKind::type_unsupported(
+                        field.name(),
+                        data_type,
+                        "nested lists are not supported",
+                    ));
+                }
                 let inner = Self::try_new(*inner.clone())?;
                 Self::List(ListEncoderBuilder {
                     field,
@@ -1214,6 +1224,16 @@ impl EncoderBuilder {
                 })
             }
             DataType::LargeList(inner) => {
+                if matches!(
+                    inner.data_type(),
+                    DataType::List(_) | DataType::LargeList(_)
+                ) {
+                    return Err(ErrorKind::type_unsupported(
+                        field.name(),
+                        data_type,
+                        "nested lists are not supported",
+                    ));
+                }
                 let inner = Self::try_new(*inner.clone())?;
                 Self::LargeList(LargeListEncoderBuilder {
                     field,
