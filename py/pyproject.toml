@@ -52,7 +52,6 @@ sdist-include = ["Cargo.lock"]
 strip = true
 python-source = "python"
 profile = "release"
-module-name = "pgpq._pgpq"
 
 [tool.isort]
 profile = "black"
