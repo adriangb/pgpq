@@ -24,7 +24,7 @@ pg_schema = encoder.schema()
 # (1) Avoid indexes
 # (2) Stay in-memory as long as possible
 # (3) Be more flexible with types (you can't load a SMALLINT into a BIGINT column without casting)
-cols = [f"\"{col['name']}\" {col['data_type']['ddl']}" for col in pg_schema["columns"]]
+cols = [f'"{col_name}" {col.data_type.ddl()}' for col_name, col in schema.columns]
 ddl = f"CREATE TEMP TABLE data ({','.join(cols)})"
 
 with psycopg.connect("postgres://postgres:postgres@localhost:5432/postgres") as conn:
