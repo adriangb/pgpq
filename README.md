@@ -35,3 +35,43 @@ The core is written in Rust and can be used in Rust-based projects.
 It doesn't depend on any particular database driver and accepts [arrow-rs](https://github.com/apache/arrow-rs) objects as inputs.
 
 See [core](./core).
+
+## Data type support
+
+We currently support nearly all scalar data types as well as List/Array data types.
+There's no reason we can't support struct data types as well.
+
+|   Arrow                   |   Postgres       |
+|---------------------------|------------------|
+|   Boolean                 |   BOOL           |
+|   UInt8                   |   INT2           |
+|   UInt16                  |   INT4           |
+|   UInt32                  |   INT8           |
+|   Int8                    |   CHAR,INT2      |
+|   Int16                   |   INT2           |
+|   Int32                   |   INT4           |
+|   Int64                   |   INT8           |
+|   Float16                 |   FLOAT4         |
+|   Float32                 |   FLOAT4         |
+|   Float64                 |   FLOAT8         |
+|   Timestamp(Nanosecond)   |   Not supported  |
+|   Timestamp(Microsecond)  |   TIMESTAMP      |
+|   Timestamp(Millisecond)  |   TIMESTAMP      |
+|   Timestamp(Second)       |   TIMESTAMP      |
+|   Date32                  |   DATE           |
+|   Date64                  |   DATE           |
+|   Time32(Millisecond)     |   TIME           |
+|   Time32(Second)          |   TIME           |
+|   Time64(Nanosecond)      |   Not supported  |
+|   Time64(Microsecond)     |   TIME           |
+|   Duration(Nanosecond)    |   Not supported  |
+|   Duration(Microsecond)   |   INTERVAL       |
+|   Duration(Millisecond)   |   INTERVAL       |
+|   Duration(Second)        |   INTERVAL       |
+|   String                  |   TEXT,JSONB     |
+|   Binary                  |   BYTEA          |
+|   List\<T\>               |   Array\<T\>     |
+
+### JSONB support
+
+For more complex data types, like a struct with list fields, you might be better off dumping the data into a JSONB column. The [arrow-json rust crate](https://crates.io/crates/arrow-json) [arrow-json Python package](./json/README.md) provide support for converting arbitrary Arrow arrays into arrays of JSON strings, which can then be loaded into a JSONB column.
