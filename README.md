@@ -75,3 +75,10 @@ There's no reason we can't support struct data types as well.
 ### JSONB support
 
 For more complex data types, like a struct with list fields, you might be better off dumping the data into a JSONB column. The [arrow-json rust crate](https://crates.io/crates/arrow-json) [arrow-json Python package](./json/README.md) provide support for converting arbitrary Arrow arrays into arrays of JSON strings, which can then be loaded into a JSONB column.
+
+# Advantages over using a foreign data wrapper
+
+- Many hosted Postgres flavors dont support extensions
+- You're in control of compute and can scale it outside of your database, which is typically much cheaper and flexible
+- No dependencies of Parquet or Postgres librararies, this is a fully self contained binary
+- You control auth on both ends (to the source and destination)
