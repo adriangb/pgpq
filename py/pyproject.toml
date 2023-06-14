@@ -43,7 +43,7 @@ documentation = "https://github.com/adriangb/pgpq/README.md"
 repository = "https://github.com/adriangb/pgpq"
 
 [build-system]
-requires = ["maturin>=0.14.6<15"]
+requires = ["maturin>=0.14.0,<15"]
 build-backend = "maturin"
 
 [tool.maturin]
