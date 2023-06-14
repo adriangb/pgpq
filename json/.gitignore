@@ -1,0 +1,13 @@
+/*
+
+!/src
+!/tests
+!/python
+!/Cargo.toml
+!/README.md
+!/.gitignore
+
+__pycache__
+*.so
+.venv
+.DS_Store
