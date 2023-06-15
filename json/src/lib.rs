@@ -8,7 +8,7 @@ use arrow::pyarrow::PyArrowConvert;
 use serde_json::{to_string, Value};
 
 #[pyfunction]
-#[pyo3(signature = (array, large))]
+#[pyo3(signature = (array, large = true))]
 fn array_to_utf8_json_array(py: Python, array: &PyAny, large: bool) -> PyResult<PyObject> {
     // This is super inefficient, leaving optimization as a TODO
     let array = make_array(ArrayData::from_pyarrow(array)?);
