@@ -436,6 +436,7 @@ type LargeBinaryEncoder<'a> = GenericBinaryEncoder<'a, i64>;
 pub struct GenericStringEncoder<'a, T: OffsetSizeTrait> {
     arr: &'a arrow_array::GenericStringArray<T>,
     field: String,
+    output: StringOutputType,
 }
 
 impl<'a, T: OffsetSizeTrait> Encode for GenericStringEncoder<'a, T> {
@@ -444,10 +445,16 @@ impl<'a, T: OffsetSizeTrait> Encode for GenericStringEncoder<'a, T> {
             buf.put_i32(-1);
         } else {
             let v = self.arr.value(row).as_bytes();
-            let len = v.len();
+            let mut len = v.len();
+            if matches!(self.output, StringOutputType::Jsonb) {
+                len += 1;
+            }
             match i32::try_from(len) {
                 Ok(l) => buf.put_i32(l),
                 Err(_) => return Err(ErrorKind::field_too_large(&self.field, len)),
+            }
+            if matches!(self.output, StringOutputType::Jsonb) {
+                buf.put_u8(1) // JSONB format version
             }
             buf.extend_from_slice(v);
         }
@@ -457,6 +464,9 @@ impl<'a, T: OffsetSizeTrait> Encode for GenericStringEncoder<'a, T> {
         let mut total = 0;
         for row in 0..self.arr.len() {
             total += self.arr.value(row).len();
+        }
+        if matches!(self.output, StringOutputType::Jsonb) {
+            total += self.arr.len() // For JSONB format version
         }
         Ok(total)
     }
@@ -629,55 +639,6 @@ macro_rules! impl_encoder_builder_stateless_with_variable_output {
                 let field = self.field.name();
                 let arr = downcast_checked(arr, &field)?;
                 Ok($enum_name($encoder_name { arr }))
-            }
-            fn schema(&self) -> Column {
-                Column {
-                    data_type: self.output.clone(),
-                    nullable: self.field.is_nullable(),
-                }
-            }
-            fn field(&self) -> Field {
-                self.field.clone()
-            }
-        }
-    };
-}
-
-macro_rules! impl_encoder_builder_with_variable_output {
-    ($struct_name:ident, $enum_name:expr, $encoder_name:ident, $pg_data_type:expr, $allowed_pg_data_types:expr, $check_data_type:expr) => {
-        impl $struct_name {
-            pub fn new(field: Field) -> Result<Self, ErrorKind> {
-                if !$check_data_type(field.data_type()) {
-                    return Err(ErrorKind::FieldTypeNotSupported {
-                        encoder: stringify!($struct_name).to_string(),
-                        tp: field.data_type().clone(),
-                        field: field.name().clone(),
-                    });
-                }
-                Ok(Self {
-                    field,
-                    output: $pg_data_type,
-                })
-            }
-            pub fn new_with_output(field: Field, output: PostgresType) -> Result<Self, ErrorKind> {
-                if !$allowed_pg_data_types.contains(&output) {
-                    return Err(ErrorKind::unsupported_encoding(
-                        &field.name(),
-                        &output,
-                        &[PostgresType::Text, PostgresType::Jsonb],
-                    ));
-                }
-                Ok(Self { field, output })
-            }
-        }
-        impl BuildEncoder for $struct_name {
-            fn try_new<'a, 'b: 'a>(&'b self, arr: &'a dyn Array) -> Result<Encoder<'a>, ErrorKind> {
-                let field = self.field.name();
-                let arr = downcast_checked(arr, &field)?;
-                Ok($enum_name($encoder_name {
-                    field: self.field.name().clone(),
-                    arr,
-                }))
             }
             fn schema(&self) -> Column {
                 Column {
@@ -959,30 +920,100 @@ impl_encoder_builder_stateless_with_field!(
 );
 
 #[derive(Debug, Clone, PartialEq)]
+enum StringOutputType {
+    Text,
+    Json,
+    Jsonb,
+}
+
+impl StringOutputType {
+    pub fn from_postgres_type(tp: PostgresType, field: &Field) -> Result<Self, ErrorKind> {
+        match tp {
+            PostgresType::Text => Ok(StringOutputType::Text),
+            PostgresType::Json => Ok(StringOutputType::Json),
+            PostgresType::Jsonb => Ok(StringOutputType::Jsonb),
+            other => Err(ErrorKind::EncodingNotSupported {
+                field: field.name().clone(),
+                tp: other,
+                allowed: vec![PostgresType::Text, PostgresType::Json, PostgresType::Jsonb],
+            }),
+        }
+    }
+    pub fn postgres_datatype(&self) -> PostgresType {
+        match self {
+            StringOutputType::Text => PostgresType::Text,
+            StringOutputType::Json => PostgresType::Json,
+            StringOutputType::Jsonb => PostgresType::Jsonb,
+        }
+    }
+}
+
+macro_rules! impl_encoder_builder_with_variable_output {
+    ($struct_name:ident, $enum_name:expr, $encoder_name:ident, $check_data_type:expr) => {
+        impl $struct_name {
+            pub fn new(field: Field) -> Result<Self, ErrorKind> {
+                if !$check_data_type(field.data_type()) {
+                    return Err(ErrorKind::FieldTypeNotSupported {
+                        encoder: stringify!($struct_name).to_string(),
+                        tp: field.data_type().clone(),
+                        field: field.name().clone(),
+                    });
+                }
+                Ok(Self {
+                    field,
+                    output: StringOutputType::Text,
+                })
+            }
+            pub fn new_with_output(field: Field, output: PostgresType) -> Result<Self, ErrorKind> {
+                let output = StringOutputType::from_postgres_type(output, &field)?;
+                Ok(Self { field, output })
+            }
+        }
+        impl BuildEncoder for $struct_name {
+            fn try_new<'a, 'b: 'a>(&'b self, arr: &'a dyn Array) -> Result<Encoder<'a>, ErrorKind> {
+                let field = self.field.name();
+                let arr = downcast_checked(arr, &field)?;
+                Ok($enum_name($encoder_name {
+                    field: self.field.name().clone(),
+                    arr,
+                    output: self.output.clone(),
+                }))
+            }
+            fn schema(&self) -> Column {
+                Column {
+                    data_type: self.output.postgres_datatype().clone(),
+                    nullable: self.field.is_nullable(),
+                }
+            }
+            fn field(&self) -> Field {
+                self.field.clone()
+            }
+        }
+    };
+}
+
+#[derive(Debug, Clone, PartialEq)]
 pub struct StringEncoderBuilder {
     field: Field,
-    output: PostgresType,
+    output: StringOutputType,
 }
 impl_encoder_builder_with_variable_output!(
     StringEncoderBuilder,
     Encoder::String,
     StringEncoder,
-    PostgresType::Text,
-    vec![PostgresType::Text, PostgresType::Jsonb],
     |dt: &DataType| matches!(dt, DataType::Utf8)
 );
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct LargeStringEncoderBuilder {
     field: Field,
-    output: PostgresType,
+    output: StringOutputType,
 }
+
 impl_encoder_builder_with_variable_output!(
     LargeStringEncoderBuilder,
     Encoder::LargeString,
     LargeStringEncoder,
-    PostgresType::Text,
-    vec![PostgresType::Text, PostgresType::Jsonb],
     |dt: &DataType| matches!(dt, DataType::LargeUtf8)
 );
 
@@ -1198,11 +1229,11 @@ impl EncoderBuilder {
             },
             DataType::Utf8 => Self::String(StringEncoderBuilder {
                 field,
-                output: PostgresType::Text,
+                output: StringOutputType::Text,
             }),
             DataType::LargeUtf8 => Self::LargeString(LargeStringEncoderBuilder {
                 field,
-                output: PostgresType::Text,
+                output: StringOutputType::Text,
             }),
             DataType::Binary => Self::Binary(BinaryEncoderBuilder { field }),
             DataType::LargeBinary | DataType::FixedSizeBinary(_) => {

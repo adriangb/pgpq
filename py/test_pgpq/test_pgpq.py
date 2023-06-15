@@ -216,7 +216,7 @@ def test_custom_encoding(dbconn: Connection) -> None:
         "json_list": pgpq.encoders.ListEncoderBuilder.new_with_inner(
             batch.schema.field("json_list"),
             pgpq.encoders.StringEncoderBuilder.new_with_output(
-                batch.schema.field("json_list").type.value_field, pgpq.schema.Text()
+                batch.schema.field("json_list").type.value_field, pgpq.schema.Jsonb()
             ),
         )
     }
@@ -230,4 +230,4 @@ def test_custom_encoding(dbconn: Connection) -> None:
     pg_schema = encoder.schema()
 
     rows = copy_buffer_and_get_rows(pg_schema, buffer, dbconn)
-    print(rows)
+    assert rows == [([[]],), ([{"foo": "bar"}],), ([123],)]

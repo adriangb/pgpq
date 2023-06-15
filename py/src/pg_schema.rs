@@ -84,6 +84,11 @@ impl_simple!(Text, pgpq::pg_schema::PostgresType::Text);
 
 #[pyclass(module = "pgpq._pgpq")]
 #[derive(Debug, Clone, PartialEq)]
+pub struct Json;
+impl_simple!(Json, pgpq::pg_schema::PostgresType::Json);
+
+#[pyclass(module = "pgpq._pgpq")]
+#[derive(Debug, Clone, PartialEq)]
 pub struct Jsonb;
 impl_simple!(Jsonb, pgpq::pg_schema::PostgresType::Jsonb);
 
@@ -172,6 +177,7 @@ pub enum PostgresType {
     Int8(Int8),
     Char(Char),
     Text(Text),
+    Json(Json),
     Jsonb(Jsonb),
     Float4(Float4),
     Float8(Float8),
@@ -192,6 +198,7 @@ impl From<PostgresType> for pgpq::pg_schema::PostgresType {
             PostgresType::Int8(inner) => inner.into(),
             PostgresType::Char(inner) => inner.into(),
             PostgresType::Text(inner) => inner.into(),
+            PostgresType::Json(inner) => inner.into(),
             PostgresType::Jsonb(inner) => inner.into(),
             PostgresType::Float4(inner) => inner.into(),
             PostgresType::Float8(inner) => inner.into(),
@@ -214,6 +221,7 @@ impl From<pgpq::pg_schema::PostgresType> for PostgresType {
             pgpq::pg_schema::PostgresType::Int8 => PostgresType::Int8(Int8),
             pgpq::pg_schema::PostgresType::Char => PostgresType::Char(Char),
             pgpq::pg_schema::PostgresType::Text => PostgresType::Text(Text),
+            pgpq::pg_schema::PostgresType::Json => PostgresType::Json(Json),
             pgpq::pg_schema::PostgresType::Jsonb => PostgresType::Jsonb(Jsonb),
             pgpq::pg_schema::PostgresType::Float4 => PostgresType::Float4(Float4),
             pgpq::pg_schema::PostgresType::Float8 => PostgresType::Float8(Float8),
@@ -238,6 +246,7 @@ impl PythonRepr for PostgresType {
             PostgresType::Int8(inner) => inner.py_repr(py),
             PostgresType::Char(inner) => inner.py_repr(py),
             PostgresType::Text(inner) => inner.py_repr(py),
+            PostgresType::Json(inner) => inner.py_repr(py),
             PostgresType::Jsonb(inner) => inner.py_repr(py),
             PostgresType::Float4(inner) => inner.py_repr(py),
             PostgresType::Float8(inner) => inner.py_repr(py),
@@ -277,6 +286,7 @@ impl Column {
             PostgresType::Int8(inner) => inner.clone().into_py(py),
             PostgresType::Char(inner) => inner.clone().into_py(py),
             PostgresType::Text(inner) => inner.clone().into_py(py),
+            PostgresType::Json(inner) => inner.clone().into_py(py),
             PostgresType::Jsonb(inner) => inner.clone().into_py(py),
             PostgresType::Float4(inner) => inner.clone().into_py(py),
             PostgresType::Float8(inner) => inner.clone().into_py(py),
