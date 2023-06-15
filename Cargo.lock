@@ -4,7 +4,7 @@ version = 3
 
 [[package]]
 name = "_arrow_json"
-version = "0.7.1"
+version = "0.7.2"
 dependencies = [
  "arrow",
  "pyo3",
@@ -14,7 +14,7 @@ dependencies = [
 
 [[package]]
 name = "_pgpq"
-version = "0.7.1"
+version = "0.7.2"
 dependencies = [
  "arrow",
  "bytes",
@@ -582,7 +582,7 @@ dependencies = [
  "autocfg",
  "cfg-if",
  "crossbeam-utils",
- "memoffset 0.7.1",
+ "memoffset 0.7.2",
  "scopeguard",
 ]
 
@@ -1147,7 +1147,7 @@ checksum = "2dffe52ecf27772e601905b7522cb4ef790d2cc203488bbd0e2fe85fcb74566d"
 
 [[package]]
 name = "memoffset"
-version = "0.7.1"
+version = "0.7.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "5de893c32cde5f383baa4c04c5d6dbdd735cfd4a794b0debdb2bb1b421da5ff4"
 dependencies = [
@@ -1354,7 +1354,7 @@ checksum = "478c572c3d73181ff3c2539045f6eb99e5491218eae919370993b890cdbdd98e"
 
 [[package]]
 name = "pgpq"
-version = "0.7.1"
+version = "0.7.2"
 dependencies = [
  "anyhow",
  "arrow",
@@ -1976,7 +1976,7 @@ checksum = "e1766d682d402817b5ac4490b3c3002d91dfa0d22812f341609f97b08757359c"
 
 [[package]]
 name = "untrusted"
-version = "0.7.1"
+version = "0.7.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "a156c684c91ea7d62626509bce3cb4e1d9ed5c4d978f7b4352658f96a4c26b4a"
 
