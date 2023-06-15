@@ -465,6 +465,9 @@ impl<'a, T: OffsetSizeTrait> Encode for GenericStringEncoder<'a, T> {
         for row in 0..self.arr.len() {
             total += self.arr.value(row).len();
         }
+        if matches!(self.output, StringOutputType::Jsonb) {
+            total += self.arr.len() // For JSONB format version
+        }
         Ok(total)
     }
 }
