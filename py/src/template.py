@@ -52,6 +52,7 @@ types = [
     "Int4",
     "Char",
     "Text",
+    "Json",
     "Jsonb",
     "Float4",
     "Float8",
