@@ -445,8 +445,11 @@ impl<'a, T: OffsetSizeTrait> Encode for GenericStringEncoder<'a, T> {
             buf.put_i32(-1);
         } else {
             let v = self.arr.value(row).as_bytes();
-            let len = v.len();
-            match i32::try_from(len + 1) {
+            let mut len = v.len();
+            if matches!(self.output, StringOutputType::Jsonb) {
+                len += 1;
+            }
+            match i32::try_from(len) {
                 Ok(l) => buf.put_i32(l),
                 Err(_) => return Err(ErrorKind::field_too_large(&self.field, len)),
             }
