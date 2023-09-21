@@ -1,6 +1,6 @@
 [package]
 name = "_arrow_json"
-version = "0.7.3"
+version = "0.8.0"
 edition = "2021"
 readme = "README.md"
 license = "MIT"
