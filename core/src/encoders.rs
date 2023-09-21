@@ -535,13 +535,13 @@ type LargeListEncoder<'a> = GenericListEncoder<'a, i64>;
 pub trait BuildEncoder: std::fmt::Debug + PartialEq {
     fn try_new<'a, 'b: 'a>(&'b self, arr: &'a dyn Array) -> Result<Encoder<'a>, ErrorKind>;
     fn schema(&self) -> Column;
-    fn field(&self) -> Field;
+    fn field(&self) -> Arc<Field>;
 }
 
 macro_rules! impl_encoder_builder_stateless {
     ($struct_name:ident, $enum_name:expr, $encoder_name:ident, $pg_data_type:expr, $check_data_type:expr) => {
         impl $struct_name {
-            pub fn new(field: Field) -> Result<Self, ErrorKind> {
+            pub fn new(field: Arc<Field>) -> Result<Self, ErrorKind> {
                 if !$check_data_type(field.data_type()) {
                     return Err(ErrorKind::FieldTypeNotSupported {
                         encoder: stringify!($struct_name).to_string(),
@@ -564,7 +564,7 @@ macro_rules! impl_encoder_builder_stateless {
                     nullable: self.field.is_nullable(),
                 }
             }
-            fn field(&self) -> Field {
+            fn field(&self) -> Arc<Field> {
                 self.field.clone()
             }
         }
@@ -574,7 +574,7 @@ macro_rules! impl_encoder_builder_stateless {
 macro_rules! impl_encoder_builder_stateless_with_field {
     ($struct_name:ident, $enum_name:expr, $encoder_name:ident, $pg_data_type:expr, $check_data_type:expr) => {
         impl $struct_name {
-            pub fn new(field: Field) -> Result<Self, ErrorKind> {
+            pub fn new(field: Arc<Field>) -> Result<Self, ErrorKind> {
                 if !$check_data_type(field.data_type()) {
                     return Err(ErrorKind::FieldTypeNotSupported {
                         encoder: stringify!($struct_name).to_string(),
@@ -600,7 +600,7 @@ macro_rules! impl_encoder_builder_stateless_with_field {
                     nullable: self.field.is_nullable(),
                 }
             }
-            fn field(&self) -> Field {
+            fn field(&self) -> Arc<Field> {
                 self.field.clone()
             }
         }
@@ -610,7 +610,7 @@ macro_rules! impl_encoder_builder_stateless_with_field {
 macro_rules! impl_encoder_builder_stateless_with_variable_output {
     ($struct_name:ident, $enum_name:expr, $encoder_name:ident, $pg_data_type:expr, $allowed_pg_data_types:expr, $check_data_type:expr) => {
         impl $struct_name {
-            pub fn new(field: Field) -> Result<Self, ErrorKind> {
+            pub fn new(field: Arc<Field>) -> Result<Self, ErrorKind> {
                 if !$check_data_type(field.data_type()) {
                     return Err(ErrorKind::FieldTypeNotSupported {
                         encoder: stringify!($struct_name).to_string(),
@@ -623,7 +623,10 @@ macro_rules! impl_encoder_builder_stateless_with_variable_output {
                     output: $pg_data_type,
                 })
             }
-            pub fn new_with_output(field: Field, output: PostgresType) -> Result<Self, ErrorKind> {
+            pub fn new_with_output(
+                field: Arc<Field>,
+                output: PostgresType,
+            ) -> Result<Self, ErrorKind> {
                 if !$allowed_pg_data_types.contains(&output) {
                     return Err(ErrorKind::unsupported_encoding(
                         &field.name(),
@@ -646,7 +649,7 @@ macro_rules! impl_encoder_builder_stateless_with_variable_output {
                     nullable: self.field.is_nullable(),
                 }
             }
-            fn field(&self) -> Field {
+            fn field(&self) -> Arc<Field> {
                 self.field.clone()
             }
         }
@@ -655,7 +658,7 @@ macro_rules! impl_encoder_builder_stateless_with_variable_output {
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct BooleanEncoderBuilder {
-    field: Field,
+    field: Arc<Field>,
 }
 impl_encoder_builder_stateless!(
     BooleanEncoderBuilder,
@@ -667,7 +670,7 @@ impl_encoder_builder_stateless!(
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct UInt8EncoderBuilder {
-    field: Field,
+    field: Arc<Field>,
 }
 impl_encoder_builder_stateless!(
     UInt8EncoderBuilder,
@@ -679,7 +682,7 @@ impl_encoder_builder_stateless!(
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct UInt16EncoderBuilder {
-    field: Field,
+    field: Arc<Field>,
 }
 impl_encoder_builder_stateless!(
     UInt16EncoderBuilder,
@@ -691,7 +694,7 @@ impl_encoder_builder_stateless!(
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct UInt32EncoderBuilder {
-    field: Field,
+    field: Arc<Field>,
 }
 impl_encoder_builder_stateless!(
     UInt32EncoderBuilder,
@@ -703,7 +706,7 @@ impl_encoder_builder_stateless!(
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct Int8EncoderBuilder {
-    field: Field,
+    field: Arc<Field>,
     output: PostgresType,
 }
 impl_encoder_builder_stateless_with_variable_output!(
@@ -711,13 +714,13 @@ impl_encoder_builder_stateless_with_variable_output!(
     Encoder::Int8,
     Int8Encoder,
     PostgresType::Int2,
-    vec![PostgresType::Char, PostgresType::Int2],
+    [PostgresType::Char, PostgresType::Int2],
     |dt: &DataType| matches!(dt, DataType::Int8)
 );
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct Int16EncoderBuilder {
-    field: Field,
+    field: Arc<Field>,
 }
 impl_encoder_builder_stateless!(
     Int16EncoderBuilder,
@@ -729,7 +732,7 @@ impl_encoder_builder_stateless!(
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct Int32EncoderBuilder {
-    field: Field,
+    field: Arc<Field>,
 }
 impl_encoder_builder_stateless!(
     Int32EncoderBuilder,
@@ -741,7 +744,7 @@ impl_encoder_builder_stateless!(
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct Int64EncoderBuilder {
-    field: Field,
+    field: Arc<Field>,
 }
 impl_encoder_builder_stateless!(
     Int64EncoderBuilder,
@@ -753,7 +756,7 @@ impl_encoder_builder_stateless!(
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct Float16EncoderBuilder {
-    field: Field,
+    field: Arc<Field>,
 }
 impl_encoder_builder_stateless!(
     Float16EncoderBuilder,
@@ -765,7 +768,7 @@ impl_encoder_builder_stateless!(
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct Float32EncoderBuilder {
-    field: Field,
+    field: Arc<Field>,
 }
 impl_encoder_builder_stateless!(
     Float32EncoderBuilder,
@@ -777,7 +780,7 @@ impl_encoder_builder_stateless!(
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct Float64EncoderBuilder {
-    field: Field,
+    field: Arc<Field>,
 }
 impl_encoder_builder_stateless!(
     Float64EncoderBuilder,
@@ -789,7 +792,7 @@ impl_encoder_builder_stateless!(
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct TimestampMicrosecondEncoderBuilder {
-    field: Field,
+    field: Arc<Field>,
 }
 impl_encoder_builder_stateless_with_field!(
     TimestampMicrosecondEncoderBuilder,
@@ -801,7 +804,7 @@ impl_encoder_builder_stateless_with_field!(
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct TimestampMillisecondEncoderBuilder {
-    field: Field,
+    field: Arc<Field>,
 }
 impl_encoder_builder_stateless_with_field!(
     TimestampMillisecondEncoderBuilder,
@@ -813,7 +816,7 @@ impl_encoder_builder_stateless_with_field!(
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct TimestampSecondEncoderBuilder {
-    field: Field,
+    field: Arc<Field>,
 }
 impl_encoder_builder_stateless_with_field!(
     TimestampSecondEncoderBuilder,
@@ -825,7 +828,7 @@ impl_encoder_builder_stateless_with_field!(
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct Date32EncoderBuilder {
-    field: Field,
+    field: Arc<Field>,
 }
 impl_encoder_builder_stateless!(
     Date32EncoderBuilder,
@@ -837,7 +840,7 @@ impl_encoder_builder_stateless!(
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct Date64EncoderBuilder {
-    field: Field,
+    field: Arc<Field>,
 }
 impl_encoder_builder_stateless_with_field!(
     Date64EncoderBuilder,
@@ -849,7 +852,7 @@ impl_encoder_builder_stateless_with_field!(
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct Time32MillisecondEncoderBuilder {
-    field: Field,
+    field: Arc<Field>,
 }
 impl_encoder_builder_stateless!(
     Time32MillisecondEncoderBuilder,
@@ -861,7 +864,7 @@ impl_encoder_builder_stateless!(
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct Time32SecondEncoderBuilder {
-    field: Field,
+    field: Arc<Field>,
 }
 impl_encoder_builder_stateless!(
     Time32SecondEncoderBuilder,
@@ -873,7 +876,7 @@ impl_encoder_builder_stateless!(
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct Time64MicrosecondEncoderBuilder {
-    field: Field,
+    field: Arc<Field>,
 }
 impl_encoder_builder_stateless!(
     Time64MicrosecondEncoderBuilder,
@@ -885,7 +888,7 @@ impl_encoder_builder_stateless!(
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct DurationMicrosecondEncoderBuilder {
-    field: Field,
+    field: Arc<Field>,
 }
 impl_encoder_builder_stateless!(
     DurationMicrosecondEncoderBuilder,
@@ -897,7 +900,7 @@ impl_encoder_builder_stateless!(
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct DurationMillisecondEncoderBuilder {
-    field: Field,
+    field: Arc<Field>,
 }
 impl_encoder_builder_stateless_with_field!(
     DurationMillisecondEncoderBuilder,
@@ -909,7 +912,7 @@ impl_encoder_builder_stateless_with_field!(
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct DurationSecondEncoderBuilder {
-    field: Field,
+    field: Arc<Field>,
 }
 impl_encoder_builder_stateless_with_field!(
     DurationSecondEncoderBuilder,
@@ -951,7 +954,7 @@ impl StringOutputType {
 macro_rules! impl_encoder_builder_with_variable_output {
     ($struct_name:ident, $enum_name:expr, $encoder_name:ident, $check_data_type:expr) => {
         impl $struct_name {
-            pub fn new(field: Field) -> Result<Self, ErrorKind> {
+            pub fn new(field: Arc<Field>) -> Result<Self, ErrorKind> {
                 if !$check_data_type(field.data_type()) {
                     return Err(ErrorKind::FieldTypeNotSupported {
                         encoder: stringify!($struct_name).to_string(),
@@ -964,7 +967,10 @@ macro_rules! impl_encoder_builder_with_variable_output {
                     output: StringOutputType::Text,
                 })
             }
-            pub fn new_with_output(field: Field, output: PostgresType) -> Result<Self, ErrorKind> {
+            pub fn new_with_output(
+                field: Arc<Field>,
+                output: PostgresType,
+            ) -> Result<Self, ErrorKind> {
                 let output = StringOutputType::from_postgres_type(output, &field)?;
                 Ok(Self { field, output })
             }
@@ -985,7 +991,7 @@ macro_rules! impl_encoder_builder_with_variable_output {
                     nullable: self.field.is_nullable(),
                 }
             }
-            fn field(&self) -> Field {
+            fn field(&self) -> Arc<Field> {
                 self.field.clone()
             }
         }
@@ -994,7 +1000,7 @@ macro_rules! impl_encoder_builder_with_variable_output {
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct StringEncoderBuilder {
-    field: Field,
+    field: Arc<Field>,
     output: StringOutputType,
 }
 impl_encoder_builder_with_variable_output!(
@@ -1006,7 +1012,7 @@ impl_encoder_builder_with_variable_output!(
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct LargeStringEncoderBuilder {
-    field: Field,
+    field: Arc<Field>,
     output: StringOutputType,
 }
 
@@ -1019,7 +1025,7 @@ impl_encoder_builder_with_variable_output!(
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct BinaryEncoderBuilder {
-    field: Field,
+    field: Arc<Field>,
 }
 impl_encoder_builder_stateless_with_field!(
     BinaryEncoderBuilder,
@@ -1031,7 +1037,7 @@ impl_encoder_builder_stateless_with_field!(
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct LargeBinaryEncoderBuilder {
-    field: Field,
+    field: Arc<Field>,
 }
 impl_encoder_builder_stateless_with_field!(
     LargeBinaryEncoderBuilder,
@@ -1044,10 +1050,10 @@ impl_encoder_builder_stateless_with_field!(
 macro_rules! impl_list_encoder_builder {
     ($struct_name:ident, $enum_name:expr, $encoder_name:ident) => {
         impl $struct_name {
-            pub fn new(field: Field) -> Result<Self, ErrorKind> {
+            pub fn new(field: Arc<Field>) -> Result<Self, ErrorKind> {
                 match &field.data_type() {
                     DataType::List(inner) => {
-                        let inner_encoder_builder = EncoderBuilder::try_new((**inner).clone())?;
+                        let inner_encoder_builder = EncoderBuilder::try_new(inner.clone())?;
                         Ok(Self {
                             field,
                             inner_encoder_builder: Arc::new(inner_encoder_builder),
@@ -1061,7 +1067,7 @@ macro_rules! impl_list_encoder_builder {
                 }
             }
             pub fn new_with_inner(
-                field: Field,
+                field: Arc<Field>,
                 inner_encoder_builder: EncoderBuilder,
             ) -> Result<Self, ErrorKind> {
                 Ok(Self {
@@ -1089,7 +1095,7 @@ macro_rules! impl_list_encoder_builder {
                     nullable: self.field.is_nullable(),
                 }
             }
-            fn field(&self) -> Field {
+            fn field(&self) -> Arc<Field> {
                 self.field.clone()
             }
         }
@@ -1104,7 +1110,7 @@ macro_rules! impl_list_encoder_builder {
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct ListEncoderBuilder {
-    field: Field,
+    field: Arc<Field>,
     inner_encoder_builder: Arc<EncoderBuilder>,
 }
 
@@ -1112,7 +1118,7 @@ impl_list_encoder_builder!(ListEncoderBuilder, Encoder::List, ListEncoder);
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct LargeListEncoderBuilder {
-    field: Field,
+    field: Arc<Field>,
     inner_encoder_builder: Arc<EncoderBuilder>,
 }
 impl_list_encoder_builder!(
@@ -1155,7 +1161,7 @@ pub enum EncoderBuilder {
 }
 
 impl EncoderBuilder {
-    pub fn try_new(field: Field) -> Result<Self, ErrorKind> {
+    pub fn try_new(field: Arc<Field>) -> Result<Self, ErrorKind> {
         let data_type = field.data_type();
         let res = match data_type {
             DataType::Boolean => Self::Boolean(BooleanEncoderBuilder { field }),
@@ -1250,7 +1256,7 @@ impl EncoderBuilder {
                         "nested lists are not supported",
                     ));
                 }
-                let inner = Self::try_new(*inner.clone())?;
+                let inner = Self::try_new(inner.clone())?;
                 Self::List(ListEncoderBuilder {
                     field,
                     inner_encoder_builder: Arc::new(inner),
@@ -1267,7 +1273,7 @@ impl EncoderBuilder {
                         "nested lists are not supported",
                     ));
                 }
-                let inner = Self::try_new(*inner.clone())?;
+                let inner = Self::try_new(inner.clone())?;
                 Self::LargeList(LargeListEncoderBuilder {
                     field,
                     inner_encoder_builder: Arc::new(inner),

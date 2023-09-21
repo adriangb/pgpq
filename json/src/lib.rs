@@ -1,10 +1,11 @@
+use arrow::array::Array;
 use arrow::array::StringBuilder;
 use pyo3::prelude::*;
 use pyo3::Python;
 
-use arrow::array::{make_array, Array, ArrayData, LargeStringBuilder};
+use arrow::array::{make_array, ArrayData, LargeStringBuilder};
 use arrow::json::writer::array_to_json_array;
-use arrow::pyarrow::PyArrowConvert;
+use arrow::pyarrow::{FromPyArrow, ToPyArrow};
 use serde_json::{to_string, Value};
 
 #[pyfunction]
@@ -22,7 +23,7 @@ fn array_to_utf8_json_array(py: Python, array: &PyAny, large: bool) -> PyResult<
             }
         }
         let json_arr = builder.finish();
-        json_arr.data().to_pyarrow(py)
+        json_arr.into_data().to_pyarrow(py)
     } else {
         let mut builder = StringBuilder::new();
         for value in json.into_iter() {
@@ -32,7 +33,7 @@ fn array_to_utf8_json_array(py: Python, array: &PyAny, large: bool) -> PyResult<
             }
         }
         let json_arr = builder.finish();
-        json_arr.data().to_pyarrow(py)
+        json_arr.into_data().to_pyarrow(py)
     }
 }
 

@@ -1,5 +1,7 @@
-use arrow::datatypes::Field;
-use arrow::pyarrow::PyArrowConvert;
+use std::sync::Arc;
+
+use arrow::pyarrow::{FromPyArrow, ToPyArrow};
+use arrow_schema::Field;
 use pyo3::class::basic::CompareOp;
 use pyo3::exceptions::PyRuntimeError;
 use pyo3::types::PyType;
@@ -15,8 +17,8 @@ macro_rules! impl_passthrough_encoder_builder {
         impl $py_class {
             #[new]
             fn new(py: Python, py_field: &PyAny) -> PyResult<Self> {
-                let field: Field = PyArrowConvert::from_pyarrow(py_field)?;
-                let inner = match pgpq::encoders::EncoderBuilder::try_new(field) {
+                let field: Field = FromPyArrow::from_pyarrow(py_field)?;
+                let inner = match pgpq::encoders::EncoderBuilder::try_new(Arc::new(field)) {
                     Ok(inner) => inner,
                     Err(e) => {
                         return Err(PyValueError::new_err(format!(
@@ -69,8 +71,8 @@ macro_rules! impl_passthrough_encoder_builder_variable_output {
         impl $py_class {
             #[new]
             fn new(py: Python, py_field: &PyAny) -> PyResult<Self> {
-                let field: Field = PyArrowConvert::from_pyarrow(py_field)?;
-                let inner = match <$pgpq_encoder_builder>::new(field) {
+                let field: Field = FromPyArrow::from_pyarrow(py_field)?;
+                let inner = match <$pgpq_encoder_builder>::new(Arc::new(field)) {
                     Ok(inner) => inner,
                     Err(e) => {
                         return Err(PyValueError::new_err(format!(
@@ -94,9 +96,10 @@ macro_rules! impl_passthrough_encoder_builder_variable_output {
                 py_field: &PyAny,
                 py_output: PostgresType,
             ) -> PyResult<Self> {
-                let field: Field = PyArrowConvert::from_pyarrow(py_field)?;
+                let field: Field = FromPyArrow::from_pyarrow(py_field)?;
                 let output = pgpq::pg_schema::PostgresType::from(py_output.clone());
-                let inner = match <$pgpq_encoder_builder>::new_with_output(field, output) {
+                let inner = match <$pgpq_encoder_builder>::new_with_output(Arc::new(field), output)
+                {
                     Ok(inner) => inner,
                     Err(e) => {
                         return Err(PyValueError::new_err(format!(
@@ -374,8 +377,8 @@ macro_rules! impl_list {
         impl $struct {
             #[new]
             fn new(py: Python, py_field: &PyAny) -> PyResult<Self> {
-                let field: Field = PyArrowConvert::from_pyarrow(py_field)?;
-                let inner = match pgpq::encoders::EncoderBuilder::try_new(field) {
+                let field: Field = FromPyArrow::from_pyarrow(py_field)?;
+                let inner = match pgpq::encoders::EncoderBuilder::try_new(Arc::new(field)) {
                     Ok(inner) => inner,
                     Err(e) => {
                         return Err(PyValueError::new_err(format!(
@@ -397,13 +400,14 @@ macro_rules! impl_list {
                 py_field: &PyAny,
                 py_inner_encoder_builder: EncoderBuilder,
             ) -> PyResult<Self> {
-                let field: Field = PyArrowConvert::from_pyarrow(py_field)?;
+                let field: Field = FromPyArrow::from_pyarrow(py_field)?;
                 let inner_encoder_builder: pgpq::encoders::EncoderBuilder =
                     py_inner_encoder_builder.into();
                 Ok(Self {
                     field: py_field.to_object(py),
                     inner: $encoder_builder_enum_variant(
-                        $encoder_builder_new_with_inner(field, inner_encoder_builder).unwrap(),
+                        $encoder_builder_new_with_inner(Arc::new(field), inner_encoder_builder)
+                            .unwrap(),
                     ),
                 })
             }
@@ -539,8 +543,8 @@ impl crate::utils::PythonRepr for EncoderBuilder {
 
 impl EncoderBuilder {
     pub fn try_new(py: Python, py_field: &PyAny) -> PyResult<Self> {
-        let field: Field = PyArrowConvert::from_pyarrow(py_field)?;
-        let inner = match pgpq::encoders::EncoderBuilder::try_new(field) {
+        let field: Field = FromPyArrow::from_pyarrow(py_field)?;
+        let inner = match pgpq::encoders::EncoderBuilder::try_new(Arc::new(field)) {
             Ok(inner) => inner,
             Err(_e) => {
                 return Err(PyRuntimeError::new_err(format!(
@@ -729,28 +733,28 @@ impl From<pgpq::encoders::EncoderBuilder> for EncoderBuilder {
             pgpq::encoders::EncoderBuilder::Boolean(inner) => {
                 let field = inner.field();
                 EncoderBuilder::Boolean(BooleanEncoderBuilder {
-                    field: PyArrowConvert::to_pyarrow(&field, py).unwrap(),
+                    field: field.to_pyarrow(py).unwrap(),
                     inner: value,
                 })
             }
             pgpq::encoders::EncoderBuilder::UInt8(inner) => {
                 let field = inner.field();
                 EncoderBuilder::UInt8(UInt8EncoderBuilder {
-                    field: PyArrowConvert::to_pyarrow(&field, py).unwrap(),
+                    field: field.to_pyarrow(py).unwrap(),
                     inner: value,
                 })
             }
             pgpq::encoders::EncoderBuilder::UInt16(inner) => {
                 let field = inner.field();
                 EncoderBuilder::UInt16(UInt16EncoderBuilder {
-                    field: PyArrowConvert::to_pyarrow(&field, py).unwrap(),
+                    field: field.to_pyarrow(py).unwrap(),
                     inner: value,
                 })
             }
             pgpq::encoders::EncoderBuilder::UInt32(inner) => {
                 let field = inner.field();
                 EncoderBuilder::UInt32(UInt32EncoderBuilder {
-                    field: PyArrowConvert::to_pyarrow(&field, py).unwrap(),
+                    field: field.to_pyarrow(py).unwrap(),
                     inner: value,
                 })
             }
@@ -758,7 +762,7 @@ impl From<pgpq::encoders::EncoderBuilder> for EncoderBuilder {
                 let field = inner.field();
                 let output: crate::pg_schema::PostgresType = inner.schema().data_type.into();
                 EncoderBuilder::Int8(Int8EncoderBuilder {
-                    field: PyArrowConvert::to_pyarrow(&field, py).unwrap(),
+                    field: field.to_pyarrow(py).unwrap(),
                     inner: value,
                     output,
                 })
@@ -766,119 +770,119 @@ impl From<pgpq::encoders::EncoderBuilder> for EncoderBuilder {
             pgpq::encoders::EncoderBuilder::Int16(inner) => {
                 let field = inner.field();
                 EncoderBuilder::Int16(Int16EncoderBuilder {
-                    field: PyArrowConvert::to_pyarrow(&field, py).unwrap(),
+                    field: field.to_pyarrow(py).unwrap(),
                     inner: value,
                 })
             }
             pgpq::encoders::EncoderBuilder::Int32(inner) => {
                 let field = inner.field();
                 EncoderBuilder::Int32(Int32EncoderBuilder {
-                    field: PyArrowConvert::to_pyarrow(&field, py).unwrap(),
+                    field: field.to_pyarrow(py).unwrap(),
                     inner: value,
                 })
             }
             pgpq::encoders::EncoderBuilder::Int64(inner) => {
                 let field = inner.field();
                 EncoderBuilder::Int64(Int64EncoderBuilder {
-                    field: PyArrowConvert::to_pyarrow(&field, py).unwrap(),
+                    field: field.to_pyarrow(py).unwrap(),
                     inner: value,
                 })
             }
             pgpq::encoders::EncoderBuilder::Float16(inner) => {
                 let field = inner.field();
                 EncoderBuilder::Float16(Float16EncoderBuilder {
-                    field: PyArrowConvert::to_pyarrow(&field, py).unwrap(),
+                    field: field.to_pyarrow(py).unwrap(),
                     inner: value,
                 })
             }
             pgpq::encoders::EncoderBuilder::Float32(inner) => {
                 let field = inner.field();
                 EncoderBuilder::Float32(Float32EncoderBuilder {
-                    field: PyArrowConvert::to_pyarrow(&field, py).unwrap(),
+                    field: field.to_pyarrow(py).unwrap(),
                     inner: value,
                 })
             }
             pgpq::encoders::EncoderBuilder::Float64(inner) => {
                 let field = inner.field();
                 EncoderBuilder::Float64(Float64EncoderBuilder {
-                    field: PyArrowConvert::to_pyarrow(&field, py).unwrap(),
+                    field: field.to_pyarrow(py).unwrap(),
                     inner: value,
                 })
             }
             pgpq::encoders::EncoderBuilder::TimestampMicrosecond(inner) => {
                 let field = inner.field();
                 EncoderBuilder::TimestampMicrosecond(TimestampMicrosecondEncoderBuilder {
-                    field: PyArrowConvert::to_pyarrow(&field, py).unwrap(),
+                    field: field.to_pyarrow(py).unwrap(),
                     inner: value,
                 })
             }
             pgpq::encoders::EncoderBuilder::TimestampMillisecond(inner) => {
                 let field = inner.field();
                 EncoderBuilder::TimestampMillisecond(TimestampMillisecondEncoderBuilder {
-                    field: PyArrowConvert::to_pyarrow(&field, py).unwrap(),
+                    field: field.to_pyarrow(py).unwrap(),
                     inner: value,
                 })
             }
             pgpq::encoders::EncoderBuilder::TimestampSecond(inner) => {
                 let field = inner.field();
                 EncoderBuilder::TimestampSecond(TimestampSecondEncoderBuilder {
-                    field: PyArrowConvert::to_pyarrow(&field, py).unwrap(),
+                    field: field.to_pyarrow(py).unwrap(),
                     inner: value,
                 })
             }
             pgpq::encoders::EncoderBuilder::Date32(inner) => {
                 let field = inner.field();
                 EncoderBuilder::Date32(Date32EncoderBuilder {
-                    field: PyArrowConvert::to_pyarrow(&field, py).unwrap(),
+                    field: field.to_pyarrow(py).unwrap(),
                     inner: value,
                 })
             }
             pgpq::encoders::EncoderBuilder::Date64(inner) => {
                 let field = inner.field();
                 EncoderBuilder::Date64(Date64EncoderBuilder {
-                    field: PyArrowConvert::to_pyarrow(&field, py).unwrap(),
+                    field: field.to_pyarrow(py).unwrap(),
                     inner: value,
                 })
             }
             pgpq::encoders::EncoderBuilder::Time32Millisecond(inner) => {
                 let field = inner.field();
                 EncoderBuilder::Time32Millisecond(Time32MillisecondEncoderBuilder {
-                    field: PyArrowConvert::to_pyarrow(&field, py).unwrap(),
+                    field: field.to_pyarrow(py).unwrap(),
                     inner: value,
                 })
             }
             pgpq::encoders::EncoderBuilder::Time32Second(inner) => {
                 let field = inner.field();
                 EncoderBuilder::Time32Second(Time32SecondEncoderBuilder {
-                    field: PyArrowConvert::to_pyarrow(&field, py).unwrap(),
+                    field: field.to_pyarrow(py).unwrap(),
                     inner: value,
                 })
             }
             pgpq::encoders::EncoderBuilder::Time64Microsecond(inner) => {
                 let field = inner.field();
                 EncoderBuilder::Time64Microsecond(Time64MicrosecondEncoderBuilder {
-                    field: PyArrowConvert::to_pyarrow(&field, py).unwrap(),
+                    field: field.to_pyarrow(py).unwrap(),
                     inner: value,
                 })
             }
             pgpq::encoders::EncoderBuilder::DurationMicrosecond(inner) => {
                 let field = inner.field();
                 EncoderBuilder::DurationMicrosecond(DurationMicrosecondEncoderBuilder {
-                    field: PyArrowConvert::to_pyarrow(&field, py).unwrap(),
+                    field: field.to_pyarrow(py).unwrap(),
                     inner: value,
                 })
             }
             pgpq::encoders::EncoderBuilder::DurationMillisecond(inner) => {
                 let field = inner.field();
                 EncoderBuilder::DurationMillisecond(DurationMillisecondEncoderBuilder {
-                    field: PyArrowConvert::to_pyarrow(&field, py).unwrap(),
+                    field: field.to_pyarrow(py).unwrap(),
                     inner: value,
                 })
             }
             pgpq::encoders::EncoderBuilder::DurationSecond(inner) => {
                 let field = inner.field();
                 EncoderBuilder::DurationSecond(DurationSecondEncoderBuilder {
-                    field: PyArrowConvert::to_pyarrow(&field, py).unwrap(),
+                    field: field.to_pyarrow(py).unwrap(),
                     inner: value,
                 })
             }
@@ -886,7 +890,7 @@ impl From<pgpq::encoders::EncoderBuilder> for EncoderBuilder {
                 let field = inner.field();
                 let output: crate::pg_schema::PostgresType = inner.schema().data_type.into();
                 EncoderBuilder::String(StringEncoderBuilder {
-                    field: PyArrowConvert::to_pyarrow(&field, py).unwrap(),
+                    field: field.to_pyarrow(py).unwrap(),
                     inner: value,
                     output,
                 })
@@ -895,7 +899,7 @@ impl From<pgpq::encoders::EncoderBuilder> for EncoderBuilder {
                 let field = inner.field();
                 let output: crate::pg_schema::PostgresType = inner.schema().data_type.into();
                 EncoderBuilder::LargeString(LargeStringEncoderBuilder {
-                    field: PyArrowConvert::to_pyarrow(&field, py).unwrap(),
+                    field: field.to_pyarrow(py).unwrap(),
                     inner: value,
                     output,
                 })
@@ -903,28 +907,28 @@ impl From<pgpq::encoders::EncoderBuilder> for EncoderBuilder {
             pgpq::encoders::EncoderBuilder::Binary(inner) => {
                 let field = inner.field();
                 EncoderBuilder::Binary(BinaryEncoderBuilder {
-                    field: PyArrowConvert::to_pyarrow(&field, py).unwrap(),
+                    field: field.to_pyarrow(py).unwrap(),
                     inner: value,
                 })
             }
             pgpq::encoders::EncoderBuilder::LargeBinary(inner) => {
                 let field = inner.field();
                 EncoderBuilder::LargeBinary(LargeBinaryEncoderBuilder {
-                    field: PyArrowConvert::to_pyarrow(&field, py).unwrap(),
+                    field: field.to_pyarrow(py).unwrap(),
                     inner: value,
                 })
             }
             pgpq::encoders::EncoderBuilder::List(inner) => {
                 let field = inner.field();
                 EncoderBuilder::List(ListEncoderBuilder {
-                    field: PyArrowConvert::to_pyarrow(&field, py).unwrap(),
+                    field: field.to_pyarrow(py).unwrap(),
                     inner: value,
                 })
             }
             pgpq::encoders::EncoderBuilder::LargeList(inner) => {
                 let field = inner.field();
                 EncoderBuilder::LargeList(LargeListEncoderBuilder {
-                    field: PyArrowConvert::to_pyarrow(&field, py).unwrap(),
+                    field: field.to_pyarrow(py).unwrap(),
                     inner: value,
                 })
             }
