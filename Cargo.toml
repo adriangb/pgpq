@@ -1,5 +1,6 @@
 [workspace]
 members = ["core", "py", "json"]
+resolver = "2"
 
 [profile.bench.package.pgpq]
 debug = true

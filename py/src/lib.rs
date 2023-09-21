@@ -6,7 +6,7 @@ use pyo3::types::{PyBytes, PyDict};
 use pyo3::Python;
 
 use arrow::datatypes::Schema as ArrowSchema;
-use arrow::pyarrow::PyArrowConvert;
+use arrow::pyarrow::FromPyArrow;
 use arrow::record_batch::RecordBatch;
 use bytes::BytesMut;
 

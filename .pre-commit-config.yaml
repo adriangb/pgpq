@@ -13,7 +13,7 @@ repos:
       pass_filenames: false
     - id: cargo-clippy
       name: cargo-clippy
-      entry: cargo clippy -- -D warnings
+      entry: cargo clippy --fix --allow-dirty --allow-staged --all -- -D warnings
       language: system
       types: [rust]
       pass_filenames: false

@@ -1,7 +1,7 @@
 use std::collections::HashMap;
 
 use arrow_array::RecordBatch;
-use arrow_schema::Field as ArrowField;
+use arrow_schema::Fields;
 use arrow_schema::Schema;
 use bytes::{BufMut, BytesMut};
 use error::ErrorKind;
@@ -24,13 +24,13 @@ enum EncoderState {
 
 #[derive(Debug)]
 pub struct ArrowToPostgresBinaryEncoder {
-    fields: Vec<ArrowField>,
+    fields: Fields,
     state: EncoderState,
     encoder_builders: Vec<EncoderBuilder>,
 }
 
 pub fn build_encoders(
-    fields: &[arrow_schema::Field],
+    fields: &arrow_schema::Fields,
 ) -> Vec<(String, Result<EncoderBuilder, ErrorKind>)> {
     fields
         .iter()
@@ -41,16 +41,15 @@ pub fn build_encoders(
 impl ArrowToPostgresBinaryEncoder {
     /// Creates a new writer which will write rows of the provided types to the provided sink.
     pub fn try_new(schema: &Schema) -> Result<Self, ErrorKind> {
-        let fields = schema.fields.to_vec();
+        let fields = schema.fields();
 
-        let maybe_encoder_builders: Result<Vec<EncoderBuilder>, ErrorKind> =
-            build_encoders(schema.fields())
-                .into_iter()
-                .map(|(_, maybe_encoder)| maybe_encoder)
-                .collect();
+        let maybe_encoder_builders: Result<Vec<EncoderBuilder>, ErrorKind> = build_encoders(fields)
+            .into_iter()
+            .map(|(_, maybe_encoder)| maybe_encoder)
+            .collect();
 
         Ok(ArrowToPostgresBinaryEncoder {
-            fields: fields.to_vec(),
+            fields: fields.clone(),
             state: EncoderState::Created,
             encoder_builders: maybe_encoder_builders?,
         })
@@ -81,7 +80,7 @@ impl ArrowToPostgresBinaryEncoder {
             });
         }
         Ok(ArrowToPostgresBinaryEncoder {
-            fields: schema.fields.to_vec(),
+            fields: schema.fields.clone(),
             state: EncoderState::Created,
             encoder_builders: maybe_encoder_builders?,
         })
@@ -197,7 +196,7 @@ mod tests {
                     field_name.to_string(),
                     EncoderBuilder::String(
                         StringEncoderBuilder::new_with_output(
-                            batch.schema().field_with_name("json").unwrap().clone(),
+                            Arc::new(batch.schema().field_with_name("json").unwrap().clone()),
                             pg_schema::PostgresType::Jsonb,
                         )
                         .unwrap(),
