@@ -1,3 +1,5 @@
+#![allow(clippy::redundant_closure_call)]
+
 use arrow_array::{self, Array, ArrowNativeTypeOp, OffsetSizeTrait};
 use arrow_schema::{DataType, Field, TimeUnit};
 use bytes::{BufMut, BytesMut};
