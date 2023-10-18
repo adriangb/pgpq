@@ -296,6 +296,28 @@ jobs:
         run: |
           make lint
 
+
+  # https://github.com/marketplace/actions/alls-green
+  check:  # This job does nothing and is only used for the branch protection
+    name: arrow-json Python Check
+    if: always()
+
+    outputs:
+      result: ${{ steps.all-green.outputs.result }}
+
+    needs:
+      - lint
+      - macos
+      - linux
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Decide whether the needed jobs succeeded or failed
+        uses: re-actors/alls-green@release/v1
+        id: all-green
+        with:
+          jobs: ${{ toJSON(needs) }}
+
   release:
     name: Release
     if: github.ref == format('refs/heads/{0}', github.event.repository.default_branch)
