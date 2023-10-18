@@ -140,9 +140,6 @@ class TimestampSecondEncoderBuilder:
 class Date32EncoderBuilder:
     def __init__(self, field: pyarrow.Field) -> None: ...
 
-class Date64EncoderBuilder:
-    def __init__(self, field: pyarrow.Field) -> None: ...
-
 class Time32MillisecondEncoderBuilder:
     def __init__(self, field: pyarrow.Field) -> None: ...
 
@@ -211,7 +208,6 @@ EncoderBuilder = (
     | TimestampMillisecondEncoderBuilder
     | TimestampSecondEncoderBuilder
     | Date32EncoderBuilder
-    | Date64EncoderBuilder
     | Time32MillisecondEncoderBuilder
     | Time32SecondEncoderBuilder
     | Time64MicrosecondEncoderBuilder

@@ -59,7 +59,7 @@ There's no reason we can't support struct data types as well.
 |   Timestamp(Millisecond)  |   TIMESTAMP      |
 |   Timestamp(Second)       |   TIMESTAMP      |
 |   Date32                  |   DATE           |
-|   Date64                  |   DATE           |
+|   Date64                  |   Not supported           |
 |   Time32(Millisecond)     |   TIME           |
 |   Time32(Second)          |   TIME           |
 |   Time64(Nanosecond)      |   Not supported  |

@@ -45,7 +45,6 @@ pub enum Encoder<'a> {
     TimestampMillisecond(TimestampMillisecondEncoder<'a>),
     TimestampSecond(TimestampSecondEncoder<'a>),
     Date32(Date32Encoder<'a>),
-    Date64(Date64Encoder<'a>),
     Time32Millisecond(Time32MillisecondEncoder<'a>),
     Time32Second(Time32SecondEncoder<'a>),
     Time64Microsecond(Time64MicrosecondEncoder<'a>),
@@ -235,23 +234,54 @@ impl_encode!(
     BufMut::put_f64
 );
 
-const ONE_S_TO_MS: i64 = 1_000;
-const ONE_S_TO_US: i64 = 1_000_000;
+const PG_BASE_TIMESTAMP_OFFSET_US: i64 = 946_684_800_000_000; // microseconds between 2000-01-01 at midnight (Postgres's epoch) and 1970-01-01 (Arrow's / UNIX epoch)
+const PG_BASE_TIMESTAMP_OFFSET_MS: i64 = 946_684_800_000; // milliseconds between 2000-01-01 at midnight (Postgres's epoch) and 1970-01-01 (Arrow's / UNIX epoch)
+const PG_BASE_TIMESTAMP_OFFSET_S: i64 = 946_684_800; // seconds between 2000-01-01 at midnight (Postgres's epoch) and 1970-01-01 (Arrow's / UNIX epoch)
 
-// Postgres starts counting on Jan 1st 2000
-// This is Jan 1st 2000 relative to the UNIX Epoch in us
-const POSTGRES_BASE_TIMESTAMP_S: i64 = 946_684_800;
-const POSTGRES_BASE_TIMESTAMP_MS: i64 = POSTGRES_BASE_TIMESTAMP_S * ONE_S_TO_MS;
-const POSTGRES_BASE_TIMESTAMP_US: i64 = POSTGRES_BASE_TIMESTAMP_S * ONE_S_TO_US;
+#[inline(always)]
+fn convert_arrow_timestamp_microseconds_to_pg_timestamp(
+    _field: &str,
+    timestamp_us: i64,
+) -> Result<i64, ErrorKind> {
+    // adjust the timestamp from microseconds since 1970-01-01 to microseconds since 2000-01-01 checking for overflows and underflow
+    timestamp_us
+        .checked_sub(PG_BASE_TIMESTAMP_OFFSET_US)
+        .ok_or_else(|| ErrorKind::Encode {
+            reason: "Underflow converting microseconds since 1970-01-01 (Arrow) to microseconds since 2000-01-01 (Postgres)".to_string(),
+        })
+}
 
-const NUM_US_PER_MS: i64 = 1_000;
-const NUM_US_PER_S: i64 = 1_000_000;
+/// Convert from Arrow timestamps (milliseconds since 1970-01-01) to Postgres timestamps (microseconds since 2000-01-01)
+#[inline(always)]
+fn convert_arrow_timestamp_milliseconds_to_pg_timestamp(
+    _field: &str,
+    timestamp_ms: i64,
+) -> Result<i64, ErrorKind> {
+    let timestamp_ms = timestamp_ms.checked_sub(PG_BASE_TIMESTAMP_OFFSET_MS).ok_or_else(|| ErrorKind::Encode {
+        reason: "Underflow converting milliseconds since 1970-01-01 (Arrow) to microseconds since 2000-01-01 (Postgres)".to_string(),
+    })?;
+    // convert to microseconds, checking for overflows
+    timestamp_ms
+        .checked_mul(1_000)
+        .ok_or_else(|| ErrorKind::Encode {
+            reason: "Overflow converting milliseconds to microseconds".to_string(),
+        })
+}
 
-#[inline]
-fn adjust_timestamp(val: i64, offset: i64) -> Result<i64, ErrorKind> {
-    val.sub_checked(offset).map_err(|_| ErrorKind::Encode {
-        reason: "Value too large to transmit".to_string(),
-    })
+#[inline(always)]
+fn convert_arrow_timestamp_seconds_to_pg_timestamp(
+    _field: &str,
+    timestamp_s: i64,
+) -> Result<i64, ErrorKind> {
+    let timestamp_s = timestamp_s.checked_sub(PG_BASE_TIMESTAMP_OFFSET_S).ok_or_else(|| ErrorKind::Encode {
+        reason: "Underflow converting seconds since 1970-01-01 (Arrow) to microseconds since 2000-01-01 (Postgres)".to_string(),
+    })?;
+    // convert to microseconds, checking for overflows
+    timestamp_s
+        .checked_mul(1_000_000)
+        .ok_or_else(|| ErrorKind::Encode {
+            reason: "Overflow converting seconds to microseconds".to_string(),
+        })
 }
 
 #[derive(Debug)]
@@ -262,7 +292,7 @@ pub struct TimestampMicrosecondEncoder<'a> {
 impl_encode_fallible!(
     TimestampMicrosecondEncoder,
     type_size_fixed(PostgresType::Timestamp.size()),
-    |_: &str, v: i64| adjust_timestamp(v, POSTGRES_BASE_TIMESTAMP_US),
+    convert_arrow_timestamp_microseconds_to_pg_timestamp,
     BufMut::put_i64
 );
 
@@ -274,15 +304,7 @@ pub struct TimestampMillisecondEncoder<'a> {
 impl_encode_fallible!(
     TimestampMillisecondEncoder,
     type_size_fixed(PostgresType::Timestamp.size()),
-    |_: &str, v: i64| {
-        let v = adjust_timestamp(v, POSTGRES_BASE_TIMESTAMP_MS)?;
-        match v.mul_checked(NUM_US_PER_MS) {
-            Ok(v) => Ok(v),
-            Err(_) => Err(ErrorKind::Encode {
-                reason: "Overflow encoding millisecond timestamp as microseconds".to_string(),
-            }),
-        }
-    },
+    convert_arrow_timestamp_milliseconds_to_pg_timestamp,
     BufMut::put_i64
 );
 
@@ -294,68 +316,79 @@ pub struct TimestampSecondEncoder<'a> {
 impl_encode_fallible!(
     TimestampSecondEncoder,
     type_size_fixed(PostgresType::Timestamp.size()),
-    |_: &str, v: i64| {
-        let v = adjust_timestamp(v, POSTGRES_BASE_TIMESTAMP_S)?;
-        match v.mul_checked(NUM_US_PER_S) {
-            Ok(v) => Ok(v),
-            Err(_) => Err(ErrorKind::Encode {
-                reason: "Overflow encoding seconds timestamp as microseconds".to_string(),
-            }),
-        }
-    },
+    convert_arrow_timestamp_seconds_to_pg_timestamp,
     BufMut::put_i64
 );
+
+const PG_BASE_DATE_OFFSET: i32 = 10_957; // Number of days between PostgreSQL's epoch (2000-01-01) and Arrow's / UNIX epoch (1970-01-01)
+
+#[inline(always)]
+fn convert_arrow_date32_to_postgres_date(_field: &str, date: i32) -> Result<i32, ErrorKind> {
+    // adjust the date from days since 1970-01-01 to days since 2000-01-01 checking for overflows and underflow
+    date.checked_sub(PG_BASE_DATE_OFFSET).ok_or_else(|| ErrorKind::Encode {
+        reason: "Underflow converting days since 1970-01-01 (Arrow) to days since 2000-01-01 (Postgres)".to_string(),
+    })
+}
 
 #[derive(Debug)]
 pub struct Date32Encoder<'a> {
     arr: &'a arrow_array::Date32Array,
-}
-impl_encode!(Date32Encoder, 4, identity, BufMut::put_i32);
-
-#[derive(Debug)]
-pub struct Date64Encoder<'a> {
-    arr: &'a arrow_array::Date64Array,
     field: String,
 }
 impl_encode_fallible!(
-    Date64Encoder,
-    type_size_fixed(PostgresType::Date.size()),
-    |_field: &str, v: i64| {
-        i32::try_from(v).map_err(|_| ErrorKind::Encode {
-            reason: "overflow converting 64 bit date to 32 bit date".to_string(),
-        })
-    },
+    Date32Encoder,
+    4,
+    convert_arrow_date32_to_postgres_date,
     BufMut::put_i32
 );
+
+fn convert_arrow_time_seconds_to_postgres_time(
+    _field: &str,
+    time_s: i32,
+) -> Result<i64, ErrorKind> {
+    // convert to microseconds, checking for overflows
+    let time_s = time_s as i64;
+    time_s
+        .checked_mul(1_000_000)
+        .ok_or_else(|| ErrorKind::Encode {
+            reason: "Overflow converting seconds to microseconds".to_string(),
+        })
+}
+
+fn convert_arrow_time_milliseconds_to_postgres_time(
+    _field: &str,
+    time_ms: i32,
+) -> Result<i64, ErrorKind> {
+    // convert to microseconds, checking for overflows
+    let time_ms = time_ms as i64;
+    time_ms.checked_mul(1_000).ok_or_else(|| ErrorKind::Encode {
+        reason: "Overflow converting milliseconds to microseconds".to_string(),
+    })
+}
 
 #[derive(Debug)]
 pub struct Time32MillisecondEncoder<'a> {
     arr: &'a arrow_array::Time32MillisecondArray,
+    field: String,
 }
-impl_encode!(
+impl_encode_fallible!(
     Time32MillisecondEncoder,
     type_size_fixed(PostgresType::Time.size()),
-    |v| (v as i64) * NUM_US_PER_MS,
+    convert_arrow_time_milliseconds_to_postgres_time,
     BufMut::put_i64
 );
 
 #[derive(Debug)]
 pub struct Time32SecondEncoder<'a> {
     arr: &'a arrow_array::Time32SecondArray,
+    field: String,
 }
-impl_encode!(
+impl_encode_fallible!(
     Time32SecondEncoder,
     type_size_fixed(PostgresType::Time.size()),
-    |v| (v as i64) * NUM_US_PER_S,
+    convert_arrow_time_seconds_to_postgres_time,
     BufMut::put_i64
 );
-
-#[inline]
-fn write_duration(buf: &mut BytesMut, duration_us: i64) {
-    buf.put_i64(duration_us);
-    buf.put_i32(0); // days
-    buf.put_i32(0); // months
-}
 
 #[derive(Debug)]
 pub struct Time64MicrosecondEncoder<'a> {
@@ -369,6 +402,16 @@ pub struct DurationMicrosecondEncoder<'a> {
 }
 impl_encode!(DurationMicrosecondEncoder, 16, identity, write_duration);
 
+const NUM_US_PER_MS: i64 = 1_000;
+const NUM_US_PER_S: i64 = 1_000_000;
+
+#[inline]
+fn write_duration(buf: &mut BytesMut, duration_us: i64) {
+    buf.put_i64(duration_us);
+    buf.put_i32(0); // days
+    buf.put_i32(0); // months
+}
+
 #[derive(Debug)]
 pub struct DurationMillisecondEncoder<'a> {
     arr: &'a arrow_array::DurationMillisecondArray,
@@ -379,7 +422,7 @@ impl_encode_fallible!(
     type_size_fixed(PostgresType::Interval.size()),
     |_: &str, v: i64| v.mul_checked(NUM_US_PER_MS).map_err(|_| {
         ErrorKind::Encode {
-            reason: "Overflow encoding millisecond Duration as microseconds".to_string(),
+            reason: "Overflow encoding millisecond duration as microseconds".to_string(),
         }
     }),
     write_duration
@@ -390,12 +433,13 @@ pub struct DurationSecondEncoder<'a> {
     arr: &'a arrow_array::DurationSecondArray,
     field: String,
 }
+
 impl_encode_fallible!(
     DurationSecondEncoder,
     type_size_fixed(PostgresType::Interval.size()),
     |_: &str, v: i64| v.mul_checked(NUM_US_PER_S).map_err(|_| {
         ErrorKind::Encode {
-            reason: "Overflow encoding second Duration as microseconds".to_string(),
+            reason: "Overflow encoding seconds duration as microseconds".to_string(),
         }
     }),
     write_duration
@@ -832,7 +876,7 @@ impl_encoder_builder_stateless_with_field!(
 pub struct Date32EncoderBuilder {
     field: Arc<Field>,
 }
-impl_encoder_builder_stateless!(
+impl_encoder_builder_stateless_with_field!(
     Date32EncoderBuilder,
     Encoder::Date32,
     Date32Encoder,
@@ -841,22 +885,10 @@ impl_encoder_builder_stateless!(
 );
 
 #[derive(Debug, Clone, PartialEq)]
-pub struct Date64EncoderBuilder {
-    field: Arc<Field>,
-}
-impl_encoder_builder_stateless_with_field!(
-    Date64EncoderBuilder,
-    Encoder::Date64,
-    Date64Encoder,
-    PostgresType::Date,
-    |dt: &DataType| matches!(dt, DataType::Date64)
-);
-
-#[derive(Debug, Clone, PartialEq)]
 pub struct Time32MillisecondEncoderBuilder {
     field: Arc<Field>,
 }
-impl_encoder_builder_stateless!(
+impl_encoder_builder_stateless_with_field!(
     Time32MillisecondEncoderBuilder,
     Encoder::Time32Millisecond,
     Time32MillisecondEncoder,
@@ -868,7 +900,7 @@ impl_encoder_builder_stateless!(
 pub struct Time32SecondEncoderBuilder {
     field: Arc<Field>,
 }
-impl_encoder_builder_stateless!(
+impl_encoder_builder_stateless_with_field!(
     Time32SecondEncoderBuilder,
     Encoder::Time32Second,
     Time32SecondEncoder,
@@ -1147,7 +1179,6 @@ pub enum EncoderBuilder {
     TimestampMillisecond(TimestampMillisecondEncoderBuilder),
     TimestampSecond(TimestampSecondEncoderBuilder),
     Date32(Date32EncoderBuilder),
-    Date64(Date64EncoderBuilder),
     Time32Millisecond(Time32MillisecondEncoderBuilder),
     Time32Second(Time32SecondEncoderBuilder),
     Time64Microsecond(Time64MicrosecondEncoderBuilder),
@@ -1198,7 +1229,6 @@ impl EncoderBuilder {
                 TimeUnit::Second => Self::TimestampSecond(TimestampSecondEncoderBuilder { field }),
             },
             DataType::Date32 => Self::Date32(Date32EncoderBuilder { field }),
-            DataType::Date64 => Self::Date64(Date64EncoderBuilder { field }),
             DataType::Time32(unit) => match unit {
                 TimeUnit::Millisecond => {
                     Self::Time32Millisecond(Time32MillisecondEncoderBuilder { field })

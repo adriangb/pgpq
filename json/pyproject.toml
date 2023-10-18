@@ -22,11 +22,11 @@ requires-python = ">=3.7"
 
 [project.optional-dependencies]
 test = [
-  "pytest >=7.0.0",
-  "maturin >= 0.14.0",
-  "pre-commit>=2.16.0",
-  "pyarrow >= 11.0.0",
-  "polars >= 0.16.1",
+  "pytest>=7.0.0",
+  "maturin>= 1.0.0",
+  "pre-commit>= 2.16.0",
+  "pyarrow>= 11.0.0",
+  "polars>= 0.16.1",
 ]
 bench = []
 
@@ -36,7 +36,7 @@ documentation = "https://github.com/adriangb/pgpq/README.md"
 repository = "https://github.com/adriangb/pgpq"
 
 [build-system]
-requires = ["maturin>=0.14.0,<15"]
+requires = ["maturin>=1.0.0,<2"]
 build-backend = "maturin"
 
 [tool.maturin]

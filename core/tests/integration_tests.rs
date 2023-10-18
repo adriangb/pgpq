@@ -142,6 +142,11 @@ fn test_time_us() {
 }
 
 #[test]
+fn test_date32() {
+    run_test_case("date32")
+}
+
+#[test]
 fn test_duration_us() {
     run_test_case("duration_us")
 }
@@ -269,6 +274,11 @@ fn test_time_ms_nullable() {
 #[test]
 fn test_time_us_nullable() {
     run_test_case("time_us_nullable")
+}
+
+#[test]
+fn test_date32_nullable() {
+    run_test_case("date32_nullable")
 }
 
 #[test]
@@ -402,6 +412,11 @@ fn test_list_time_us() {
 }
 
 #[test]
+fn test_list_date32() {
+    run_test_case("list_date32")
+}
+
+#[test]
 fn test_list_duration_us() {
     run_test_case("list_duration_us")
 }
@@ -529,6 +544,11 @@ fn test_list_time_ms_nullable() {
 #[test]
 fn test_list_time_us_nullable() {
     run_test_case("list_time_us_nullable")
+}
+
+#[test]
+fn test_list_date32_nullable() {
+    run_test_case("list_date32_nullable")
 }
 
 #[test]
@@ -662,6 +682,11 @@ fn test_list_nullable_time_us() {
 }
 
 #[test]
+fn test_list_nullable_date32() {
+    run_test_case("list_nullable_date32")
+}
+
+#[test]
 fn test_list_nullable_duration_us() {
     run_test_case("list_nullable_duration_us")
 }
@@ -789,6 +814,11 @@ fn test_list_nullable_time_ms_nullable() {
 #[test]
 fn test_list_nullable_time_us_nullable() {
     run_test_case("list_nullable_time_us_nullable")
+}
+
+#[test]
+fn test_list_nullable_date32_nullable() {
+    run_test_case("list_nullable_date32_nullable")
 }
 
 #[test]
