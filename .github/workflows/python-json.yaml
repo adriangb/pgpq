@@ -308,12 +308,7 @@ jobs:
     needs:
       - lint
       - macos
-      - windows
       - linux
-      - linux-cross
-      - musllinux
-      - musllinux-cross
-      - pypy
     runs-on: ubuntu-latest
 
     steps:
