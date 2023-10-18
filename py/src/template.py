@@ -28,7 +28,6 @@ field_only = [
     "TimestampMillisecondEncoderBuilder",
     "TimestampSecondEncoderBuilder",
     "Date32EncoderBuilder",
-    "Date64EncoderBuilder",
     "Time32MillisecondEncoderBuilder",
     "Time32SecondEncoderBuilder",
     "Time64MicrosecondEncoderBuilder",

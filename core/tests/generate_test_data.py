@@ -26,6 +26,8 @@ time_s = 24 * 60 * 60 - 1
 time_ms = floor(time_s * 1e3)
 time_us = floor(time_s * 1e6)
 
+date32 = 2**16 - 1
+
 duration_s = 60
 duration_ms = floor(duration_s * 1e3)
 duration_us = floor(duration_s * 1e6)
@@ -44,10 +46,6 @@ primitive_cols: list[tuple[pa.field, list[Any]]] = [
     (pa.field("int16", pa.int16()), [-1, 0, 1]),
     (pa.field("int32", pa.int32()), [-1, 0, 1]),
     (pa.field("int64", pa.int64()), [-1, 0, 1]),
-    # (
-    #     pa.field("float16", pa.float16()),
-    #     [np.float16(v) for v in [-1, 0, 1, float("inf")]],
-    # ),
     (pa.field("float32", pa.float32()), [-1, 0, 1, float("inf")]),
     (pa.field("float64", pa.float64()), [-1, 0, 1, float("inf")]),
     (pa.field("timestamp_us_notz", pa.timestamp("us", None)), [0, 1, timestamp_us]),
@@ -68,6 +66,7 @@ primitive_cols: list[tuple[pa.field, list[Any]]] = [
     (pa.field("time_s", pa.time32("s")), [0, 1, time_s]),
     (pa.field("time_ms", pa.time32("ms")), [0, 1, time_ms]),
     (pa.field("time_us", pa.time64("us")), [0, 1, time_us]),
+    (pa.field("date32", pa.date32()), [0, -date32, date32]),
     (pa.field("duration_us", pa.duration("us")), [0, 1, duration_us]),
     (pa.field("duration_ms", pa.duration("ms")), [0, 1, duration_ms]),
     (pa.field("duration_s", pa.duration("s")), [0, 1, duration_s]),
