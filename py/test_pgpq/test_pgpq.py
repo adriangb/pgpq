@@ -48,9 +48,9 @@ def copy_buffer_and_get_rows(
     return rows
 
 
-TESTCASES = [
-    f.strip(".bin").split("/")[-1] for f in sorted(glob("core/tests/snapshots/*"))
-]
+TESTCASES = sorted(
+    [f.strip(".bin").split("/")[-1] for f in sorted(glob("core/tests/snapshots/*"))]
+)
 
 
 @pytest.mark.parametrize(

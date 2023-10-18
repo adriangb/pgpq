@@ -275,14 +275,6 @@ impl_passthrough_encoder_builder!(Date32EncoderBuilder);
 
 #[pyclass(module = "pgpq._pgpq")]
 #[derive(Debug, Clone)]
-pub struct Date64EncoderBuilder {
-    field: Py<PyAny>,
-    inner: pgpq::encoders::EncoderBuilder,
-}
-impl_passthrough_encoder_builder!(Date64EncoderBuilder);
-
-#[pyclass(module = "pgpq._pgpq")]
-#[derive(Debug, Clone)]
 pub struct Time32MillisecondEncoderBuilder {
     field: Py<PyAny>,
     inner: pgpq::encoders::EncoderBuilder,
@@ -491,7 +483,6 @@ pub enum EncoderBuilder {
     TimestampMillisecond(TimestampMillisecondEncoderBuilder),
     TimestampSecond(TimestampSecondEncoderBuilder),
     Date32(Date32EncoderBuilder),
-    Date64(Date64EncoderBuilder),
     Time32Millisecond(Time32MillisecondEncoderBuilder),
     Time32Second(Time32SecondEncoderBuilder),
     Time64Microsecond(Time64MicrosecondEncoderBuilder),
@@ -524,7 +515,6 @@ impl crate::utils::PythonRepr for EncoderBuilder {
             EncoderBuilder::TimestampMillisecond(inner) => inner.py_repr(py),
             EncoderBuilder::TimestampSecond(inner) => inner.py_repr(py),
             EncoderBuilder::Date32(inner) => inner.py_repr(py),
-            EncoderBuilder::Date64(inner) => inner.py_repr(py),
             EncoderBuilder::Time32Millisecond(inner) => inner.py_repr(py),
             EncoderBuilder::Time32Second(inner) => inner.py_repr(py),
             EncoderBuilder::Time64Microsecond(inner) => inner.py_repr(py),
@@ -640,12 +630,6 @@ impl EncoderBuilder {
             }
             pgpq::encoders::EncoderBuilder::Date32(_) => {
                 EncoderBuilder::Date32(Date32EncoderBuilder {
-                    field: py_field.to_object(py),
-                    inner,
-                })
-            }
-            pgpq::encoders::EncoderBuilder::Date64(_) => {
-                EncoderBuilder::Date64(Date64EncoderBuilder {
                     field: py_field.to_object(py),
                     inner,
                 })
@@ -837,13 +821,6 @@ impl From<pgpq::encoders::EncoderBuilder> for EncoderBuilder {
                     inner: value,
                 })
             }
-            pgpq::encoders::EncoderBuilder::Date64(inner) => {
-                let field = inner.field();
-                EncoderBuilder::Date64(Date64EncoderBuilder {
-                    field: field.to_pyarrow(py).unwrap(),
-                    inner: value,
-                })
-            }
             pgpq::encoders::EncoderBuilder::Time32Millisecond(inner) => {
                 let field = inner.field();
                 EncoderBuilder::Time32Millisecond(Time32MillisecondEncoderBuilder {
@@ -954,7 +931,6 @@ impl From<EncoderBuilder> for pgpq::encoders::EncoderBuilder {
             EncoderBuilder::TimestampMillisecond(inner) => inner.inner,
             EncoderBuilder::TimestampSecond(inner) => inner.inner,
             EncoderBuilder::Date32(inner) => inner.inner,
-            EncoderBuilder::Date64(inner) => inner.inner,
             EncoderBuilder::Time32Millisecond(inner) => inner.inner,
             EncoderBuilder::Time32Second(inner) => inner.inner,
             EncoderBuilder::Time64Microsecond(inner) => inner.inner,
@@ -989,7 +965,6 @@ impl IntoPy<PyObject> for EncoderBuilder {
             EncoderBuilder::TimestampMillisecond(inner) => inner.into_py(py),
             EncoderBuilder::TimestampSecond(inner) => inner.into_py(py),
             EncoderBuilder::Date32(inner) => inner.into_py(py),
-            EncoderBuilder::Date64(inner) => inner.into_py(py),
             EncoderBuilder::Time32Millisecond(inner) => inner.into_py(py),
             EncoderBuilder::Time32Second(inner) => inner.into_py(py),
             EncoderBuilder::Time64Microsecond(inner) => inner.into_py(py),

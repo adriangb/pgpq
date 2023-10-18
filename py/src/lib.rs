@@ -107,7 +107,6 @@ fn _pgpq(_py: Python, m: &PyModule) -> PyResult<()> {
     m.add_class::<crate::encoders::TimestampMillisecondEncoderBuilder>()?;
     m.add_class::<crate::encoders::TimestampSecondEncoderBuilder>()?;
     m.add_class::<crate::encoders::Date32EncoderBuilder>()?;
-    m.add_class::<crate::encoders::Date64EncoderBuilder>()?;
     m.add_class::<crate::encoders::Time32MillisecondEncoderBuilder>()?;
     m.add_class::<crate::encoders::Time32SecondEncoderBuilder>()?;
     m.add_class::<crate::encoders::Time64MicrosecondEncoderBuilder>()?;
