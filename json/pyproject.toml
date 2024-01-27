@@ -44,6 +44,9 @@ sdist-include = ["Cargo.lock"]
 strip = true
 python-source = "python"
 profile = "release"
+module-name = "arrow_json._arrow_json"
+bindings = 'pyo3'
+features = ["pyo3/extension-module"]
 
 [tool.isort]
 profile = "black"

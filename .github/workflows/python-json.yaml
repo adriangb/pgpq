@@ -13,7 +13,7 @@ concurrency:
 env:
   PACKAGE_NAME: arrow-json
   PYTHON_VERSION: "3.7" # to build abi3 wheels
-  MATURIN_VERSION: "v0.14.6"
+  MATURIN_VERSION: "v1.4.0"
   PACKAGE_DIR: json
 
 jobs:

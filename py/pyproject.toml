@@ -26,7 +26,7 @@ requires-python = ">=3.7"
 [project.optional-dependencies]
 test = [
   "pytest >=7.0.0",
-  "maturin >= 0.14.0",
+  "maturin >= 1.4.0",
   "pre-commit>=2.16.0",
   "testing.postgresql >= 1.3.0",
   "psycopg[binary] >= 3.1.8",
@@ -43,7 +43,7 @@ documentation = "https://github.com/adriangb/pgpq/README.md"
 repository = "https://github.com/adriangb/pgpq"
 
 [build-system]
-requires = ["maturin>=0.14.0,<15"]
+requires = ["maturin>=1,<2"]
 build-backend = "maturin"
 
 [tool.maturin]
@@ -51,6 +51,9 @@ sdist-include = ["Cargo.lock"]
 strip = true
 python-source = "python"
 profile = "release"
+module-name = "pgpq._pgpq"
+bindings = 'pyo3'
+features = ["pyo3/extension-module"]
 
 [tool.isort]
 profile = "black"
