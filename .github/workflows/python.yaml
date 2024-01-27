@@ -13,7 +13,7 @@ concurrency:
 env:
   PACKAGE_NAME: pgpq
   PYTHON_VERSION: "3.7" # to build abi3 wheels
-  MATURIN_VERSION: "v0.14.6"
+  MATURIN_VERSION: "v1.4.0"
   PACKAGE_DIR: py
 
 jobs:
@@ -45,8 +45,9 @@ jobs:
       - name: Build wheels - universal2
         uses: messense/maturin-action@v1
         with:
-          args: -m ${{ env.PACKAGE_DIR }}/Cargo.toml --release --universal2 --out dist
+          args: -m ${{ env.PACKAGE_DIR }}/Cargo.toml --release --out dist
           maturin-version: ${{ env.MATURIN_VERSION }}
+          target: universal2-apple-darwin
       - name: Install built wheel - universal2
         run: |
           python -m pip install "$(find dist -name '*_universal2.whl' -type f | head -n 1)" --force-reinstall --no-dependencies

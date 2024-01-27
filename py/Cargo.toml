@@ -6,7 +6,7 @@ readme = "README.md"
 license = "MIT"
 
 [lib]
-name = "pgpq"
+name = "_pgpq"
 crate-type = ["cdylib"]
 
 [dependencies]
