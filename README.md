@@ -20,7 +20,7 @@ Exporting to CSV has the same pitfalls as loading from CSV, and sometimes even c
 Since Postgres does not natively support loading from Parquet this library provides an io-free encoder that can convert from Parquet to Postgres' binary format on the fly.
 It accepts Arrow data as an input which means great support for reading Parquet files from all sorts of sources (disk, HTTP, object stores, etc.) in an efficient and performant manner.
 
-Benchmarks using the NYC Yellow Cab dataset show that it takes `pgpq` [less than 1 second to encode 1M rows](py/benches/encode.ipynb) and that the [cost of encoding + binary copy is lower than the cost of a native CSV copy](py/benches/encode.ipynb) (which ignores the cost of a CSV export if the data was a Parquet file in the first place).
+Benchmarks using the NYC Yellow Cab dataset show that it takes `pgpq` [less than 1 second to encode 1M rows](py/benches/encode.ipynb) and that the [cost of encoding + binary copy is lower than the cost of a native CSV copy](py/benches/copy.ipynb) (which ignores the cost of a CSV export if the data was a Parquet file in the first place).
 
 ## Python distribution
 
