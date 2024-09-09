@@ -1,4 +1,4 @@
-PHONY: init build test
+PHONY: init build-develop build-cli test
 
 .init:
 	rm -rf .venv
@@ -15,6 +15,7 @@ init: .clean .init
 build-develop: .init
 	. ./.venv/bin/activate && maturin develop -m py/Cargo.toml
 	. ./.venv/bin/activate && maturin develop -m json/Cargo.toml
+	cargo build --package pgpq-cli
 
 test: build-develop
 	cargo test
@@ -22,3 +23,9 @@ test: build-develop
 
 lint: build-develop
 	./.venv/bin/pre-commit run --all-files
+
+build-cli:
+	cargo build --package pgpq-cli --release
+
+install-cli: build-cli
+	cp target/release/pgpq /usr/local/bin/
