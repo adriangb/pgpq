@@ -12,6 +12,7 @@
 !/.github
 !/LICENSE.txt
 !/.gitattributes
+!/cli
 
 __pycache__
 *.so
