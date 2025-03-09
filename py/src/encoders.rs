@@ -363,6 +363,14 @@ pub struct LargeBinaryEncoderBuilder {
 }
 impl_passthrough_encoder_builder!(LargeBinaryEncoderBuilder);
 
+#[pyclass(module = "pgpq._pgpq")]
+#[derive(Debug, Clone)]
+pub struct StructEncoderBuilder {
+    field: Py<PyAny>,
+    inner: pgpq::encoders::EncoderBuilder,
+}
+impl_passthrough_encoder_builder!(StructEncoderBuilder);
+
 macro_rules! impl_list {
     ($struct:ident, $encoder_builder_enum_variant:path, $encoder_builder_new_with_inner:expr) => {
         #[pymethods]
@@ -495,6 +503,7 @@ pub enum EncoderBuilder {
     LargeBinary(LargeBinaryEncoderBuilder),
     List(ListEncoderBuilder),
     LargeList(LargeListEncoderBuilder),
+    Struct(StructEncoderBuilder),
 }
 
 impl crate::utils::PythonRepr for EncoderBuilder {
@@ -527,6 +536,7 @@ impl crate::utils::PythonRepr for EncoderBuilder {
             EncoderBuilder::LargeBinary(inner) => inner.py_repr(py),
             EncoderBuilder::List(inner) => inner.py_repr(py),
             EncoderBuilder::LargeList(inner) => inner.py_repr(py),
+            EncoderBuilder::Struct(inner) => inner.py_repr(py),
         }
     }
 }
@@ -702,6 +712,12 @@ impl EncoderBuilder {
             }),
             pgpq::encoders::EncoderBuilder::LargeList(_) => {
                 EncoderBuilder::LargeList(LargeListEncoderBuilder {
+                    field: py_field.to_object(py),
+                    inner,
+                })
+            }
+            pgpq::encoders::EncoderBuilder::Struct(_) => {
+                EncoderBuilder::Struct(StructEncoderBuilder {
                     field: py_field.to_object(py),
                     inner,
                 })
@@ -909,6 +925,13 @@ impl From<pgpq::encoders::EncoderBuilder> for EncoderBuilder {
                     inner: value,
                 })
             }
+            pgpq::encoders::EncoderBuilder::Struct(inner) => {
+                let field = inner.field();
+                EncoderBuilder::Struct(StructEncoderBuilder {
+                    field: field.to_pyarrow(py).unwrap(),
+                    inner: value,
+                })
+            }
         })
     }
 }
@@ -943,6 +966,7 @@ impl From<EncoderBuilder> for pgpq::encoders::EncoderBuilder {
             EncoderBuilder::LargeBinary(inner) => inner.inner,
             EncoderBuilder::List(inner) => inner.inner,
             EncoderBuilder::LargeList(inner) => inner.inner,
+            EncoderBuilder::Struct(inner) => inner.inner,
         }
     }
 }
@@ -977,6 +1001,7 @@ impl IntoPy<PyObject> for EncoderBuilder {
             EncoderBuilder::LargeBinary(inner) => inner.into_py(py),
             EncoderBuilder::List(inner) => inner.into_py(py),
             EncoderBuilder::LargeList(inner) => inner.into_py(py),
+            EncoderBuilder::Struct(inner) => inner.into_py(py),
         }
     }
 }

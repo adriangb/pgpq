@@ -121,6 +121,16 @@ fixed_size_nullable_list_cols = [
     for f, data in [*primitive_cols, *nullable_primitives]
 ]
 
+struct_with_two_primitive_cols = [
+    (
+        pa.field(
+            "struct_with_two_primitive_cols",
+            pa.struct([pa.field("a", pa.int32()), pa.field("b", pa.int32())]),
+        ),
+        [{"a": 1, "b": 2}],
+    )
+]
+
 all_cols = [
     *primitive_cols,
     *nullable_primitives,

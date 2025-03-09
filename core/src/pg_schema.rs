@@ -22,6 +22,7 @@ pub enum PostgresType {
     Timestamp,
     Interval,
     List(Box<Column>),
+    UserDefined,
 }
 
 impl PostgresType {
@@ -43,6 +44,7 @@ impl PostgresType {
             PostgresType::Timestamp => TypeSize::Fixed(8),
             PostgresType::Interval => TypeSize::Fixed(16),
             PostgresType::List(_) => TypeSize::Variable,
+            PostgresType::UserDefined => TypeSize::Variable,
         }
     }
     pub fn oid(&self) -> Option<u32> {
@@ -63,6 +65,7 @@ impl PostgresType {
             PostgresType::Timestamp => Some(1114),
             PostgresType::Interval => Some(1186),
             PostgresType::List(_) => None,
+            PostgresType::UserDefined => Some(16385), // arbitrary dummy oid
         }
     }
     pub fn name(&self) -> Option<String> {
@@ -87,6 +90,7 @@ impl PostgresType {
                 let inner_tp = inner.data_type.name().unwrap();
                 format!("{inner_tp}[]")
             }
+            PostgresType::UserDefined => "struct_t".to_string(),
         };
         Some(v)
     }

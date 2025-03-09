@@ -124,9 +124,16 @@ impl_simple!(Interval, pgpq::pg_schema::PostgresType::Interval);
 
 #[pyclass(module = "pgpq._pgpq")]
 #[derive(Debug, Clone, PartialEq)]
+pub struct UserDefined;
+impl_simple!(UserDefined, pgpq::pg_schema::PostgresType::UserDefined);
+
+#[pyclass(module = "pgpq._pgpq")]
+#[derive(Debug, Clone, PartialEq)]
 pub struct List {
     inner: Box<Column>,
 }
+
+
 
 #[pymethods]
 impl List {
@@ -186,6 +193,7 @@ pub enum PostgresType {
     Timestamp(Timestamp),
     Interval(Interval),
     List(List),
+    UserDefined(UserDefined),
 }
 
 impl From<PostgresType> for pgpq::pg_schema::PostgresType {
@@ -207,6 +215,7 @@ impl From<PostgresType> for pgpq::pg_schema::PostgresType {
             PostgresType::Timestamp(inner) => inner.into(),
             PostgresType::Interval(inner) => inner.into(),
             PostgresType::List(inner) => inner.into(),
+            PostgresType::UserDefined(inner) => inner.into(),
         }
     }
 }
@@ -232,6 +241,7 @@ impl From<pgpq::pg_schema::PostgresType> for PostgresType {
             pgpq::pg_schema::PostgresType::List(inner) => {
                 PostgresType::List(List::new((*inner).into()))
             }
+            pgpq::pg_schema::PostgresType::UserDefined => PostgresType::UserDefined(UserDefined),
         }
     }
 }
@@ -255,6 +265,7 @@ impl PythonRepr for PostgresType {
             PostgresType::Timestamp(inner) => inner.py_repr(py),
             PostgresType::Interval(inner) => inner.py_repr(py),
             PostgresType::List(inner) => inner.py_repr(py),
+            PostgresType::UserDefined(inner) => inner.py_repr(py),
         }
     }
 }
@@ -295,6 +306,7 @@ impl Column {
             PostgresType::Timestamp(inner) => inner.clone().into_py(py),
             PostgresType::Interval(inner) => inner.clone().into_py(py),
             PostgresType::List(inner) => inner.clone().into_py(py),
+            PostgresType::UserDefined(inner) => inner.clone().into_py(py),
         }
     }
     fn __repr__(&self, py: Python) -> String {

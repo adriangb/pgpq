@@ -57,6 +57,7 @@ pub enum Encoder<'a> {
     LargeString(LargeStringEncoder<'a>),
     List(ListEncoder<'a>),
     LargeList(LargeListEncoder<'a>),
+    Struct(StructEncoder<'a>),
 }
 
 #[inline]
@@ -576,6 +577,46 @@ impl<'a, T: OffsetSizeTrait> Encode for GenericListEncoder<'a, T> {
 
 type ListEncoder<'a> = GenericListEncoder<'a, i32>;
 type LargeListEncoder<'a> = GenericListEncoder<'a, i64>;
+
+#[derive(Debug)]
+pub struct StructEncoder<'a> {
+    arr: &'a arrow_array::StructArray,
+    field: String,
+    field_encoder_builders: Vec<Arc<EncoderBuilder>>,
+}
+
+impl<'a> Encode for StructEncoder<'a> {
+    fn encode(&self, row: usize, buf: &mut BytesMut) -> Result<(), ErrorKind> {
+        if self.arr.is_null(row) {
+            buf.put_i32(-1);
+        } else {
+            let base_idx = buf.len();
+            buf.put_i32(0); // Placeholder for the total size
+
+            // Put the number of fields
+            buf.put_i32(self.field_encoder_builders.len() as i32);
+
+            for encoder in &self.field_encoder_builders {
+                encoder.try_new(&self.arr).unwrap().encode(row, buf)?;
+            }
+
+            let total_len = buf.len() - base_idx - 4;
+            match i32::try_from(total_len) {
+                Ok(v) => buf[base_idx..base_idx + 4].copy_from_slice(&v.to_be_bytes()),
+                Err(_) => return Err(ErrorKind::field_too_large(&self.field, total_len)),
+            };
+        }
+        Ok(())
+    }
+
+    fn size_hint(&self) -> Result<usize, ErrorKind> {
+        let mut total = 4 + 4; // 4 bytes for the length, 4 bytes for the number of fields
+        for encoder in &self.field_encoder_builders {
+            total += encoder.try_new(&self.arr)?.size_hint()?;
+        }
+        Ok(total)
+    }
+}
 
 #[enum_dispatch]
 pub trait BuildEncoder: std::fmt::Debug + PartialEq {
@@ -1161,6 +1202,57 @@ impl_list_encoder_builder!(
     LargeListEncoder
 );
 
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct StructEncoderBuilder {
+    field: Arc<Field>,
+    field_encoder_builders: Vec<EncoderBuilder>,
+}
+
+impl StructEncoderBuilder {
+    pub fn new(field: Arc<Field>) -> Result<Self, ErrorKind> {
+        if let DataType::Struct(fields) = field.data_type() {
+            let field_encoder_builders = fields
+                .iter()
+                .map(|f| EncoderBuilder::try_new(f.clone()))
+                .collect::<Result<Vec<_>, _>>()?;
+            Ok(Self {
+                field,
+                field_encoder_builders,
+            })
+        } else {
+            Err(ErrorKind::FieldTypeNotSupported {
+                encoder: "StructEncoder".to_string(),
+                tp: field.data_type().clone(),
+                field: field.name().clone(),
+            })
+        }
+    }
+}
+
+impl BuildEncoder for StructEncoderBuilder {
+    fn try_new<'a, 'b: 'a>(&'b self, arr: &'a dyn Array) -> Result<Encoder<'a>, ErrorKind> {
+        let field = self.field.name();
+        let arr = downcast_checked::<arrow_array::StructArray>(arr, field)?;
+        Ok(Encoder::Struct(StructEncoder {
+            arr,
+            field: field.to_string(),
+            field_encoder_builders: self.field_encoder_builders.iter().map(|f| f.clone().into()).collect(),
+        }))
+    }
+
+fn schema(&self) -> Column {
+    Column {
+        data_type: PostgresType::UserDefined,
+        nullable: self.field.is_nullable(),
+    }
+}
+
+    fn field(&self) -> Arc<Field> {
+        self.field.clone()
+    }
+}
+
 #[enum_dispatch(BuildEncoder)]
 #[derive(Debug, Clone, PartialEq)]
 pub enum EncoderBuilder {
@@ -1191,6 +1283,7 @@ pub enum EncoderBuilder {
     LargeBinary(LargeBinaryEncoderBuilder),
     List(ListEncoderBuilder),
     LargeList(LargeListEncoderBuilder),
+    Struct(StructEncoderBuilder),
 }
 
 impl EncoderBuilder {
@@ -1311,6 +1404,7 @@ impl EncoderBuilder {
                     inner_encoder_builder: Arc::new(inner),
                 })
             }
+            DataType::Struct(_) => Self::Struct(StructEncoderBuilder::new(field)?),
             _ => {
                 return Err(ErrorKind::type_unsupported(
                     field.name(),
