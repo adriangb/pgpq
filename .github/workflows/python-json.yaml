@@ -12,7 +12,7 @@ concurrency:
 
 env:
   PACKAGE_NAME: arrow-json
-  PYTHON_VERSION: "3.8" # to build abi3 wheels
+  PYTHON_VERSION: "3.11" # to build abi3 wheels
   MATURIN_VERSION: "v1.4.0"
   PACKAGE_DIR: json
 
@@ -243,7 +243,7 @@ jobs:
     runs-on: ${{ matrix.os }}
     strategy:
       matrix:
-        os: [ubuntu-latest, macos-latest]
+        os: [ubuntu-latest, macos-13, macos-latest]
         target: [x86_64, aarch64]
         python-version:
           - '3.9'
@@ -252,8 +252,12 @@ jobs:
           - '3.12'
           - '3.13'
         exclude:
-          - os: macos-latest
+          - os: macos-13
             target: aarch64
+          - os: macos-latest
+            python-version: '3.9'
+          - os: macos-latest
+            python-version: '3.10'
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v4
