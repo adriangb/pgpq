@@ -12,7 +12,7 @@ concurrency:
 
 env:
   PACKAGE_NAME: pgpq
-  PYTHON_VERSION: "3.7" # to build abi3 wheels
+  PYTHON_VERSION: "3.8" # to build abi3 wheels
   MATURIN_VERSION: "v1.4.0"
   PACKAGE_DIR: py
 
@@ -246,9 +246,11 @@ jobs:
         os: [ubuntu-latest, macos-latest]
         target: [x86_64, aarch64]
         python-version:
-          - '3.7'
-          - '3.8'
           - '3.9'
+          - '3.10'
+          - '3.11'
+          - '3.12'
+          - '3.13'
         exclude:
           - os: macos-latest
             target: aarch64
@@ -280,7 +282,7 @@ jobs:
     strategy:
       matrix:
         # Lint on earliest and latest
-        python: ["3.7", "3.x"]
+        python: ["3.8", "3.x"]
     steps:
       - uses: actions/checkout@v3
       - name: Set up Python
