@@ -129,7 +129,7 @@ impl ArrowToPostgresBinaryEncoder {
 
         let mut required_size: usize = 0;
         for encoder in &encoders {
-            required_size += encoder.size_hint()?
+            required_size += encoder.byte_size_hint()?
         }
         buf.reserve(required_size);
 

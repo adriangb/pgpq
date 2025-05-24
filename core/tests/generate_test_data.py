@@ -125,9 +125,19 @@ struct_with_two_primitive_cols = [
     (
         pa.field(
             "struct_with_two_primitive_cols",
-            pa.struct([pa.field("a", pa.int32()), pa.field("b", pa.int32())]),
+            pa.struct([pa.field("a", pa.int32()), pa.field("b", pa.float32())]),
         ),
         [{"a": 1, "b": 2}],
+    )
+]
+
+nested_struct = [
+    (
+        pa.field(
+            "nested_struct",
+            pa.struct([pa.field("a", pa.int32()), pa.field("s", pa.struct([pa.field("b", pa.float32())]))]),
+        ),
+        [{"a": 1, "s": {"b": 2}}],
     )
 ]
 
@@ -136,6 +146,8 @@ all_cols = [
     *nullable_primitives,
     *list_cols,
     *nullable_list_cols,
+    *struct_with_two_primitive_cols,
+    *nested_struct,
 ]
 
 tables = {f.name: pa.table([data], schema=pa.schema([f])) for f, data in all_cols}

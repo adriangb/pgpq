@@ -855,3 +855,13 @@ fn test_list_nullable_string_nullable() {
 fn test_list_nullable_large_string_nullable() {
     run_test_case("list_nullable_large_string_nullable")
 }
+
+#[test]
+fn test_struct_with_two_primitive_cols() {
+    run_test_case("struct_with_two_primitive_cols")
+}
+
+#[test]
+fn test_nested_struct() {
+    run_test_case("nested_struct")
+}

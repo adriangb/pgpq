@@ -24,7 +24,7 @@ fn downcast_checked<'a, T: 'static>(arr: &'a dyn Array, field: &str) -> Result<&
 #[enum_dispatch]
 pub trait Encode: std::fmt::Debug {
     fn encode(&self, row: usize, buf: &mut BytesMut) -> Result<(), ErrorKind>;
-    fn size_hint(&self) -> Result<usize, ErrorKind>;
+    fn byte_size_hint(&self) -> Result<usize, ErrorKind>;
 }
 
 #[enum_dispatch(Encode)]
@@ -82,7 +82,7 @@ macro_rules! impl_encode {
                 }
                 Ok(())
             }
-            fn size_hint(&self) -> Result<usize, ErrorKind> {
+            fn byte_size_hint(&self) -> Result<usize, ErrorKind> {
                 let null_count = self.arr.null_count();
                 let item_count = self.arr.len();
                 Ok((item_count - null_count) * $field_size + item_count)
@@ -105,7 +105,7 @@ macro_rules! impl_encode_fallible {
                 }
                 Ok(())
             }
-            fn size_hint(&self) -> Result<usize, ErrorKind> {
+            fn byte_size_hint(&self) -> Result<usize, ErrorKind> {
                 let null_count = self.arr.null_count();
                 let item_count = self.arr.len();
                 Ok((item_count - null_count) * $field_size + item_count)
@@ -467,7 +467,7 @@ impl<'a, T: OffsetSizeTrait> Encode for GenericBinaryEncoder<'a, T> {
         }
         Ok(())
     }
-    fn size_hint(&self) -> Result<usize, ErrorKind> {
+    fn byte_size_hint(&self) -> Result<usize, ErrorKind> {
         let mut total = 0;
         for row in 0..self.arr.len() {
             total += self.arr.value(row).len();
@@ -507,7 +507,7 @@ impl<'a, T: OffsetSizeTrait> Encode for GenericStringEncoder<'a, T> {
         }
         Ok(())
     }
-    fn size_hint(&self) -> Result<usize, ErrorKind> {
+    fn byte_size_hint(&self) -> Result<usize, ErrorKind> {
         let mut total = 0;
         for row in 0..self.arr.len() {
             total += self.arr.value(row).len();
@@ -561,13 +561,13 @@ impl<'a, T: OffsetSizeTrait> Encode for GenericListEncoder<'a, T> {
         }
         Ok(())
     }
-    fn size_hint(&self) -> Result<usize, ErrorKind> {
+    fn byte_size_hint(&self) -> Result<usize, ErrorKind> {
         let mut total = 0;
         for row in 0..self.arr.len() {
             if !self.arr.is_null(row) {
                 let val = self.arr.value(row);
                 let inner_encoder = self.inner_encoder_builder.try_new(&val)?;
-                let size = inner_encoder.size_hint()?;
+                let size = inner_encoder.byte_size_hint()?;
                 total += size;
             }
         }
@@ -587,32 +587,30 @@ pub struct StructEncoder<'a> {
 
 impl<'a> Encode for StructEncoder<'a> {
     fn encode(&self, row: usize, buf: &mut BytesMut) -> Result<(), ErrorKind> {
-        if self.arr.is_null(row) {
-            buf.put_i32(-1);
-        } else {
-            let base_idx = buf.len();
-            buf.put_i32(0); // Placeholder for the total size
+        let base_idx = buf.len();
+        buf.put_i32(0); // Placeholder for the total size
 
-            // Put the number of fields
-            buf.put_i32(self.field_encoder_builders.len() as i32);
+        // Put the number of fields
+        buf.put_i32(self.field_encoder_builders.len() as i32);
 
-            for encoder in &self.field_encoder_builders {
-                encoder.try_new(&self.arr).unwrap().encode(row, buf)?;
-            }
-
-            let total_len = buf.len() - base_idx - 4;
-            match i32::try_from(total_len) {
-                Ok(v) => buf[base_idx..base_idx + 4].copy_from_slice(&v.to_be_bytes()),
-                Err(_) => return Err(ErrorKind::field_too_large(&self.field, total_len)),
-            };
+        for (field, encoder) in self.arr.columns().iter().zip(&self.field_encoder_builders) {
+            let oid = encoder.schema().data_type.oid().unwrap();
+            buf.put_u32(oid);
+            encoder.try_new(field).unwrap().encode(row, buf)?;
         }
+
+        let total_len = buf.len() - base_idx - 4;
+        match i32::try_from(total_len) {
+            Ok(v) => buf[base_idx..base_idx + 4].copy_from_slice(&v.to_be_bytes()),
+            Err(_) => return Err(ErrorKind::field_too_large(&self.field, total_len)),
+        };
         Ok(())
     }
 
-    fn size_hint(&self) -> Result<usize, ErrorKind> {
+    fn byte_size_hint(&self) -> Result<usize, ErrorKind> {
         let mut total = 4 + 4; // 4 bytes for the length, 4 bytes for the number of fields
-        for encoder in &self.field_encoder_builders {
-            total += encoder.try_new(&self.arr)?.size_hint()?;
+        for (field, encoder) in self.arr.columns().iter().zip(&self.field_encoder_builders) {
+            total += encoder.try_new(field)?.byte_size_hint()?;
         }
         Ok(total)
     }
@@ -1232,24 +1230,33 @@ impl StructEncoderBuilder {
 
 impl BuildEncoder for StructEncoderBuilder {
     fn try_new<'a, 'b: 'a>(&'b self, arr: &'a dyn Array) -> Result<Encoder<'a>, ErrorKind> {
-        let field = self.field.name();
-        let arr = downcast_checked::<arrow_array::StructArray>(arr, field)?;
+        let arr = downcast_checked(arr, &self.field.name())?;
         Ok(Encoder::Struct(StructEncoder {
             arr,
-            field: field.to_string(),
+            field: self.field.name().to_string(),
             field_encoder_builders: self.field_encoder_builders.iter().map(|f| f.clone().into()).collect(),
         }))
     }
 
-fn schema(&self) -> Column {
-    Column {
-        data_type: PostgresType::UserDefined,
-        nullable: self.field.is_nullable(),
+    fn schema(&self) -> Column {
+        Column {
+            data_type: PostgresType::UserDefined,
+            nullable: self.field.is_nullable(),
+        }
     }
-}
 
     fn field(&self) -> Arc<Field> {
         self.field.clone()
+    }
+}
+
+impl StructEncoderBuilder {
+    pub fn inner_encoder_builder(&self) -> Vec<EncoderBuilder> {
+        // Return a clone of the inner encoder builders
+        self.field_encoder_builders
+            .iter()
+            .cloned()
+            .collect::<Vec<_>>()
     }
 }
 
@@ -1404,7 +1411,16 @@ impl EncoderBuilder {
                     inner_encoder_builder: Arc::new(inner),
                 })
             }
-            DataType::Struct(_) => Self::Struct(StructEncoderBuilder::new(field)?),
+            DataType::Struct(inner) => {
+                let field_encoder_builders = inner
+                    .iter()
+                    .map(|f| EncoderBuilder::try_new(f.clone()))
+                    .collect::<Result<Vec<_>, _>>()?;
+                Self::Struct(StructEncoderBuilder {
+                    field,
+                    field_encoder_builders,
+                })
+            },
             _ => {
                 return Err(ErrorKind::type_unsupported(
                     field.name(),
