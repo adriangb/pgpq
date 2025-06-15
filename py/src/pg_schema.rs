@@ -131,16 +131,14 @@ pub struct List {
 #[pyclass(module = "pgpq._pgpq")]
 #[derive(Debug, Clone, PartialEq)]
 pub struct UserDefined {
-    pub fields: Vec<Box<Column>>,
+    pub fields: Vec<Column>,
 }
 
 #[pymethods]
 impl UserDefined {
     #[new]
     fn new(fields: Vec<Column>) -> Self {
-        Self {
-            fields: fields.into_iter().map(Box::new).collect(),
-        }
+        Self { fields }
     }
     fn __repr__(&self, py: Python) -> String {
         self.py_repr(py)
@@ -164,11 +162,7 @@ impl UserDefined {
 impl From<UserDefined> for pgpq::pg_schema::PostgresType {
     fn from(val: UserDefined) -> Self {
         pgpq::pg_schema::PostgresType::UserDefined {
-            fields: val
-                .fields
-                .into_iter()
-                .map(|b| Box::new((*b).clone().into()))
-                .collect(),
+            fields: val.fields.into_iter().map(|c| Box::new(c.into())).collect(),
         }
     }
 }
@@ -290,7 +284,7 @@ impl From<pgpq::pg_schema::PostgresType> for PostgresType {
                 PostgresType::UserDefined(UserDefined {
                     fields: fields
                         .into_iter()
-                        .map(|b| Box::new((*b).clone().into()))
+                        .map(|b| (*b).clone().into())
                         .collect(),
                 })
             }
