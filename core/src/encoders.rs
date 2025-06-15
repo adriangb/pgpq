@@ -645,6 +645,7 @@ macro_rules! impl_encoder_builder_stateless {
             }
             fn schema(&self) -> Column {
                 Column {
+                    name: self.field.name().clone(),
                     data_type: $pg_data_type.clone(),
                     nullable: self.field.is_nullable(),
                 }
@@ -681,6 +682,7 @@ macro_rules! impl_encoder_builder_stateless_with_field {
             }
             fn schema(&self) -> Column {
                 Column {
+                    name: self.field.name().clone(),
                     data_type: $pg_data_type.clone(),
                     nullable: self.field.is_nullable(),
                 }
@@ -730,6 +732,7 @@ macro_rules! impl_encoder_builder_stateless_with_variable_output {
             }
             fn schema(&self) -> Column {
                 Column {
+                    name: self.field.name().clone(),
                     data_type: self.output.clone(),
                     nullable: self.field.is_nullable(),
                 }
@@ -1060,6 +1063,7 @@ macro_rules! impl_encoder_builder_with_variable_output {
             }
             fn schema(&self) -> Column {
                 Column {
+                    name: self.field.name().clone(),
                     data_type: self.output.postgres_datatype().clone(),
                     nullable: self.field.is_nullable(),
                 }
@@ -1162,6 +1166,7 @@ macro_rules! impl_list_encoder_builder {
             }
             fn schema(&self) -> Column {
                 Column {
+                    name: self.field.name().clone(),
                     data_type: PostgresType::List(Box::new(
                         self.inner_encoder_builder.schema().clone(),
                     )),
@@ -1240,7 +1245,14 @@ impl BuildEncoder for StructEncoderBuilder {
 
     fn schema(&self) -> Column {
         Column {
-            data_type: PostgresType::UserDefined,
+            name: self.field.name().clone(),
+            data_type: PostgresType::UserDefined {
+                fields: self
+                    .field_encoder_builders
+                    .iter()
+                    .map(|builder| Box::new(builder.schema()))
+                    .collect(),
+            },
             nullable: self.field.is_nullable(),
         }
     }

@@ -1,14 +1,11 @@
-
 [project]
 name = "pgpq"
-repository = "https://github.com/adriangb/pgpq"
+version = "0.9.0"
 description = "Arrow -> PostgreSQL encoder"
 authors = [
     {name = "Adrian Garcia Badaracco"}
 ]
 license = { text = "MIT" }
-homepage = "https://github.com/adriangb/pgpq"
-documentation = "https://github.com/adriangb/pgpq/blob/workspaces/py/README.md"
 classifiers=[
     "Development Status :: 3 - Alpha",
     "Intended Audience :: Developers",
