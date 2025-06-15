@@ -1,6 +1,7 @@
 
 [project]
 name = "arrow-json"
+version = "0.9.0"
 description = "Arrow -> JSON encoder"
 authors = [
     {name = "Adrian Garcia Badaracco"}
@@ -18,7 +19,7 @@ dependencies = [
     "pyarrow>=11",
     "typing-extensions>=3; python_version < '3.8'",
 ]
-requires-python = ">=3.7"
+requires-python = ">=3.9"
 
 [project.optional-dependencies]
 test = [
