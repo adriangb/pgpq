@@ -164,7 +164,11 @@ impl UserDefined {
 impl From<UserDefined> for pgpq::pg_schema::PostgresType {
     fn from(val: UserDefined) -> Self {
         pgpq::pg_schema::PostgresType::UserDefined {
-            fields: val.fields.into_iter().map(|b| Box::new((*b).clone().into())).collect(),
+            fields: val
+                .fields
+                .into_iter()
+                .map(|b| Box::new((*b).clone().into()))
+                .collect(),
         }
     }
 }
@@ -284,7 +288,10 @@ impl From<pgpq::pg_schema::PostgresType> for PostgresType {
             }
             pgpq::pg_schema::PostgresType::UserDefined { fields } => {
                 PostgresType::UserDefined(UserDefined {
-                    fields: fields.into_iter().map(|b| Box::new((*b).clone().into())).collect(),
+                    fields: fields
+                        .into_iter()
+                        .map(|b| Box::new((*b).clone().into()))
+                        .collect(),
                 })
             }
         }
@@ -402,7 +409,7 @@ impl PythonRepr for Column {
 #[derive(Debug, Clone, PartialEq)]
 pub struct PostgresSchema {
     #[pyo3(get)]
-    columns: Vec<Column>
+    columns: Vec<Column>,
 }
 
 #[pymethods]
@@ -434,11 +441,7 @@ impl PostgresSchema {
 impl From<pgpq::pg_schema::PostgresSchema> for PostgresSchema {
     fn from(value: pgpq::pg_schema::PostgresSchema) -> Self {
         Self {
-            columns: value
-                .columns
-                .iter()
-                .map(|col| col.clone().into())
-                .collect(),
+            columns: value.columns.iter().map(|col| col.clone().into()).collect(),
         }
     }
 }
@@ -446,11 +449,7 @@ impl From<pgpq::pg_schema::PostgresSchema> for PostgresSchema {
 impl From<PostgresSchema> for pgpq::pg_schema::PostgresSchema {
     fn from(value: PostgresSchema) -> Self {
         pgpq::pg_schema::PostgresSchema {
-            columns: value
-                .columns
-                .iter()
-                .map(|col| col.clone().into())
-                .collect(),
+            columns: value.columns.iter().map(|col| col.clone().into()).collect(),
         }
     }
 }
