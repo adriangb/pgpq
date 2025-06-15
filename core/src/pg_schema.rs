@@ -22,9 +22,7 @@ pub enum PostgresType {
     Timestamp,
     Interval,
     List(Box<Column>),
-    UserDefined {
-        fields: Vec<Box<Column>>,
-    }, // User-defined type, e.g. a struct
+    UserDefined { fields: Vec<Box<Column>> }, // User-defined type, e.g. a struct
 }
 
 impl PostgresType {
@@ -173,27 +171,32 @@ impl PostgresSchema {
         }
 
         // Generate table DDL
-        let cols = self.columns.iter().map(|col| {
-            let type_str = match &col.data_type {
-                PostgresType::UserDefined { .. } => type_map
-                    .get(&(col as *const _))
-                    .cloned()
-                    .unwrap_or_else(|| "userdefined_t".to_string()),
-                PostgresType::List(inner) => match &inner.data_type {
-                    PostgresType::UserDefined { .. } => format!(
-                        "{}[]",
-                        type_map
-                            .get(&(inner.as_ref() as *const _))
-                            .cloned()
-                            .unwrap_or_else(|| "userdefined_t".to_string())
-                    ),
-                    _ => format!("{}[]", inner.data_type.name().unwrap()),
-                },
-                _ => col.data_type.name().unwrap(),
-            };
-            let nullability = if col.nullable { "" } else { " NOT NULL" };
-            format!("\"{}\" {}{}", col.name, type_str, nullability)
-        }).collect::<Vec<_>>().join(", ");
+        let cols = self
+            .columns
+            .iter()
+            .map(|col| {
+                let type_str = match &col.data_type {
+                    PostgresType::UserDefined { .. } => type_map
+                        .get(&(col as *const _))
+                        .cloned()
+                        .unwrap_or_else(|| "userdefined_t".to_string()),
+                    PostgresType::List(inner) => match &inner.data_type {
+                        PostgresType::UserDefined { .. } => format!(
+                            "{}[]",
+                            type_map
+                                .get(&(inner.as_ref() as *const _))
+                                .cloned()
+                                .unwrap_or_else(|| "userdefined_t".to_string())
+                        ),
+                        _ => format!("{}[]", inner.data_type.name().unwrap()),
+                    },
+                    _ => col.data_type.name().unwrap(),
+                };
+                let nullability = if col.nullable { "" } else { " NOT NULL" };
+                format!("\"{}\" {}{}", col.name, type_str, nullability)
+            })
+            .collect::<Vec<_>>()
+            .join(", ");
 
         ddl.push_str(&format!("CREATE TEMP TABLE \"{}\" ({});", table_name, cols));
         ddl

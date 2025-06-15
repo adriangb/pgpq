@@ -1205,7 +1205,6 @@ impl_list_encoder_builder!(
     LargeListEncoder
 );
 
-
 #[derive(Debug, Clone, PartialEq)]
 pub struct StructEncoderBuilder {
     field: Arc<Field>,
@@ -1239,7 +1238,11 @@ impl BuildEncoder for StructEncoderBuilder {
         Ok(Encoder::Struct(StructEncoder {
             arr,
             field: self.field.name().to_string(),
-            field_encoder_builders: self.field_encoder_builders.iter().map(|f| f.clone().into()).collect(),
+            field_encoder_builders: self
+                .field_encoder_builders
+                .iter()
+                .map(|f| f.clone().into())
+                .collect(),
         }))
     }
 
@@ -1429,7 +1432,7 @@ impl EncoderBuilder {
                     field,
                     field_encoder_builders,
                 })
-            },
+            }
             _ => {
                 return Err(ErrorKind::type_unsupported(
                     field.name(),
