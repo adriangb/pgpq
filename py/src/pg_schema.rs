@@ -282,10 +282,7 @@ impl From<pgpq::pg_schema::PostgresType> for PostgresType {
             }
             pgpq::pg_schema::PostgresType::UserDefined { fields } => {
                 PostgresType::UserDefined(UserDefined {
-                    fields: fields
-                        .into_iter()
-                        .map(|b| (*b).clone().into())
-                        .collect(),
+                    fields: fields.into_iter().map(|b| (*b).clone().into()).collect(),
                 })
             }
         }
