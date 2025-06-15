@@ -452,7 +452,7 @@ pub struct GenericBinaryEncoder<'a, T: OffsetSizeTrait> {
     field: String,
 }
 
-impl<'a, T: OffsetSizeTrait> Encode for GenericBinaryEncoder<'a, T> {
+impl<T: OffsetSizeTrait> Encode for GenericBinaryEncoder<'_, T> {
     fn encode(&self, row: usize, buf: &mut BytesMut) -> Result<(), ErrorKind> {
         if self.arr.is_null(row) {
             buf.put_i32(-1);
@@ -486,7 +486,7 @@ pub struct GenericStringEncoder<'a, T: OffsetSizeTrait> {
     output: StringOutputType,
 }
 
-impl<'a, T: OffsetSizeTrait> Encode for GenericStringEncoder<'a, T> {
+impl<T: OffsetSizeTrait> Encode for GenericStringEncoder<'_, T> {
     fn encode(&self, row: usize, buf: &mut BytesMut) -> Result<(), ErrorKind> {
         if self.arr.is_null(row) {
             buf.put_i32(-1);
@@ -529,7 +529,7 @@ pub struct GenericListEncoder<'a, T: OffsetSizeTrait> {
     inner_encoder_builder: Arc<EncoderBuilder>,
 }
 
-impl<'a, T: OffsetSizeTrait> Encode for GenericListEncoder<'a, T> {
+impl<T: OffsetSizeTrait> Encode for GenericListEncoder<'_, T> {
     fn encode(&self, row: usize, buf: &mut BytesMut) -> Result<(), ErrorKind> {
         if self.arr.is_null(row) {
             buf.put_i32(-1);
@@ -585,7 +585,7 @@ pub struct StructEncoder<'a> {
     field_encoder_builders: Vec<Arc<EncoderBuilder>>,
 }
 
-impl<'a> Encode for StructEncoder<'a> {
+impl Encode for StructEncoder<'_> {
     fn encode(&self, row: usize, buf: &mut BytesMut) -> Result<(), ErrorKind> {
         let base_idx = buf.len();
         buf.put_i32(0); // Placeholder for the total size
@@ -1235,7 +1235,7 @@ impl StructEncoderBuilder {
 
 impl BuildEncoder for StructEncoderBuilder {
     fn try_new<'a, 'b: 'a>(&'b self, arr: &'a dyn Array) -> Result<Encoder<'a>, ErrorKind> {
-        let arr = downcast_checked(arr, &self.field.name())?;
+        let arr = downcast_checked(arr, self.field.name())?;
         Ok(Encoder::Struct(StructEncoder {
             arr,
             field: self.field.name().to_string(),
@@ -1265,10 +1265,7 @@ impl BuildEncoder for StructEncoderBuilder {
 impl StructEncoderBuilder {
     pub fn inner_encoder_builder(&self) -> Vec<EncoderBuilder> {
         // Return a clone of the inner encoder builders
-        self.field_encoder_builders
-            .iter()
-            .cloned()
-            .collect::<Vec<_>>()
+        self.field_encoder_builders.to_vec()
     }
 }
 
