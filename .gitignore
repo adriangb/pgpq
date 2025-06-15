@@ -15,5 +15,6 @@
 
 __pycache__
 *.so
+*.pyd
 .venv
 .DS_Store

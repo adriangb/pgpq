@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import os
+
 from glob import glob
 from pathlib import Path
 from typing import Any, Iterator, List, Tuple
@@ -34,8 +36,7 @@ def dbconn(postgres: Postgresql) -> Iterator[Connection]:
 def copy_buffer_and_get_rows(
     schema: PostgresSchema, buffer: bytes, dbconn: Connection
 ) -> List[Tuple[Any, ...]]:
-    cols = [f'"{col_name}" {col.data_type.ddl()}' for col_name, col in schema.columns]
-    ddl = f"CREATE TEMP TABLE data ({','.join(cols)})"
+    ddl = schema.ddl("data")
     try:
         with dbconn.cursor() as cursor:
             cursor.execute(ddl)  # type: ignore
@@ -49,7 +50,7 @@ def copy_buffer_and_get_rows(
 
 
 TESTCASES = sorted(
-    [f.strip(".bin").split("/")[-1] for f in sorted(glob("core/tests/snapshots/*"))]
+    [os.path.splitext(os.path.basename(f))[0] for f in sorted(glob("core/tests/snapshots/*"))]
 )
 
 
@@ -70,9 +71,49 @@ def test_encode_record_batch(dbconn: Connection, testcase: str) -> None:
     pg_schema = encoder.schema()
 
     rows = copy_buffer_and_get_rows(pg_schema, buffer, dbconn)
+    print(arrow_table.schema.names)
+    print(rows)
     col = arrow_table.schema.names[0]
+    import ast
+
+    # This is a very basic parser for Postgres composite types (structs)
+    # It handles our tests but might not be a full parser.
+    # In production, you might want to use a more robust parser.
+    def parse_row_value(value, field):
+        # Recursively parse Postgres composite types (structs), including nested ones
+        if pa.types.is_struct(field.type):
+            if value is None:
+                return None
+            # Remove outer parentheses
+            s = value[1:-1]
+            # Parse fields, handling nested parentheses
+            fields = []
+            depth = 0
+            start = 0
+            for i, c in enumerate(s):
+                if c == '(':
+                    depth += 1
+                elif c == ')':
+                    depth -= 1
+                elif c == ',' and depth == 0:
+                    fields.append(s[start:i])
+                    start = i + 1
+            fields.append(s[start:])  # last field
+            struct_fields = field.type
+            result = {}
+            for f, v in zip(struct_fields, fields):
+                v = v if v != '' else None
+                if pa.types.is_struct(f.type):
+                    result[f.name] = parse_row_value(v, f)
+                else:
+                    result[f.name] = ast.literal_eval(v) if v is not None else None
+            return result
+        return value
+
+    col = arrow_table.schema.names[0]
+    field = arrow_table.schema.field(col)
     new_table = pa.Table.from_pylist(
-        [{col: row[0]} for row in rows], schema=arrow_table.schema
+        [{col: parse_row_value(row[0], field)} for row in rows], schema=arrow_table.schema
     )
 
     assert arrow_table == new_table
@@ -109,32 +150,30 @@ def test_schema(dbconn: Connection) -> None:
 
     assert schema == pgpq.schema.PostgresSchema(
         [
-            ("int", pgpq.schema.Column(True, pgpq.schema.Int4())),
-            ("nullable bool", pgpq.schema.Column(True, pgpq.schema.Bool())),
-            (
-                "a nullable list of strings",
+            pgpq.schema.Column("int", True, pgpq.schema.Int4()),
+            pgpq.schema.Column("nullable bool", True, pgpq.schema.Bool()),
                 pgpq.schema.Column(
+                "a nullable list of strings",
                     True,
                     pgpq.schema.List(
                         pgpq.schema.Column(
+                        "field",
                             False,
                             pgpq.schema.Text(),
                         )
                     ),
                 ),
-            ),
-            (
-                "a list of nullable strings",
                 pgpq.schema.Column(
+                "a list of nullable strings",
                     False,
                     pgpq.schema.List(
                         pgpq.schema.Column(
+                        "field",
                             True,
                             pgpq.schema.Text(),
                         )
                     ),
                 ),
-            ),
         ]
     )
 

@@ -91,8 +91,7 @@ impl ArrowToPostgresBinaryEncoder {
             columns: self
                 .encoder_builders
                 .iter()
-                .zip(&self.fields)
-                .map(|(builder, field)| (field.name().clone(), builder.schema()))
+                .map(|builder| (builder.schema()))
                 .collect(),
         }
     }
@@ -129,7 +128,7 @@ impl ArrowToPostgresBinaryEncoder {
 
         let mut required_size: usize = 0;
         for encoder in &encoders {
-            required_size += encoder.size_hint()?
+            required_size += encoder.byte_size_hint()?
         }
         buf.reserve(required_size);
 
@@ -214,34 +213,26 @@ mod tests {
         assert_eq!(
             schema.columns,
             vec![
-                (
-                    "int32".to_owned(),
-                    Column {
-                        data_type: pg_schema::PostgresType::Int4,
-                        nullable: false,
-                    }
-                ),
-                (
-                    "int8".to_owned(),
-                    Column {
-                        data_type: pg_schema::PostgresType::Int2,
-                        nullable: false,
-                    },
-                ),
-                (
-                    "string".to_owned(),
-                    Column {
-                        data_type: pg_schema::PostgresType::Text,
-                        nullable: false,
-                    },
-                ),
-                (
-                    "json".to_owned(),
-                    Column {
-                        data_type: pg_schema::PostgresType::Jsonb,
-                        nullable: false,
-                    },
-                ),
+                Column {
+                    name: "int32".to_string(),
+                    data_type: pg_schema::PostgresType::Int4,
+                    nullable: false,
+                },
+                Column {
+                    name: "int8".to_string(),
+                    data_type: pg_schema::PostgresType::Int2,
+                    nullable: false,
+                },
+                Column {
+                    name: "string".to_string(),
+                    data_type: pg_schema::PostgresType::Text,
+                    nullable: false,
+                },
+                Column {
+                    name: "json".to_string(),
+                    data_type: pg_schema::PostgresType::Jsonb,
+                    nullable: false,
+                }
             ]
         )
     }
