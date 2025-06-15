@@ -25,13 +25,17 @@ macro_rules! impl_simple {
             ) -> PyResult<PyObject> {
                 let res = match op {
                     CompareOp::Eq => {
-                        let result = (self == other).into_pyobject(py).expect("bool into_pyobject should not fail");
+                        let result = (self == other)
+                            .into_pyobject(py)
+                            .expect("bool into_pyobject should not fail");
                         result.to_owned().into_any().unbind()
-                    },
+                    }
                     CompareOp::Ne => {
-                        let result = (self != other).into_pyobject(py).expect("bool into_pyobject should not fail");
+                        let result = (self != other)
+                            .into_pyobject(py)
+                            .expect("bool into_pyobject should not fail");
                         result.to_owned().into_any().unbind()
-                    },
+                    }
                     _ => py.NotImplemented(),
                 };
                 Ok(res)
@@ -151,13 +155,17 @@ impl List {
     fn __richcmp__(&self, other: &Self, op: CompareOp, py: Python<'_>) -> PyResult<PyObject> {
         let res = match op {
             CompareOp::Eq => {
-                let result = (self == other).into_pyobject(py).expect("bool into_pyobject should not fail");
+                let result = (self == other)
+                    .into_pyobject(py)
+                    .expect("bool into_pyobject should not fail");
                 result.to_owned().into_any().unbind()
-            },
+            }
             CompareOp::Ne => {
-                let result = (self != other).into_pyobject(py).expect("bool into_pyobject should not fail");
+                let result = (self != other)
+                    .into_pyobject(py)
+                    .expect("bool into_pyobject should not fail");
                 result.to_owned().into_any().unbind()
-            },
+            }
             _ => py.NotImplemented(),
         };
         Ok(res)
@@ -291,22 +299,86 @@ impl Column {
     #[getter]
     fn get_data_type(&self, py: Python) -> Py<PyAny> {
         match &self.data_type {
-            PostgresType::Bool(inner) => inner.clone().into_pyobject(py).map(|b| b.clone().into_any().unbind()).expect("pyclass into_pyobject should not fail"),
-            PostgresType::Bytea(inner) => inner.clone().into_pyobject(py).map(|b| b.clone().into_any().unbind()).expect("pyclass into_pyobject should not fail"),
-            PostgresType::Int2(inner) => inner.clone().into_pyobject(py).map(|b| b.clone().into_any().unbind()).expect("pyclass into_pyobject should not fail"),
-            PostgresType::Int4(inner) => inner.clone().into_pyobject(py).map(|b| b.clone().into_any().unbind()).expect("pyclass into_pyobject should not fail"),
-            PostgresType::Int8(inner) => inner.clone().into_pyobject(py).map(|b| b.clone().into_any().unbind()).expect("pyclass into_pyobject should not fail"),
-            PostgresType::Char(inner) => inner.clone().into_pyobject(py).map(|b| b.clone().into_any().unbind()).expect("pyclass into_pyobject should not fail"),
-            PostgresType::Text(inner) => inner.clone().into_pyobject(py).map(|b| b.clone().into_any().unbind()).expect("pyclass into_pyobject should not fail"),
-            PostgresType::Json(inner) => inner.clone().into_pyobject(py).map(|b| b.clone().into_any().unbind()).expect("pyclass into_pyobject should not fail"),
-            PostgresType::Jsonb(inner) => inner.clone().into_pyobject(py).map(|b| b.clone().into_any().unbind()).expect("pyclass into_pyobject should not fail"),
-            PostgresType::Float4(inner) => inner.clone().into_pyobject(py).map(|b| b.clone().into_any().unbind()).expect("pyclass into_pyobject should not fail"),
-            PostgresType::Float8(inner) => inner.clone().into_pyobject(py).map(|b| b.clone().into_any().unbind()).expect("pyclass into_pyobject should not fail"),
-            PostgresType::Date(inner) => inner.clone().into_pyobject(py).map(|b| b.clone().into_any().unbind()).expect("pyclass into_pyobject should not fail"),
-            PostgresType::Time(inner) => inner.clone().into_pyobject(py).map(|b| b.clone().into_any().unbind()).expect("pyclass into_pyobject should not fail"),
-            PostgresType::Timestamp(inner) => inner.clone().into_pyobject(py).map(|b| b.clone().into_any().unbind()).expect("pyclass into_pyobject should not fail"),
-            PostgresType::Interval(inner) => inner.clone().into_pyobject(py).map(|b| b.clone().into_any().unbind()).expect("pyclass into_pyobject should not fail"),
-            PostgresType::List(inner) => inner.clone().into_pyobject(py).map(|b| b.clone().into_any().unbind()).expect("pyclass into_pyobject should not fail"),
+            PostgresType::Bool(inner) => inner
+                .clone()
+                .into_pyobject(py)
+                .map(|b| b.clone().into_any().unbind())
+                .expect("pyclass into_pyobject should not fail"),
+            PostgresType::Bytea(inner) => inner
+                .clone()
+                .into_pyobject(py)
+                .map(|b| b.clone().into_any().unbind())
+                .expect("pyclass into_pyobject should not fail"),
+            PostgresType::Int2(inner) => inner
+                .clone()
+                .into_pyobject(py)
+                .map(|b| b.clone().into_any().unbind())
+                .expect("pyclass into_pyobject should not fail"),
+            PostgresType::Int4(inner) => inner
+                .clone()
+                .into_pyobject(py)
+                .map(|b| b.clone().into_any().unbind())
+                .expect("pyclass into_pyobject should not fail"),
+            PostgresType::Int8(inner) => inner
+                .clone()
+                .into_pyobject(py)
+                .map(|b| b.clone().into_any().unbind())
+                .expect("pyclass into_pyobject should not fail"),
+            PostgresType::Char(inner) => inner
+                .clone()
+                .into_pyobject(py)
+                .map(|b| b.clone().into_any().unbind())
+                .expect("pyclass into_pyobject should not fail"),
+            PostgresType::Text(inner) => inner
+                .clone()
+                .into_pyobject(py)
+                .map(|b| b.clone().into_any().unbind())
+                .expect("pyclass into_pyobject should not fail"),
+            PostgresType::Json(inner) => inner
+                .clone()
+                .into_pyobject(py)
+                .map(|b| b.clone().into_any().unbind())
+                .expect("pyclass into_pyobject should not fail"),
+            PostgresType::Jsonb(inner) => inner
+                .clone()
+                .into_pyobject(py)
+                .map(|b| b.clone().into_any().unbind())
+                .expect("pyclass into_pyobject should not fail"),
+            PostgresType::Float4(inner) => inner
+                .clone()
+                .into_pyobject(py)
+                .map(|b| b.clone().into_any().unbind())
+                .expect("pyclass into_pyobject should not fail"),
+            PostgresType::Float8(inner) => inner
+                .clone()
+                .into_pyobject(py)
+                .map(|b| b.clone().into_any().unbind())
+                .expect("pyclass into_pyobject should not fail"),
+            PostgresType::Date(inner) => inner
+                .clone()
+                .into_pyobject(py)
+                .map(|b| b.clone().into_any().unbind())
+                .expect("pyclass into_pyobject should not fail"),
+            PostgresType::Time(inner) => inner
+                .clone()
+                .into_pyobject(py)
+                .map(|b| b.clone().into_any().unbind())
+                .expect("pyclass into_pyobject should not fail"),
+            PostgresType::Timestamp(inner) => inner
+                .clone()
+                .into_pyobject(py)
+                .map(|b| b.clone().into_any().unbind())
+                .expect("pyclass into_pyobject should not fail"),
+            PostgresType::Interval(inner) => inner
+                .clone()
+                .into_pyobject(py)
+                .map(|b| b.clone().into_any().unbind())
+                .expect("pyclass into_pyobject should not fail"),
+            PostgresType::List(inner) => inner
+                .clone()
+                .into_pyobject(py)
+                .map(|b| b.clone().into_any().unbind())
+                .expect("pyclass into_pyobject should not fail"),
         }
     }
     fn __repr__(&self, py: Python) -> String {
@@ -318,13 +390,17 @@ impl Column {
     fn __richcmp__(&self, other: &Self, op: CompareOp, py: Python<'_>) -> PyResult<PyObject> {
         let res = match op {
             CompareOp::Eq => {
-                let result = (self == other).into_pyobject(py).expect("bool into_pyobject should not fail");
+                let result = (self == other)
+                    .into_pyobject(py)
+                    .expect("bool into_pyobject should not fail");
                 result.to_owned().into_any().unbind()
-            },
+            }
             CompareOp::Ne => {
-                let result = (self != other).into_pyobject(py).expect("bool into_pyobject should not fail");
+                let result = (self != other)
+                    .into_pyobject(py)
+                    .expect("bool into_pyobject should not fail");
                 result.to_owned().into_any().unbind()
-            },
+            }
             _ => py.NotImplemented(),
         };
         Ok(res)
@@ -377,13 +453,17 @@ impl PostgresSchema {
     fn __richcmp__(&self, other: &Self, op: CompareOp, py: Python<'_>) -> PyResult<PyObject> {
         let res = match op {
             CompareOp::Eq => {
-                let result = (self == other).into_pyobject(py).expect("bool into_pyobject should not fail");
+                let result = (self == other)
+                    .into_pyobject(py)
+                    .expect("bool into_pyobject should not fail");
                 result.to_owned().into_any().unbind()
-            },
+            }
             CompareOp::Ne => {
-                let result = (self != other).into_pyobject(py).expect("bool into_pyobject should not fail");
+                let result = (self != other)
+                    .into_pyobject(py)
+                    .expect("bool into_pyobject should not fail");
                 result.to_owned().into_any().unbind()
-            },
+            }
             _ => py.NotImplemented(),
         };
         Ok(res)
@@ -420,11 +500,16 @@ impl PythonRepr for PostgresSchema {
         for (f_name, col) in &self.columns {
             let col_py = Py::new(py, col.clone()).expect("Column pyclass should be constructible");
             let tuple = (f_name.clone(), col_py);
-            columns_list.append(tuple).expect("List append should not fail");
+            columns_list
+                .append(tuple)
+                .expect("List append should not fail");
         }
         format!(
             "PostgresSchema({})",
-            columns_list.repr().map(|s| s.to_string()).unwrap_or_else(|_| "<repr error>".to_string())
+            columns_list
+                .repr()
+                .map(|s| s.to_string())
+                .unwrap_or_else(|_| "<repr error>".to_string())
         )
     }
 }
