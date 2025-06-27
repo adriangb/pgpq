@@ -1,6 +1,7 @@
 
 [project]
 name = "pgpq"
+version = "0.9.0"
 repository = "https://github.com/adriangb/pgpq"
 description = "Arrow -> PostgreSQL encoder"
 authors = [

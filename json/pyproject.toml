@@ -1,6 +1,7 @@
 
 [project]
 name = "arrow-json"
+version = "0.9.0"
 description = "Arrow -> JSON encoder"
 authors = [
     {name = "Adrian Garcia Badaracco"}

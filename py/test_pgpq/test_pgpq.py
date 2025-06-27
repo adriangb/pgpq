@@ -18,7 +18,17 @@ from pgpq.schema import PostgresSchema
 
 @pytest.fixture(scope="session")
 def postgres():
-    return Postgresql()
+    return Postgresql(
+        auto_start=2,
+        base_dir=None,
+        initdb="/Applications/Postgres.app/Contents/Versions/17/bin/initdb",
+        initdb_args="-U stefanopolloni -A trust",
+        postgres="/Applications/Postgres.app/Contents/Versions/17/bin/postgres",
+        postgres_args="-h 127.0.0.1 -F -c logging_collector=off",
+        pid=None,
+        port=5432,
+        copy_data_from=None,
+    )
 
 
 Connection = psycopg.Connection[Tuple[Any, ...]]
