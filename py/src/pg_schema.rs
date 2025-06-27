@@ -124,6 +124,11 @@ impl_simple!(Interval, pgpq::pg_schema::PostgresType::Interval);
 
 #[pyclass(module = "pgpq._pgpq")]
 #[derive(Debug, Clone, PartialEq)]
+pub struct Uuid;
+impl_simple!(Uuid, pgpq::pg_schema::PostgresType::Uuid);
+
+#[pyclass(module = "pgpq._pgpq")]
+#[derive(Debug, Clone, PartialEq)]
 pub struct List {
     inner: Box<Column>,
 }
@@ -185,6 +190,7 @@ pub enum PostgresType {
     Time(Time),
     Timestamp(Timestamp),
     Interval(Interval),
+    Uuid(Uuid),
     List(List),
 }
 
@@ -206,6 +212,7 @@ impl From<PostgresType> for pgpq::pg_schema::PostgresType {
             PostgresType::Time(inner) => inner.into(),
             PostgresType::Timestamp(inner) => inner.into(),
             PostgresType::Interval(inner) => inner.into(),
+            PostgresType::Uuid(inner) => inner.into(),
             PostgresType::List(inner) => inner.into(),
         }
     }
@@ -229,6 +236,7 @@ impl From<pgpq::pg_schema::PostgresType> for PostgresType {
             pgpq::pg_schema::PostgresType::Time => PostgresType::Time(Time),
             pgpq::pg_schema::PostgresType::Timestamp => PostgresType::Timestamp(Timestamp),
             pgpq::pg_schema::PostgresType::Interval => PostgresType::Interval(Interval),
+            pgpq::pg_schema::PostgresType::Uuid => PostgresType::Uuid(Uuid),
             pgpq::pg_schema::PostgresType::List(inner) => {
                 PostgresType::List(List::new((*inner).into()))
             }
@@ -254,6 +262,7 @@ impl PythonRepr for PostgresType {
             PostgresType::Time(inner) => inner.py_repr(py),
             PostgresType::Timestamp(inner) => inner.py_repr(py),
             PostgresType::Interval(inner) => inner.py_repr(py),
+            PostgresType::Uuid(inner) => inner.py_repr(py),
             PostgresType::List(inner) => inner.py_repr(py),
         }
     }
@@ -294,6 +303,7 @@ impl Column {
             PostgresType::Time(inner) => inner.clone().into_py(py),
             PostgresType::Timestamp(inner) => inner.clone().into_py(py),
             PostgresType::Interval(inner) => inner.clone().into_py(py),
+            PostgresType::Uuid(inner) => inner.clone().into_py(py),
             PostgresType::List(inner) => inner.clone().into_py(py),
         }
     }

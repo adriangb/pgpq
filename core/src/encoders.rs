@@ -53,6 +53,7 @@ pub enum Encoder<'a> {
     DurationSecond(DurationSecondEncoder<'a>),
     Binary(BinaryEncoder<'a>),
     LargeBinary(LargeBinaryEncoder<'a>),
+    Uuid(UuidEncoder<'a>),
     String(StringEncoder<'a>),
     LargeString(LargeStringEncoder<'a>),
     List(ListEncoder<'a>),
@@ -477,6 +478,171 @@ impl<'a, T: OffsetSizeTrait> Encode for GenericBinaryEncoder<'a, T> {
 
 type BinaryEncoder<'a> = GenericBinaryEncoder<'a, i32>;
 type LargeBinaryEncoder<'a> = GenericBinaryEncoder<'a, i64>;
+
+// UUID parsing functions
+fn parse_uuid_string(uuid_str: &str, field: &str) -> Result<[u8; 16], ErrorKind> {
+    let cleaned = if uuid_str.len() == 36 {
+        // Format: 08b2a930-4800-afff-0200-525602e30465
+        if uuid_str.chars().nth(8) == Some('-')
+            && uuid_str.chars().nth(13) == Some('-')
+            && uuid_str.chars().nth(18) == Some('-')
+            && uuid_str.chars().nth(23) == Some('-')
+        {
+            uuid_str.replace('-', "")
+        } else {
+            return Err(ErrorKind::Encode {
+                reason: format!(
+                    "Invalid UUID format in field '{field}': expected dashes at positions 8, 13, 18, 23"
+                ),
+            });
+        }
+    } else if uuid_str.len() == 32 {
+        // Format: 08b2a9304800afff0200525602e30465
+        uuid_str.to_string()
+    } else {
+        return Err(ErrorKind::Encode {
+            reason: format!(
+                "Invalid UUID format in field '{}': expected 32 or 36 characters, got {}",
+                field,
+                uuid_str.len()
+            ),
+        });
+    };
+
+    if cleaned.len() != 32 {
+        return Err(ErrorKind::Encode {
+            reason: format!(
+                "Invalid UUID format in field '{field}': expected 32 hex characters after cleaning"
+            ),
+        });
+    }
+
+    let mut bytes = [0u8; 16];
+    for (i, chunk) in cleaned.chars().collect::<Vec<_>>().chunks(2).enumerate() {
+        if i >= 16 {
+            return Err(ErrorKind::Encode {
+                reason: format!("Invalid UUID format in field '{field}': too many hex characters"),
+            });
+        }
+        let hex_str: String = chunk.iter().collect();
+        bytes[i] = u8::from_str_radix(&hex_str, 16).map_err(|_| ErrorKind::Encode {
+            reason: format!(
+                "Invalid UUID format in field '{field}': invalid hex characters '{hex_str}'"
+            ),
+        })?;
+    }
+
+    Ok(bytes)
+}
+
+#[derive(Debug)]
+pub struct UuidEncoder<'a> {
+    field: String,
+    input_type: UuidInputType<'a>,
+}
+
+#[derive(Debug)]
+enum UuidInputType<'a> {
+    String(&'a arrow_array::StringArray),
+    LargeString(&'a arrow_array::LargeStringArray),
+    Binary(&'a arrow_array::BinaryArray),
+    LargeBinary(&'a arrow_array::LargeBinaryArray),
+    FixedSizeBinary(&'a arrow_array::FixedSizeBinaryArray),
+}
+
+impl<'a> Encode for UuidEncoder<'a> {
+    fn encode(&self, row: usize, buf: &mut BytesMut) -> Result<(), ErrorKind> {
+        let uuid_bytes = match &self.input_type {
+            UuidInputType::String(arr) => {
+                if arr.is_null(row) {
+                    buf.put_i32(-1);
+                    return Ok(());
+                }
+                parse_uuid_string(arr.value(row), &self.field)?
+            }
+            UuidInputType::LargeString(arr) => {
+                if arr.is_null(row) {
+                    buf.put_i32(-1);
+                    return Ok(());
+                }
+                parse_uuid_string(arr.value(row), &self.field)?
+            }
+            UuidInputType::Binary(arr) => {
+                if arr.is_null(row) {
+                    buf.put_i32(-1);
+                    return Ok(());
+                }
+                let bytes = arr.value(row);
+                if bytes.len() != 16 {
+                    return Err(ErrorKind::Encode {
+                        reason: format!(
+                            "Invalid UUID binary length in field '{}': expected 16 bytes, got {}",
+                            self.field,
+                            bytes.len()
+                        ),
+                    });
+                }
+                let mut uuid_bytes = [0u8; 16];
+                uuid_bytes.copy_from_slice(bytes);
+                uuid_bytes
+            }
+            UuidInputType::LargeBinary(arr) => {
+                if arr.is_null(row) {
+                    buf.put_i32(-1);
+                    return Ok(());
+                }
+                let bytes = arr.value(row);
+                if bytes.len() != 16 {
+                    return Err(ErrorKind::Encode {
+                        reason: format!(
+                            "Invalid UUID binary length in field '{}': expected 16 bytes, got {}",
+                            self.field,
+                            bytes.len()
+                        ),
+                    });
+                }
+                let mut uuid_bytes = [0u8; 16];
+                uuid_bytes.copy_from_slice(bytes);
+                uuid_bytes
+            }
+            UuidInputType::FixedSizeBinary(arr) => {
+                if arr.is_null(row) {
+                    buf.put_i32(-1);
+                    return Ok(());
+                }
+                let bytes = arr.value(row);
+                if bytes.len() != 16 {
+                    return Err(ErrorKind::Encode {
+                        reason: format!(
+                            "Invalid UUID binary length in field '{}': expected 16 bytes, got {}",
+                            self.field,
+                            bytes.len()
+                        ),
+                    });
+                }
+                let mut uuid_bytes = [0u8; 16];
+                uuid_bytes.copy_from_slice(bytes);
+                uuid_bytes
+            }
+        };
+
+        buf.put_i32(16); // UUID is always 16 bytes
+        buf.extend_from_slice(&uuid_bytes);
+        Ok(())
+    }
+
+    fn size_hint(&self) -> Result<usize, ErrorKind> {
+        let len = match &self.input_type {
+            UuidInputType::String(arr) => arr.len(),
+            UuidInputType::LargeString(arr) => arr.len(),
+            UuidInputType::Binary(arr) => arr.len(),
+            UuidInputType::LargeBinary(arr) => arr.len(),
+            UuidInputType::FixedSizeBinary(arr) => arr.len(),
+        };
+        // Each UUID: 4 bytes for length + 16 bytes for UUID data = 20 bytes
+        Ok(len * 20)
+    }
+}
 
 #[derive(Debug)]
 pub struct GenericStringEncoder<'a, T: OffsetSizeTrait> {
@@ -1081,6 +1247,78 @@ impl_encoder_builder_stateless_with_field!(
     |dt: &DataType| matches!(dt, DataType::LargeBinary)
 );
 
+#[derive(Debug, Clone, PartialEq)]
+pub struct UuidEncoderBuilder {
+    field: Arc<Field>,
+}
+
+impl UuidEncoderBuilder {
+    pub fn new(field: Arc<Field>) -> Result<Self, ErrorKind> {
+        // Accept string, binary types - we'll handle UUID types in try_new based on runtime Arrow schema
+        match field.data_type() {
+            DataType::Utf8
+            | DataType::LargeUtf8
+            | DataType::Binary
+            | DataType::LargeBinary
+            | DataType::FixedSizeBinary(_) => Ok(Self { field }),
+            _ => Err(ErrorKind::FieldTypeNotSupported {
+                encoder: "UuidEncoderBuilder".to_string(),
+                tp: field.data_type().clone(),
+                field: field.name().clone(),
+            }),
+        }
+    }
+}
+
+impl BuildEncoder for UuidEncoderBuilder {
+    fn try_new<'a, 'b: 'a>(&'b self, arr: &'a dyn Array) -> Result<Encoder<'a>, ErrorKind> {
+        let field = self.field.name().clone();
+
+        let input_type = match arr.data_type() {
+            DataType::Utf8 => {
+                let arr = downcast_checked::<arrow_array::StringArray>(arr, &field)?;
+                UuidInputType::String(arr)
+            }
+            DataType::LargeUtf8 => {
+                let arr = downcast_checked::<arrow_array::LargeStringArray>(arr, &field)?;
+                UuidInputType::LargeString(arr)
+            }
+            DataType::Binary => {
+                let arr = downcast_checked::<arrow_array::BinaryArray>(arr, &field)?;
+                UuidInputType::Binary(arr)
+            }
+            DataType::LargeBinary => {
+                let arr = downcast_checked::<arrow_array::LargeBinaryArray>(arr, &field)?;
+                UuidInputType::LargeBinary(arr)
+            }
+            DataType::FixedSizeBinary(_) => {
+                let arr = downcast_checked::<arrow_array::FixedSizeBinaryArray>(arr, &field)?;
+                UuidInputType::FixedSizeBinary(arr)
+            }
+            _ => {
+                return Err(ErrorKind::mismatched_column_type(
+                    &field,
+                    "UUID-compatible type",
+                    arr.data_type(),
+                ))
+            }
+        };
+
+        Ok(Encoder::Uuid(UuidEncoder { field, input_type }))
+    }
+
+    fn schema(&self) -> Column {
+        Column {
+            data_type: PostgresType::Uuid,
+            nullable: self.field.is_nullable(),
+        }
+    }
+
+    fn field(&self) -> Arc<Field> {
+        self.field.clone()
+    }
+}
+
 macro_rules! impl_list_encoder_builder {
     ($struct_name:ident, $enum_name:expr, $encoder_name:ident) => {
         impl $struct_name {
@@ -1189,6 +1427,7 @@ pub enum EncoderBuilder {
     LargeString(LargeStringEncoderBuilder),
     Binary(BinaryEncoderBuilder),
     LargeBinary(LargeBinaryEncoderBuilder),
+    Uuid(UuidEncoderBuilder),
     List(ListEncoderBuilder),
     LargeList(LargeListEncoderBuilder),
 }
@@ -1196,6 +1435,7 @@ pub enum EncoderBuilder {
 impl EncoderBuilder {
     pub fn try_new(field: Arc<Field>) -> Result<Self, ErrorKind> {
         let data_type = field.data_type();
+
         let res = match data_type {
             DataType::Boolean => Self::Boolean(BooleanEncoderBuilder { field }),
             DataType::UInt8 => Self::UInt8(UInt8EncoderBuilder { field }),
@@ -1274,7 +1514,18 @@ impl EncoderBuilder {
                 output: StringOutputType::Text,
             }),
             DataType::Binary => Self::Binary(BinaryEncoderBuilder { field }),
-            DataType::LargeBinary | DataType::FixedSizeBinary(_) => {
+            DataType::LargeBinary => Self::LargeBinary(LargeBinaryEncoderBuilder { field }),
+            DataType::FixedSizeBinary(size) => {
+                // Check if this is a PyArrow UUID extension type
+                if *size == 16 {
+                    let metadata = field.metadata();
+                    if let Some(extension_name) = metadata.get("ARROW:extension:name") {
+                        if extension_name == "arrow.uuid" {
+                            return Ok(Self::Uuid(UuidEncoderBuilder { field }));
+                        }
+                    }
+                }
+                // Fall back to binary for non-UUID fixed size binary types
                 Self::LargeBinary(LargeBinaryEncoderBuilder { field })
             }
             DataType::List(inner) => {

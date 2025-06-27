@@ -24,6 +24,7 @@ from pgpq._pgpq import (
     LargeStringEncoderBuilder,
     BinaryEncoderBuilder,
     LargeBinaryEncoderBuilder,
+    UuidEncoderBuilder,
     ListEncoderBuilder,
     LargeListEncoderBuilder,
 )
@@ -54,6 +55,7 @@ __all__ = (
     "LargeStringEncoderBuilder",
     "BinaryEncoderBuilder",
     "LargeBinaryEncoderBuilder",
+    "UuidEncoderBuilder",
     "ListEncoderBuilder",
     "LargeListEncoderBuilder",
 )

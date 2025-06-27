@@ -33,6 +33,10 @@ macro_rules! impl_passthrough_encoder_builder {
                     inner,
                 })
             }
+            fn schema(&self) -> crate::pg_schema::Column {
+                use pgpq::encoders::BuildEncoder;
+                self.inner.schema().into()
+            }
             fn __repr__(&self, py: Python) -> String {
                 crate::utils::PythonRepr::py_repr(self, py)
             }
@@ -114,6 +118,10 @@ macro_rules! impl_passthrough_encoder_builder_variable_output {
                     output: py_output,
                     inner: $pgpq_encoder_builder_enum_variant(inner),
                 })
+            }
+            fn schema(&self) -> crate::pg_schema::Column {
+                use pgpq::encoders::BuildEncoder;
+                self.inner.schema().into()
             }
             fn __repr__(&self, py: Python) -> String {
                 crate::utils::PythonRepr::py_repr(self, py)
@@ -363,6 +371,58 @@ pub struct LargeBinaryEncoderBuilder {
 }
 impl_passthrough_encoder_builder!(LargeBinaryEncoderBuilder);
 
+#[pyclass(module = "pgpq._pgpq")]
+#[derive(Debug, Clone)]
+pub struct UuidEncoderBuilder {
+    field: Py<PyAny>,
+    inner: pgpq::encoders::EncoderBuilder,
+}
+#[pymethods]
+impl UuidEncoderBuilder {
+    #[new]
+    fn new(py: Python, py_field: &PyAny) -> PyResult<Self> {
+        let field: Field = FromPyArrow::from_pyarrow(py_field)?;
+        let inner = match pgpq::encoders::UuidEncoderBuilder::new(Arc::new(field)) {
+            Ok(inner) => inner,
+            Err(e) => {
+                return Err(PyValueError::new_err(format!(
+                    "Error building UuidEncoderBuilder: {e:?}"
+                )));
+            }
+        };
+        Ok(Self {
+            field: py_field.to_object(py),
+            inner: pgpq::encoders::EncoderBuilder::Uuid(inner),
+        })
+    }
+    fn schema(&self) -> crate::pg_schema::Column {
+        use pgpq::encoders::BuildEncoder;
+        self.inner.schema().into()
+    }
+    fn __repr__(&self, py: Python) -> String {
+        crate::utils::PythonRepr::py_repr(self, py)
+    }
+    fn __str__(&self, py: Python) -> String {
+        self.__repr__(py)
+    }
+    fn __richcmp__(&self, other: &Self, op: CompareOp, py: Python<'_>) -> PyResult<PyObject> {
+        let res = match op {
+            CompareOp::Eq => (self.inner == other.inner).into_py(py),
+            CompareOp::Ne => (self.inner != other.inner).into_py(py),
+            _ => py.NotImplemented(),
+        };
+        Ok(res)
+    }
+}
+impl crate::utils::PythonRepr for UuidEncoderBuilder {
+    fn py_repr(&self, py: Python) -> String {
+        format!(
+            "UuidEncoderBuilder({})",
+            &self.field.clone().into_ref(py).repr().unwrap(),
+        )
+    }
+}
+
 macro_rules! impl_list {
     ($struct:ident, $encoder_builder_enum_variant:path, $encoder_builder_new_with_inner:expr) => {
         #[pymethods]
@@ -402,6 +462,10 @@ macro_rules! impl_list {
                             .unwrap(),
                     ),
                 })
+            }
+            fn schema(&self) -> crate::pg_schema::Column {
+                use pgpq::encoders::BuildEncoder;
+                self.inner.schema().into()
             }
             fn __repr__(&self, py: Python) -> String {
                 crate::utils::PythonRepr::py_repr(self, py)
@@ -493,6 +557,7 @@ pub enum EncoderBuilder {
     LargeString(LargeStringEncoderBuilder),
     Binary(BinaryEncoderBuilder),
     LargeBinary(LargeBinaryEncoderBuilder),
+    Uuid(UuidEncoderBuilder),
     List(ListEncoderBuilder),
     LargeList(LargeListEncoderBuilder),
 }
@@ -525,6 +590,7 @@ impl crate::utils::PythonRepr for EncoderBuilder {
             EncoderBuilder::LargeString(inner) => inner.py_repr(py),
             EncoderBuilder::Binary(inner) => inner.py_repr(py),
             EncoderBuilder::LargeBinary(inner) => inner.py_repr(py),
+            EncoderBuilder::Uuid(inner) => inner.py_repr(py),
             EncoderBuilder::List(inner) => inner.py_repr(py),
             EncoderBuilder::LargeList(inner) => inner.py_repr(py),
         }
@@ -696,6 +762,10 @@ impl EncoderBuilder {
                     inner,
                 })
             }
+            pgpq::encoders::EncoderBuilder::Uuid(_) => EncoderBuilder::Uuid(UuidEncoderBuilder {
+                field: py_field.to_object(py),
+                inner,
+            }),
             pgpq::encoders::EncoderBuilder::List(_) => EncoderBuilder::List(ListEncoderBuilder {
                 field: py_field.to_object(py),
                 inner,
@@ -895,6 +965,13 @@ impl From<pgpq::encoders::EncoderBuilder> for EncoderBuilder {
                     inner: value,
                 })
             }
+            pgpq::encoders::EncoderBuilder::Uuid(inner) => {
+                let field = inner.field();
+                EncoderBuilder::Uuid(UuidEncoderBuilder {
+                    field: field.to_pyarrow(py).unwrap(),
+                    inner: value,
+                })
+            }
             pgpq::encoders::EncoderBuilder::List(inner) => {
                 let field = inner.field();
                 EncoderBuilder::List(ListEncoderBuilder {
@@ -941,6 +1018,7 @@ impl From<EncoderBuilder> for pgpq::encoders::EncoderBuilder {
             EncoderBuilder::LargeString(inner) => inner.inner,
             EncoderBuilder::Binary(inner) => inner.inner,
             EncoderBuilder::LargeBinary(inner) => inner.inner,
+            EncoderBuilder::Uuid(inner) => inner.inner,
             EncoderBuilder::List(inner) => inner.inner,
             EncoderBuilder::LargeList(inner) => inner.inner,
         }
@@ -975,6 +1053,7 @@ impl IntoPy<PyObject> for EncoderBuilder {
             EncoderBuilder::LargeString(inner) => inner.into_py(py),
             EncoderBuilder::Binary(inner) => inner.into_py(py),
             EncoderBuilder::LargeBinary(inner) => inner.into_py(py),
+            EncoderBuilder::Uuid(inner) => inner.into_py(py),
             EncoderBuilder::List(inner) => inner.into_py(py),
             EncoderBuilder::LargeList(inner) => inner.into_py(py),
         }

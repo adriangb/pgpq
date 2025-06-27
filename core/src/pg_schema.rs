@@ -21,6 +21,7 @@ pub enum PostgresType {
     Time,
     Timestamp,
     Interval,
+    Uuid,
     List(Box<Column>),
 }
 
@@ -42,6 +43,7 @@ impl PostgresType {
             PostgresType::Time => TypeSize::Fixed(8),
             PostgresType::Timestamp => TypeSize::Fixed(8),
             PostgresType::Interval => TypeSize::Fixed(16),
+            PostgresType::Uuid => TypeSize::Fixed(16),
             PostgresType::List(_) => TypeSize::Variable,
         }
     }
@@ -62,6 +64,7 @@ impl PostgresType {
             PostgresType::Time => Some(1083),
             PostgresType::Timestamp => Some(1114),
             PostgresType::Interval => Some(1186),
+            PostgresType::Uuid => Some(2950),
             PostgresType::List(_) => None,
         }
     }
@@ -82,6 +85,7 @@ impl PostgresType {
             PostgresType::Time => "TIME".to_string(),
             PostgresType::Timestamp => "TIMESTAMP".to_string(),
             PostgresType::Interval => "INTERVAL".to_string(),
+            PostgresType::Uuid => "UUID".to_string(),
             PostgresType::List(inner) => {
                 // arrays of structs and such are not supported
                 let inner_tp = inner.data_type.name().unwrap();
