@@ -481,58 +481,50 @@ type LargeBinaryEncoder<'a> = GenericBinaryEncoder<'a, i64>;
 
 // UUID parsing functions
 fn parse_uuid_string(uuid_str: &str, field: &str) -> Result<[u8; 16], ErrorKind> {
-    let cleaned = if uuid_str.len() == 36 {
-        // Format: 08b2a930-4800-afff-0200-525602e30465
-        if uuid_str.chars().nth(8) == Some('-')
-            && uuid_str.chars().nth(13) == Some('-')
-            && uuid_str.chars().nth(18) == Some('-')
-            && uuid_str.chars().nth(23) == Some('-')
-        {
-            uuid_str.replace('-', "")
-        } else {
+    let hex_str = match uuid_str.len() {
+        36 => {
+            // Format: 08b2a930-4800-afff-0200-525602e30465
+            // Check dash positions using direct byte indexing
+            let bytes = uuid_str.as_bytes();
+            if bytes[8] != b'-' || bytes[13] != b'-' || bytes[18] != b'-' || bytes[23] != b'-' {
+                return Err(ErrorKind::Encode {
+                    reason: format!(
+                        "Invalid UUID format in field '{field}': expected dashes at positions 8, 13, 18, 23"
+                    ),
+                });
+            }
+
+            // Remove dashes by creating a string without them
+            let mut hex_chars = String::with_capacity(32);
+            for (i, &byte) in bytes.iter().enumerate() {
+                if i != 8 && i != 13 && i != 18 && i != 23 {
+                    hex_chars.push(byte as char);
+                }
+            }
+            hex_chars
+        }
+        32 => {
+            // Format: 08b2a9304800afff0200525602e30465
+            uuid_str.to_string()
+        }
+        _ => {
             return Err(ErrorKind::Encode {
                 reason: format!(
-                    "Invalid UUID format in field '{field}': expected dashes at positions 8, 13, 18, 23"
+                    "Invalid UUID format in field '{}': expected 32 or 36 characters, got {}",
+                    field,
+                    uuid_str.len()
                 ),
             });
         }
-    } else if uuid_str.len() == 32 {
-        // Format: 08b2a9304800afff0200525602e30465
-        uuid_str.to_string()
-    } else {
-        return Err(ErrorKind::Encode {
-            reason: format!(
-                "Invalid UUID format in field '{}': expected 32 or 36 characters, got {}",
-                field,
-                uuid_str.len()
-            ),
-        });
     };
 
-    if cleaned.len() != 32 {
-        return Err(ErrorKind::Encode {
-            reason: format!(
-                "Invalid UUID format in field '{field}': expected 32 hex characters after cleaning"
-            ),
-        });
-    }
+    // Use the optimized hex crate
+    let mut result = [0u8; 16];
+    hex::decode_to_slice(&hex_str, &mut result).map_err(|_| ErrorKind::Encode {
+        reason: format!("Invalid UUID format in field '{field}': invalid hex characters"),
+    })?;
 
-    let mut bytes = [0u8; 16];
-    for (i, chunk) in cleaned.chars().collect::<Vec<_>>().chunks(2).enumerate() {
-        if i >= 16 {
-            return Err(ErrorKind::Encode {
-                reason: format!("Invalid UUID format in field '{field}': too many hex characters"),
-            });
-        }
-        let hex_str: String = chunk.iter().collect();
-        bytes[i] = u8::from_str_radix(&hex_str, 16).map_err(|_| ErrorKind::Encode {
-            reason: format!(
-                "Invalid UUID format in field '{field}': invalid hex characters '{hex_str}'"
-            ),
-        })?;
-    }
-
-    Ok(bytes)
+    Ok(result)
 }
 
 #[derive(Debug)]
