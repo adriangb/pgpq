@@ -45,9 +45,8 @@ fn array_to_utf8_json_array(
     // Parse each line as a JSON value and extract the field
     for line in json_str.lines() {
         if !line.is_empty() {
-            let obj: Value = serde_json::from_str(line).map_err(|e| {
-                PyValueError::new_err(format!("Failed to parse JSON line: {e}"))
-            })?;
+            let obj: Value = serde_json::from_str(line)
+                .map_err(|e| PyValueError::new_err(format!("Failed to parse JSON line: {e}")))?;
             if let Some(value) = obj.get("json") {
                 json_values.push(value.clone());
             }
