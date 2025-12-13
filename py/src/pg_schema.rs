@@ -556,11 +556,10 @@ impl From<PostgresSchema> for pgpq::pg_schema::PostgresSchema {
 impl PythonRepr for PostgresSchema {
     fn py_repr(&self, py: Python) -> String {
         let columns_list = PyList::empty(py);
-        for (f_name, col) in &self.columns {
+        for col in &self.columns {
             let col_py = Py::new(py, col.clone()).expect("Column pyclass should be constructible");
-            let tuple = (f_name.clone(), col_py);
             columns_list
-                .append(tuple)
+                .append(col_py)
                 .expect("List append should not fail");
         }
         format!(

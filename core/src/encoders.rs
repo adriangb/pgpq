@@ -582,35 +582,39 @@ type LargeListEncoder<'a> = GenericListEncoder<'a, i64>;
 pub struct StructEncoder<'a> {
     arr: &'a arrow_array::StructArray,
     field: String,
-    field_encoder_builders: Vec<Arc<EncoderBuilder>>,
+    field_encoders: Vec<Encoder<'a>>,
+    field_oids: Vec<u32>,
 }
 
-impl Encode for StructEncoder<'_> {
+impl<'a> Encode for StructEncoder<'a> {
     fn encode(&self, row: usize, buf: &mut BytesMut) -> Result<(), ErrorKind> {
-        let base_idx = buf.len();
-        buf.put_i32(0); // Placeholder for the total size
+        if self.arr.is_null(row) {
+            buf.put_i32(-1);
+        } else {
+            let base_idx = buf.len();
+            buf.put_i32(0); // Placeholder for the total size
 
-        // Put the number of fields
-        buf.put_i32(self.field_encoder_builders.len() as i32);
+            // Put the number of fields
+            buf.put_i32(self.field_encoders.len() as i32);
 
-        for (field, encoder) in self.arr.columns().iter().zip(&self.field_encoder_builders) {
-            let oid = encoder.schema().data_type.oid().unwrap();
-            buf.put_u32(oid);
-            encoder.try_new(field).unwrap().encode(row, buf)?;
+            for (encoder, oid) in self.field_encoders.iter().zip(&self.field_oids) {
+                buf.put_u32(*oid);
+                encoder.encode(row, buf)?;
+            }
+
+            let total_len = buf.len() - base_idx - 4;
+            match i32::try_from(total_len) {
+                Ok(v) => buf[base_idx..base_idx + 4].copy_from_slice(&v.to_be_bytes()),
+                Err(_) => return Err(ErrorKind::field_too_large(&self.field, total_len)),
+            };
         }
-
-        let total_len = buf.len() - base_idx - 4;
-        match i32::try_from(total_len) {
-            Ok(v) => buf[base_idx..base_idx + 4].copy_from_slice(&v.to_be_bytes()),
-            Err(_) => return Err(ErrorKind::field_too_large(&self.field, total_len)),
-        };
         Ok(())
     }
 
     fn byte_size_hint(&self) -> Result<usize, ErrorKind> {
         let mut total = 4 + 4; // 4 bytes for the length, 4 bytes for the number of fields
-        for (field, encoder) in self.arr.columns().iter().zip(&self.field_encoder_builders) {
-            total += encoder.try_new(field)?.byte_size_hint()?;
+        for encoder in &self.field_encoders {
+            total += encoder.byte_size_hint()?;
         }
         Ok(total)
     }
@@ -1234,15 +1238,24 @@ impl StructEncoderBuilder {
 
 impl BuildEncoder for StructEncoderBuilder {
     fn try_new<'a, 'b: 'a>(&'b self, arr: &'a dyn Array) -> Result<Encoder<'a>, ErrorKind> {
-        let arr = downcast_checked(arr, self.field.name())?;
+        let arr: &'a arrow_array::StructArray = downcast_checked(arr, self.field.name())?;
+        
+        // Build encoders for each field at build time and collect OIDs
+        let mut field_encoders = Vec::new();
+        let mut field_oids = Vec::new();
+        
+        for (field, encoder_builder) in arr.columns().iter().zip(&self.field_encoder_builders) {
+            let encoder = encoder_builder.try_new(field)?;
+            let oid = encoder_builder.schema().data_type.oid().unwrap();
+            field_encoders.push(encoder);
+            field_oids.push(oid);
+        }
+        
         Ok(Encoder::Struct(StructEncoder {
             arr,
             field: self.field.name().to_string(),
-            field_encoder_builders: self
-                .field_encoder_builders
-                .iter()
-                .map(|f| f.clone().into())
-                .collect(),
+            field_encoders,
+            field_oids,
         }))
     }
 

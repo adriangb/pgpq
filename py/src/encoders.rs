@@ -766,7 +766,7 @@ impl EncoderBuilder {
             }
             pgpq::encoders::EncoderBuilder::Struct(_) => {
                 EncoderBuilder::Struct(StructEncoderBuilder {
-                    field: py_field.to_object(py),
+                    field: py_field.clone().unbind(),
                     inner,
                 })
             }
@@ -1150,6 +1150,10 @@ impl<'py> IntoPyObject<'py> for EncoderBuilder {
                 .map(|b| b.into_any())
                 .expect("pyclass into_pyobject")),
             EncoderBuilder::LargeList(inner) => Ok(inner
+                .into_pyobject(py)
+                .map(|b| b.into_any())
+                .expect("pyclass into_pyobject")),
+            EncoderBuilder::Struct(inner) => Ok(inner
                 .into_pyobject(py)
                 .map(|b| b.into_any())
                 .expect("pyclass into_pyobject")),
