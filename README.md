@@ -4,6 +4,8 @@
 
 Stream Apache Arrow RecordBatches into Postgres.
 
+> **For Development:** See [DEVELOPMENT.md](./DEVELOPMENT.md) for setup instructions including PostgreSQL installation requirements for running tests.
+
 ## Background
 
 Postgres supports two bulk load formats: text (including CSV) and a custom binary format.
