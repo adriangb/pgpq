@@ -12,7 +12,7 @@ concurrency:
 
 env:
   PACKAGE_NAME: arrow-json
-  PYTHON_VERSION: "3.7" # to build abi3 wheels
+  PYTHON_VERSION: "3.11" # to build abi3 wheels
   MATURIN_VERSION: "v1.4.0"
   PACKAGE_DIR: json
 
@@ -20,9 +20,9 @@ jobs:
   macos:
     name: Build / MacOS
     # if: github.ref == format('refs/heads/{0}', github.event.repository.default_branch)
-    runs-on: macos-latest
+    runs-on: macos-14
     steps:
-      - uses: actions/checkout@v3
+      - uses: actions/checkout@v4
       - uses: actions/setup-python@v4
         with:
           python-version: ${{ env.PYTHON_VERSION }}
@@ -39,9 +39,9 @@ jobs:
           target: x86_64
           args: -m ${{ env.PACKAGE_DIR }}/Cargo.toml --release --out dist --sdist
           maturin-version: ${{ env.MATURIN_VERSION }}
-      - name: Install built wheel - x86_64
-        run: |
-          python -m pip install "$(find dist -name '*.whl' -type f | head -n 1)" --force-reinstall --no-dependencies
+      ##- name: Install built wheel - x86_64
+      ##  run: |
+      ##    python -m pip install "$(find dist -name '*.whl' -type f | head -n 1)" --force-reinstall --no-dependencies
       - name: Build wheels - universal2
         uses: messense/maturin-action@v1
         with:
@@ -52,9 +52,9 @@ jobs:
         run: |
           python -m pip install "$(find dist -name '*_universal2.whl' -type f | head -n 1)" --force-reinstall --no-dependencies
       - name: Upload wheels
-        uses: actions/upload-artifact@v2
+        uses: actions/upload-artifact@v4
         with:
-          name: wheels
+          name: wheels-macos
           path: dist
 
   windows:
@@ -65,7 +65,7 @@ jobs:
       matrix:
         target: [x64, x86]
     steps:
-      - uses: actions/checkout@v3
+      - uses: actions/checkout@v4
       - uses: actions/setup-python@v4
         with:
           python-version: ${{ env.PYTHON_VERSION }}
@@ -87,9 +87,9 @@ jobs:
         run: |
           python -m pip install "$(find dist -name '*.whl' -type f | head -n 1)" --force-reinstall --no-dependencies
       - name: Upload wheels
-        uses: actions/upload-artifact@v2
+        uses: actions/upload-artifact@v4
         with:
-          name: wheels
+          name: wheels-windows-${{ matrix.target }}
           path: dist
 
   linux:
@@ -99,7 +99,7 @@ jobs:
       matrix:
         target: [x86_64, i686]
     steps:
-      - uses: actions/checkout@v3
+      - uses: actions/checkout@v4
       - uses: actions/setup-python@v4
         with:
           python-version: ${{ env.PYTHON_VERSION }}
@@ -118,9 +118,9 @@ jobs:
           python -m pip freeze
           python -m pytest -v ${{ env.PACKAGE_DIR }}
       - name: Upload wheels
-        uses: actions/upload-artifact@v2
+        uses: actions/upload-artifact@v4
         with:
-          name: wheels
+          name: wheels-linux-${{ matrix.target }}
           path: dist
 
   linux-cross:
@@ -131,7 +131,7 @@ jobs:
       matrix:
         target: [aarch64, armv7, s390x, ppc64le, ppc64]
     steps:
-      - uses: actions/checkout@v3
+      - uses: actions/checkout@v4
       - uses: actions/setup-python@v4
         with:
           python-version: ${{ env.PYTHON_VERSION }}
@@ -156,13 +156,13 @@ jobs:
           run: |
             pip3 install ${{ env.PACKAGE_NAME }} --no-index --find-links dist/ --force-reinstall --no-dependencies
       - name: Upload wheels
-        uses: actions/upload-artifact@v2
+        uses: actions/upload-artifact@v4
         with:
-          name: wheels
+          name: wheels-linux-${{ matrix.target }}
           path: dist
 
   musllinux:
-    name: Build / Linux (${{ matrix.target }})
+    name: Build / MuslLinux (${{ matrix.target }})
     if: github.ref == format('refs/heads/{0}', github.event.repository.default_branch)
     runs-on: ubuntu-latest
     strategy:
@@ -171,7 +171,7 @@ jobs:
           - x86_64-unknown-linux-musl
           - i686-unknown-linux-musl
     steps:
-      - uses: actions/checkout@v3
+      - uses: actions/checkout@v4
       - uses: actions/setup-python@v4
         with:
           python-version: ${{ env.PYTHON_VERSION }}
@@ -195,11 +195,11 @@ jobs:
       - name: Upload wheels
         uses: actions/upload-artifact@v2
         with:
-          name: wheels
+          name: wheels-musllinux-${{ matrix.target }}
           path: dist
 
   musllinux-cross:
-    name: Build / Linux (${{ matrix.target }})
+    name: Build / MuslLinux (${{ matrix.platform.arch }})
     if: github.ref == format('refs/heads/{0}', github.event.repository.default_branch)
     runs-on: ubuntu-latest
     strategy:
@@ -210,7 +210,7 @@ jobs:
           - target: armv7-unknown-linux-musleabihf
             arch: armv7
     steps:
-      - uses: actions/checkout@v3
+      - uses: actions/checkout@v4
       - uses: actions/setup-python@v4
         with:
           python-version: ${{ env.PYTHON_VERSION }}
@@ -232,9 +232,9 @@ jobs:
           run: |
             pip3 install ${{ env.PACKAGE_NAME }} --no-index --find-links dist/ --force-reinstall --no-dependencies
       - name: Upload wheels
-        uses: actions/upload-artifact@v2
+        uses: actions/upload-artifact@v4
         with:
-          name: wheels
+          name: wheels-musllinux-${{ matrix.platform.target }}
           path: dist
 
   pypy:
@@ -243,17 +243,23 @@ jobs:
     runs-on: ${{ matrix.os }}
     strategy:
       matrix:
-        os: [ubuntu-latest, macos-latest]
+        os: [ubuntu-latest, macos-14, macos-latest]
         target: [x86_64, aarch64]
         python-version:
-          - '3.7'
-          - '3.8'
           - '3.9'
+          - '3.10'
+          - '3.11'
+          - '3.12'
+          - '3.13'
         exclude:
-          - os: macos-latest
+          - os: macos-14
             target: aarch64
+          - os: macos-latest
+            python-version: '3.9'
+          - os: macos-latest
+            python-version: '3.10'
     steps:
-      - uses: actions/checkout@v3
+      - uses: actions/checkout@v4
       - uses: actions/setup-python@v4
         with:
           python-version: pypy${{ matrix.python-version }}
@@ -269,9 +275,9 @@ jobs:
         run: |
           python -m pip install "$(find dist -name '*.whl' -type f | head -n 1)" --force-reinstall --no-dependencies
       - name: Upload wheels
-        uses: actions/upload-artifact@v2
+        uses: actions/upload-artifact@v4
         with:
-          name: wheels
+          name: wheels-pypy-${{ matrix.os }}-${{ matrix.target }}-${{ matrix.python-version }}
           path: dist
 
   lint:
@@ -280,11 +286,11 @@ jobs:
     strategy:
       matrix:
         # Lint on earliest and latest
-        python: ["3.7", "3.x"]
+        python: ["3.8", "3.x"]
     steps:
-      - uses: actions/checkout@v3
+      - uses: actions/checkout@v4
       - name: Set up Python
-        uses: actions/setup-python@v2
+        uses: actions/setup-python@v4
         with:
           python-version: "3.x"
       - name: Install Rust toolchain
@@ -299,23 +305,22 @@ jobs:
 
 
   # https://github.com/marketplace/actions/alls-green
-  check:  # This job does nothing and is only used for the branch protection
-    name: arrow-json Python Check
-    if: always()
-
-    outputs:
-      result: ${{ steps.all-green.outputs.result }}
-
+  alls-green:
+    name: "Check release process"
+    if: always() && github.ref == format('refs/heads/{0}', github.event.repository.default_branch)
     needs:
       - lint
-      - macos
       - linux
+      - macos
+      - windows
+      - linux-cross
+      - musllinux
+      - musllinux-cross
+      - pypy
     runs-on: ubuntu-latest
-
     steps:
       - name: Decide whether the needed jobs succeeded or failed
         uses: re-actors/alls-green@release/v1
-        id: all-green
         with:
           jobs: ${{ toJSON(needs) }}
 
@@ -333,10 +338,11 @@ jobs:
       - musllinux-cross
       - pypy
     steps:
-      - uses: actions/download-artifact@v2
+      - uses: actions/download-artifact@v4
         with:
-          name: wheels
-      - uses: actions/setup-python@v2
+          pattern: wheels-*
+          merge-multiple: true
+      - uses: actions/setup-python@v4
       - name: Publish to PyPi
         env:
           TWINE_USERNAME: __token__

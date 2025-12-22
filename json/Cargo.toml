@@ -10,13 +10,14 @@ name = "_arrow_json"
 crate-type = ["cdylib"]
 
 [dependencies]
-arrow = {version = ">=46.0.0", features = ["pyarrow", "json"] }
+arrow = {version = ">=55.1.0", features = ["pyarrow", "json"] }
+arrow-json = ">=55.1.0"
 serde = "1.0.158"
 serde_json = "1.0.94"
 
 [dependencies.pyo3]
-version = "^0.19.0"
-features = ["extension-module", "abi3-py37"]
+version = "^0.24.0"
+features = ["extension-module", "abi3-py39", "py-clone"]
 
 [package.metadata.maturin]
 name = "arrow_json._arrow_json"

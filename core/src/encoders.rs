@@ -451,7 +451,7 @@ pub struct GenericBinaryEncoder<'a, T: OffsetSizeTrait> {
     field: String,
 }
 
-impl<'a, T: OffsetSizeTrait> Encode for GenericBinaryEncoder<'a, T> {
+impl<T: OffsetSizeTrait> Encode for GenericBinaryEncoder<'_, T> {
     fn encode(&self, row: usize, buf: &mut BytesMut) -> Result<(), ErrorKind> {
         if self.arr.is_null(row) {
             buf.put_i32(-1);
@@ -485,7 +485,7 @@ pub struct GenericStringEncoder<'a, T: OffsetSizeTrait> {
     output: StringOutputType,
 }
 
-impl<'a, T: OffsetSizeTrait> Encode for GenericStringEncoder<'a, T> {
+impl<T: OffsetSizeTrait> Encode for GenericStringEncoder<'_, T> {
     fn encode(&self, row: usize, buf: &mut BytesMut) -> Result<(), ErrorKind> {
         if self.arr.is_null(row) {
             buf.put_i32(-1);
@@ -528,7 +528,7 @@ pub struct GenericListEncoder<'a, T: OffsetSizeTrait> {
     inner_encoder_builder: Arc<EncoderBuilder>,
 }
 
-impl<'a, T: OffsetSizeTrait> Encode for GenericListEncoder<'a, T> {
+impl<T: OffsetSizeTrait> Encode for GenericListEncoder<'_, T> {
     fn encode(&self, row: usize, buf: &mut BytesMut) -> Result<(), ErrorKind> {
         if self.arr.is_null(row) {
             buf.put_i32(-1);

@@ -3,7 +3,7 @@ use std::collections::HashMap;
 use encoders::EncoderBuilder;
 use pyo3::prelude::*;
 use pyo3::types::{PyBytes, PyDict};
-use pyo3::Python;
+use pyo3::{exceptions::PyValueError, Python};
 
 use arrow::datatypes::Schema as ArrowSchema;
 use arrow::pyarrow::FromPyArrow;
@@ -27,24 +27,33 @@ const BUFF_SIZE: usize = 1024 * 1024;
 #[pymethods]
 impl ArrowToPostgresBinaryEncoder {
     #[new]
-    fn new(py: Python, pyschema: &PyAny) -> PyResult<Self> {
+    fn new(py: Python, pyschema: &Bound<'_, PyAny>) -> PyResult<Self> {
         // TODO: error handling
         let encoder = pgpq::ArrowToPostgresBinaryEncoder::try_new(
-            &ArrowSchema::from_pyarrow(pyschema).unwrap(),
+            &ArrowSchema::from_pyarrow_bound(pyschema)?,
         )
-        .unwrap();
+        .map_err(|e| PyValueError::new_err(format!("Failed to create encoder: {:?}", e)))?;
         Ok(Self {
             encoder,
             buf: BytesMut::with_capacity(BUFF_SIZE),
-            empty: PyBytes::new(py, &vec![][..]).into(),
+            empty: PyBytes::new(py, &vec![][..]).unbind().into(),
         })
     }
     #[staticmethod]
-    fn infer_encoder(py: Python, py_field: &PyAny) -> PyResult<EncoderBuilder> {
-        EncoderBuilder::try_new(py, py_field)
+    fn infer_encoder(py: Python, py_field: &Bound<'_, PyAny>) -> PyResult<PyObject> {
+        let encoder = EncoderBuilder::try_new(py, py_field)?;
+        Ok(encoder
+            .into_pyobject(py)
+            .expect("EncoderBuilder into_pyobject should not fail")
+            .into_any()
+            .unbind())
     }
     #[staticmethod]
-    fn new_with_encoders(py: Python, py_schema: &PyAny, py_encoders: &PyDict) -> PyResult<Self> {
+    fn new_with_encoders(
+        py: Python,
+        py_schema: &Bound<'_, PyAny>,
+        py_encoders: &Bound<'_, PyDict>,
+    ) -> PyResult<Self> {
         // TODO: error handling
         let mut encoders: HashMap<String, pgpq::encoders::EncoderBuilder> = HashMap::new();
         for item in py_encoders.items() {
@@ -52,32 +61,38 @@ impl ArrowToPostgresBinaryEncoder {
             let encoder: pgpq::encoders::EncoderBuilder = py_builder.into();
             encoders.insert(name, encoder);
         }
-        let schema = &ArrowSchema::from_pyarrow(py_schema).unwrap();
-        let encoder =
-            pgpq::ArrowToPostgresBinaryEncoder::try_new_with_encoders(schema, &encoders).unwrap();
+        let schema = &ArrowSchema::from_pyarrow_bound(py_schema)?;
+        let encoder = pgpq::ArrowToPostgresBinaryEncoder::try_new_with_encoders(schema, &encoders)
+            .map_err(|e| {
+                PyValueError::new_err(format!("Failed to create encoder with encoders: {:?}", e))
+            })?;
         Ok(Self {
             encoder,
             buf: BytesMut::with_capacity(BUFF_SIZE),
-            empty: PyBytes::new(py, &vec![][..]).into(),
+            empty: PyBytes::new(py, &vec![][..]).unbind().into(),
         })
     }
     fn write_header(&mut self, py: Python) -> Py<PyAny> {
         self.encoder.write_header(&mut self.buf);
-        PyBytes::new(py, &self.buf.split()[..]).into()
+        PyBytes::new(py, &self.buf.split()[..]).unbind().into()
     }
-    fn write_batch(&mut self, py_batch: &PyAny) -> Py<PyAny> {
-        let batch = &RecordBatch::from_pyarrow(py_batch).unwrap();
-        self.encoder.write_batch(batch, &mut self.buf).unwrap();
+    fn write_batch(&mut self, py_batch: &Bound<'_, PyAny>) -> PyResult<Py<PyAny>> {
+        let batch = &RecordBatch::from_pyarrow_bound(py_batch)?;
+        self.encoder
+            .write_batch(batch, &mut self.buf)
+            .map_err(|e| PyValueError::new_err(format!("Failed to write batch: {:?}", e)))?;
 
-        if self.buf.len() > BUFF_SIZE {
-            Python::with_gil(|py| PyBytes::new(py, &self.buf.split()[..]).into())
+        Ok(if self.buf.len() > BUFF_SIZE {
+            Python::with_gil(|py| PyBytes::new(py, &self.buf.split()[..]).unbind().into())
         } else {
             self.empty.clone()
-        }
+        })
     }
-    fn finish(&mut self) -> &[u8] {
-        self.encoder.write_footer(&mut self.buf).unwrap();
-        &self.buf[..]
+    fn finish(&mut self) -> PyResult<&[u8]> {
+        self.encoder
+            .write_footer(&mut self.buf)
+            .map_err(|e| PyValueError::new_err(format!("Failed to write footer: {:?}", e)))?;
+        Ok(&self.buf[..])
     }
     fn schema(&self) -> crate::pg_schema::PostgresSchema {
         self.encoder.schema().into()
@@ -85,7 +100,7 @@ impl ArrowToPostgresBinaryEncoder {
 }
 
 #[pymodule]
-fn _pgpq(_py: Python, m: &PyModule) -> PyResult<()> {
+fn _pgpq(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_class::<ArrowToPostgresBinaryEncoder>()?;
     m.add_class::<crate::encoders::Int8EncoderBuilder>()?;
     m.add_class::<crate::encoders::ListEncoderBuilder>()?;
