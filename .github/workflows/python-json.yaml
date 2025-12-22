@@ -52,7 +52,7 @@ jobs:
         run: |
           python -m pip install "$(find dist -name '*_universal2.whl' -type f | head -n 1)" --force-reinstall --no-dependencies
       - name: Upload wheels
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v6
         with:
           name: wheels-macos
           path: dist
@@ -87,7 +87,7 @@ jobs:
         run: |
           python -m pip install "$(find dist -name '*.whl' -type f | head -n 1)" --force-reinstall --no-dependencies
       - name: Upload wheels
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v6
         with:
           name: wheels-windows-${{ matrix.target }}
           path: dist
@@ -118,7 +118,7 @@ jobs:
           python -m pip freeze
           python -m pytest -v ${{ env.PACKAGE_DIR }}
       - name: Upload wheels
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v6
         with:
           name: wheels-linux-${{ matrix.target }}
           path: dist
@@ -156,7 +156,7 @@ jobs:
           run: |
             pip3 install ${{ env.PACKAGE_NAME }} --no-index --find-links dist/ --force-reinstall --no-dependencies
       - name: Upload wheels
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v6
         with:
           name: wheels-linux-${{ matrix.target }}
           path: dist
@@ -193,7 +193,7 @@ jobs:
             apk add py3-pip
             pip3 install ${{ env.PACKAGE_NAME }} --no-index --find-links /io/dist/ --force-reinstall --no-dependencies
       - name: Upload wheels
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v6
         with:
           name: wheels-musllinux-${{ matrix.target }}
           path: dist
@@ -232,7 +232,7 @@ jobs:
           run: |
             pip3 install ${{ env.PACKAGE_NAME }} --no-index --find-links dist/ --force-reinstall --no-dependencies
       - name: Upload wheels
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v6
         with:
           name: wheels-musllinux-${{ matrix.platform.target }}
           path: dist
@@ -277,7 +277,7 @@ jobs:
         run: |
           python -m pip install "$(find dist -name '*.whl' -type f | head -n 1)" --force-reinstall --no-dependencies
       - name: Upload wheels
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v6
         with:
           name: wheels-pypy-${{ matrix.os }}-${{ matrix.target }}-${{ matrix.python-version }}
           path: dist
