@@ -142,7 +142,7 @@ jobs:
           manylinux: auto
           args: -m ${{ env.PACKAGE_DIR }}/Cargo.toml --release --out dist
           maturin-version: ${{ env.MATURIN_VERSION }}
-      - uses: uraimo/run-on-arch-action@v2.0.5
+      - uses: uraimo/run-on-arch-action@v3
         if: matrix.target != 'ppc64'
         name: Install built wheel
         with:
@@ -221,7 +221,7 @@ jobs:
           manylinux: musllinux_1_2
           args: -m ${{ env.PACKAGE_DIR }}/Cargo.toml --release --out dist
           maturin-version: ${{ env.MATURIN_VERSION }}
-      - uses: uraimo/run-on-arch-action@master
+      - uses: uraimo/run-on-arch-action@v3
         name: Install built wheel
         with:
           arch: ${{ matrix.platform.arch }}
