@@ -193,7 +193,7 @@ jobs:
             apk add py3-pip
             pip3 install ${{ env.PACKAGE_NAME }} --no-index --find-links /io/dist/ --force-reinstall --no-dependencies
       - name: Upload wheels
-        uses: actions/upload-artifact@v2
+        uses: actions/upload-artifact@v4
         with:
           name: wheels-musllinux-${{ matrix.target }}
           path: dist
@@ -221,7 +221,7 @@ jobs:
           manylinux: musllinux_1_2
           args: -m ${{ env.PACKAGE_DIR }}/Cargo.toml --release --out dist
           maturin-version: ${{ env.MATURIN_VERSION }}
-      - uses: uraimo/run-on-arch-action@master
+      - uses: uraimo/run-on-arch-action@v2.0.5
         name: Install built wheel
         with:
           arch: ${{ matrix.platform.arch }}
@@ -253,6 +253,8 @@ jobs:
           - '3.13'
         exclude:
           - os: macos-14
+            target: aarch64
+          - os: macos-latest
             target: aarch64
           - os: macos-latest
             python-version: '3.9'
