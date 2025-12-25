@@ -174,7 +174,8 @@ jobs:
             curl -LsSf https://astral.sh/uv/install.sh | sh
           run: |
             export PATH="$HOME/.local/bin:$PATH"
-            export UV_SYSTEM_PYTHON=1
+            uv venv
+            . .venv/bin/activate
             uv pip install ${{ env.PACKAGE_NAME }} --no-index --find-links dist/ --force-reinstall --no-deps
       - name: Upload wheels
         uses: actions/upload-artifact@v6
@@ -215,7 +216,8 @@ jobs:
             apk add python3 curl
             curl -LsSf https://astral.sh/uv/install.sh | sh
             . $HOME/.local/bin/env
-            export UV_SYSTEM_PYTHON=1
+            uv venv
+            . .venv/bin/activate
             uv pip install ${{ env.PACKAGE_NAME }} --no-index --find-links /io/dist/ --force-reinstall --no-deps
       - name: Upload wheels
         uses: actions/upload-artifact@v6
@@ -258,7 +260,8 @@ jobs:
           run: |
             curl -LsSf https://astral.sh/uv/install.sh | sh
             . $HOME/.local/bin/env
-            export UV_SYSTEM_PYTHON=1
+            uv venv
+            . .venv/bin/activate
             uv pip install ${{ env.PACKAGE_NAME }} --no-index --find-links dist/ --force-reinstall --no-deps
       - name: Upload wheels
         uses: actions/upload-artifact@v6
