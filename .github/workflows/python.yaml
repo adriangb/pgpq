@@ -213,7 +213,7 @@ jobs:
           run: |
             apk add python3 curl
             curl -LsSf https://astral.sh/uv/install.sh | sh
-            source $HOME/.cargo/env
+            export PATH="$HOME/.local/bin:$PATH"
             uv pip install --system ${{ env.PACKAGE_NAME }} --no-index --find-links /io/dist/ --force-reinstall --no-deps
       - name: Upload wheels
         uses: actions/upload-artifact@v2
@@ -255,7 +255,7 @@ jobs:
             apk add python3 curl bash
           run: |
             curl -LsSf https://astral.sh/uv/install.sh | sh
-            source $HOME/.cargo/env
+            export PATH="$HOME/.local/bin:$PATH"
             uv pip install --system ${{ env.PACKAGE_NAME }} --no-index --find-links dist/ --force-reinstall --no-deps
       - name: Upload wheels
         uses: actions/upload-artifact@v6
