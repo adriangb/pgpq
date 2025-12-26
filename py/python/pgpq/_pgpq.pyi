@@ -163,14 +163,21 @@ class StringEncoderBuilder:
     @classmethod
     def new_with_output(
         cls, field: pyarrow.Field, output: Text | Jsonb
-    ) -> Int8EncoderBuilder: ...
+    ) -> StringEncoderBuilder: ...
 
 class LargeStringEncoderBuilder:
     def __init__(self, field: pyarrow.Field) -> None: ...
     @classmethod
     def new_with_output(
         cls, field: pyarrow.Field, output: Text | Jsonb
-    ) -> Int8EncoderBuilder: ...
+    ) -> LargeStringEncoderBuilder: ...
+
+class StringViewEncoderBuilder:
+    def __init__(self, field: pyarrow.Field) -> None: ...
+    @classmethod
+    def new_with_output(
+        cls, field: pyarrow.Field, output: Text | Jsonb
+    ) -> StringViewEncoderBuilder: ...
 
 class BinaryEncoderBuilder:
     def __init__(self, field: pyarrow.Field) -> None: ...
@@ -216,6 +223,7 @@ EncoderBuilder = (
     | DurationSecondEncoderBuilder
     | StringEncoderBuilder
     | LargeStringEncoderBuilder
+    | StringViewEncoderBuilder
     | BinaryEncoderBuilder
     | LargeBinaryEncoderBuilder
     | ListEncoderBuilder
