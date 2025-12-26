@@ -1,5 +1,4 @@
 from dataclasses import dataclass
-from itertools import cycle, islice
 from math import floor
 from pathlib import Path
 from typing import Any, List
