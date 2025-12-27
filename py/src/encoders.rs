@@ -379,6 +379,19 @@ impl_passthrough_encoder_builder_variable_output!(
 
 #[pyclass(module = "pgpq._pgpq")]
 #[derive(Debug, Clone)]
+pub struct StringViewEncoderBuilder {
+    field: Py<PyAny>,
+    output: crate::pg_schema::PostgresType,
+    inner: pgpq::encoders::EncoderBuilder,
+}
+impl_passthrough_encoder_builder_variable_output!(
+    StringViewEncoderBuilder,
+    pgpq::encoders::StringViewEncoderBuilder,
+    pgpq::encoders::EncoderBuilder::StringView
+);
+
+#[pyclass(module = "pgpq._pgpq")]
+#[derive(Debug, Clone)]
 pub struct BinaryEncoderBuilder {
     field: Py<PyAny>,
     inner: pgpq::encoders::EncoderBuilder,
@@ -536,6 +549,7 @@ pub enum EncoderBuilder {
     DurationSecond(DurationSecondEncoderBuilder),
     String(StringEncoderBuilder),
     LargeString(LargeStringEncoderBuilder),
+    StringView(StringViewEncoderBuilder),
     Binary(BinaryEncoderBuilder),
     LargeBinary(LargeBinaryEncoderBuilder),
     List(ListEncoderBuilder),
@@ -568,6 +582,7 @@ impl crate::utils::PythonRepr for EncoderBuilder {
             EncoderBuilder::DurationSecond(inner) => inner.py_repr(py),
             EncoderBuilder::String(inner) => inner.py_repr(py),
             EncoderBuilder::LargeString(inner) => inner.py_repr(py),
+            EncoderBuilder::StringView(inner) => inner.py_repr(py),
             EncoderBuilder::Binary(inner) => inner.py_repr(py),
             EncoderBuilder::LargeBinary(inner) => inner.py_repr(py),
             EncoderBuilder::List(inner) => inner.py_repr(py),
@@ -727,6 +742,13 @@ impl EncoderBuilder {
             }
             pgpq::encoders::EncoderBuilder::LargeString(_) => {
                 EncoderBuilder::LargeString(LargeStringEncoderBuilder {
+                    field: py_field.clone().unbind(),
+                    output: pg_output_type,
+                    inner,
+                })
+            }
+            pgpq::encoders::EncoderBuilder::StringView(_) => {
+                EncoderBuilder::StringView(StringViewEncoderBuilder {
                     field: py_field.clone().unbind(),
                     output: pg_output_type,
                     inner,
@@ -975,6 +997,17 @@ impl From<pgpq::encoders::EncoderBuilder> for EncoderBuilder {
                     output,
                 })
             }
+            pgpq::encoders::EncoderBuilder::StringView(inner) => {
+                let field = inner.field();
+                let output: crate::pg_schema::PostgresType = inner.schema().data_type.into();
+                EncoderBuilder::StringView(StringViewEncoderBuilder {
+                    field: field
+                        .to_pyarrow(py)
+                        .expect("Field to_pyarrow should not fail"),
+                    inner: value,
+                    output,
+                })
+            }
             pgpq::encoders::EncoderBuilder::Binary(inner) => {
                 let field = inner.field();
                 EncoderBuilder::Binary(BinaryEncoderBuilder {
@@ -1114,6 +1147,10 @@ impl<'py> IntoPyObject<'py> for EncoderBuilder {
                 .into_pyobject(py)
                 .map(|b| b.into_any())
                 .expect("pyclass into_pyobject")),
+            EncoderBuilder::StringView(inner) => Ok(inner
+                .into_pyobject(py)
+                .map(|b| b.into_any())
+                .expect("pyclass into_pyobject")),
             EncoderBuilder::Binary(inner) => Ok(inner
                 .into_pyobject(py)
                 .map(|b| b.into_any())
@@ -1160,6 +1197,7 @@ impl From<EncoderBuilder> for pgpq::encoders::EncoderBuilder {
             EncoderBuilder::DurationSecond(inner) => inner.inner,
             EncoderBuilder::String(inner) => inner.inner,
             EncoderBuilder::LargeString(inner) => inner.inner,
+            EncoderBuilder::StringView(inner) => inner.inner,
             EncoderBuilder::Binary(inner) => inner.inner,
             EncoderBuilder::LargeBinary(inner) => inner.inner,
             EncoderBuilder::List(inner) => inner.inner,

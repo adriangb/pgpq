@@ -1,5 +1,4 @@
 from dataclasses import dataclass
-from itertools import cycle, islice
 from math import floor
 from pathlib import Path
 from typing import Any, List
@@ -33,7 +32,7 @@ duration_ms = floor(duration_s * 1e3)
 duration_us = floor(duration_s * 1e6)
 
 string = "some data! "
-large_string = str(islice(cycle(string), 2**32 + 1))
+large_string = "some large string"
 binary = string.encode()
 large_binary = large_string.encode()
 
@@ -74,6 +73,7 @@ primitive_cols: list[tuple[pa.field, list[Any]]] = [
     (pa.field("large_binary", pa.large_binary()), [b"", binary, large_binary]),
     (pa.field("string", pa.string()), ["", string]),
     (pa.field("large_string", pa.large_string()), ["", string, large_string]),
+    (pa.field("string_view", pa.string_view()), ["", string, large_string]),
 ]
 
 longest = max(len(c[1]) for c in primitive_cols)

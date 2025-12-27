@@ -130,6 +130,7 @@ fn _pgpq(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_class::<crate::encoders::DurationSecondEncoderBuilder>()?;
     m.add_class::<crate::encoders::StringEncoderBuilder>()?;
     m.add_class::<crate::encoders::LargeStringEncoderBuilder>()?;
+    m.add_class::<crate::encoders::StringViewEncoderBuilder>()?;
     m.add_class::<crate::encoders::BinaryEncoderBuilder>()?;
     m.add_class::<crate::encoders::LargeBinaryEncoderBuilder>()?;
     m.add_class::<crate::encoders::ListEncoderBuilder>()?;
