@@ -54,12 +54,15 @@ There's no reason we can't support struct data types as well.
 |   Float16                 |   FLOAT4         |
 |   Float32                 |   FLOAT4         |
 |   Float64                 |   FLOAT8         |
+|   Decimal32               |   NUMERIC        |
+|   Decimal64               |   NUMERIC        |
+|   Decimal128              |   NUMERIC        |
 |   Timestamp(Nanosecond)   |   Not supported  |
 |   Timestamp(Microsecond)  |   TIMESTAMP      |
 |   Timestamp(Millisecond)  |   TIMESTAMP      |
 |   Timestamp(Second)       |   TIMESTAMP      |
 |   Date32                  |   DATE           |
-|   Date64                  |   Not supported           |
+|   Date64                  |   Not supported  |
 |   Time32(Millisecond)     |   TIME           |
 |   Time32(Second)          |   TIME           |
 |   Time64(Nanosecond)      |   Not supported  |
