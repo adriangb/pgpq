@@ -46,7 +46,7 @@ jobs:
           maturin-version: ${{ env.MATURIN_VERSION }}
       - name: Install built wheel - x86_64
         run: |
-          uv pip install "$(find dist -name '*.whl' -type f | head -n 1)" --force-reinstall --no-dependencies
+          uv pip install "$(find dist -name '*.whl' -type f | head -n 1)" --force-reinstall --no-deps
       - name: Build wheels - universal2
         uses: messense/maturin-action@v1
         with:
