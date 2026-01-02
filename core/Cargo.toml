@@ -13,21 +13,21 @@ authors = ["Adrian Garcia Badaracco <dev@adriangb.com>"]
 
 [dependencies]
 bytes = "^1.4.0"
-arrow-schema = ">=55.1.0"
+arrow-schema = ">=56.0.0"
 enum_dispatch = "0.3.11"
 anyhow = "1.0.70"
 thiserror = "1.0.40"
 
 [dependencies.arrow-array]
-version = ">=55.1.0"
+version = ">=56.0.0"
 default-features = false
 
 [dev-dependencies]
 rstest = ">=0.16.0"
-parquet = ">=55.1.0"
+parquet = ">=56.0.0"
 criterion = ">=0.4.0"
-arrow = { version = ">=55.1.0", features = ["ipc"]}
-arrow-ipc = ">=55.1.0"
+arrow = { version = ">=56.0.0", features = ["ipc"]}
+arrow-ipc = ">=56.0.0"
 postgres-types = {version = ">=0.2.4", features = ["with-chrono-0_4"]}
 ureq = "2.6.2"
 

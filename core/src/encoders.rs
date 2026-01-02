@@ -1,7 +1,8 @@
 #![allow(clippy::redundant_closure_call)]
 
 use arrow_array::{
-    self, Array, ArrowNativeTypeOp, GenericStringArray, OffsetSizeTrait, StringViewArray,
+    self, Array, ArrowNativeTypeOp, Decimal128Array, Decimal32Array, Decimal64Array,
+    GenericStringArray, OffsetSizeTrait, StringViewArray,
 };
 use arrow_schema::{DataType, Field, TimeUnit};
 use bytes::{BufMut, BytesMut};
@@ -43,6 +44,9 @@ pub enum Encoder<'a> {
     Float16(Float16Encoder<'a>),
     Float32(Float32Encoder<'a>),
     Float64(Float64Encoder<'a>),
+    Decimal32(Decimal32Encoder<'a>),
+    Decimal64(Decimal64Encoder<'a>),
+    Decimal128(Decimal128Encoder<'a>),
     TimestampMicrosecond(TimestampMicrosecondEncoder<'a>),
     TimestampMillisecond(TimestampMillisecondEncoder<'a>),
     TimestampSecond(TimestampSecondEncoder<'a>),
@@ -236,6 +240,76 @@ impl_encode!(
     identity,
     BufMut::put_f64
 );
+
+macro_rules! decimal_encoder {
+    ($encoder:ident, $arr:ty, $int:ty) => {
+        #[derive(Debug)]
+        pub struct $encoder<'a> {
+            arr: &'a $arr,
+        }
+
+        impl<'a> Encode for $encoder<'a> {
+            fn encode(&self, row: usize, buf: &mut BytesMut) -> Result<(), ErrorKind> {
+                if self.arr.is_null(row) {
+                    buf.put_i32(-1);
+                } else {
+                    let mut value = self.arr.value(row);
+                    let sign = if value < 0 {
+                        value = -value;
+                        0x4000
+                    } else {
+                        0
+                    };
+                    let scale = self.arr.scale();
+                    let div = (10 as $int).pow(scale as u32);
+                    let mut integer_part = value / div;
+                    let mut fractional_part = value % div;
+                    let mut numeric_digits: Vec<i16> = vec![];
+                    let mut weight: i16 = -1;
+
+                    // need to pad the fractional part to ensure the total number of digits is
+                    // multiple of four, to build complete base-10000 digits
+                    // (e.g., 1 -> 1000, 12 -> 1200, 123 -> 1230, 1234 -> 1234)
+                    fractional_part *= (10 as $int).pow(((4 - (scale % 4)) % 4) as u32);
+                    while fractional_part > 0 {
+                        numeric_digits.push((fractional_part % 10_000) as i16);
+                        fractional_part /= 10_000;
+                    }
+
+                    while integer_part > 0 {
+                        numeric_digits.push((integer_part % 10_000) as i16);
+                        integer_part /= 10_000;
+                        weight += 1;
+                    }
+
+                    buf.put_i32(8 + 2 * numeric_digits.len() as i32); // num of bytes
+                    buf.put_i16(numeric_digits.len() as i16);
+                    buf.put_i16(weight);
+                    buf.put_i16(sign);
+                    buf.put_i16(scale as i16);
+                    // postgres expects the digits to be encoded from largest to smallest, so we
+                    // need to iterate the vec in reverse
+                    for d in numeric_digits.into_iter().rev() {
+                        buf.put_i16(d);
+                    }
+                }
+                Ok(())
+            }
+
+            fn size_hint(&self) -> Result<usize, ErrorKind> {
+                let integer_length = self.arr.precision() as usize - self.arr.scale() as usize;
+                let fractional_length = self.arr.scale() as usize;
+                let numeric_integers = (integer_length as f32 / 4.0).ceil() as usize
+                    + (fractional_length as f32 / 4.0).ceil() as usize;
+                Ok(self.arr.len() * (8 + 2 * numeric_integers))
+            }
+        }
+    };
+}
+
+decimal_encoder!(Decimal32Encoder, Decimal32Array, i32);
+decimal_encoder!(Decimal64Encoder, Decimal64Array, i64);
+decimal_encoder!(Decimal128Encoder, Decimal128Array, i128);
 
 const PG_BASE_TIMESTAMP_OFFSET_US: i64 = 946_684_800_000_000; // microseconds between 2000-01-01 at midnight (Postgres's epoch) and 1970-01-01 (Arrow's / UNIX epoch)
 const PG_BASE_TIMESTAMP_OFFSET_MS: i64 = 946_684_800_000; // milliseconds between 2000-01-01 at midnight (Postgres's epoch) and 1970-01-01 (Arrow's / UNIX epoch)
@@ -858,6 +932,42 @@ impl_encoder_builder_stateless!(
 );
 
 #[derive(Debug, Clone, PartialEq)]
+pub struct Decimal32EncoderBuilder {
+    field: Arc<Field>,
+}
+impl_encoder_builder_stateless!(
+    Decimal32EncoderBuilder,
+    Encoder::Decimal32,
+    Decimal32Encoder,
+    PostgresType::Numeric,
+    |dt: &DataType| matches!(dt, DataType::Decimal32(_, _))
+);
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct Decimal64EncoderBuilder {
+    field: Arc<Field>,
+}
+impl_encoder_builder_stateless!(
+    Decimal64EncoderBuilder,
+    Encoder::Decimal64,
+    Decimal64Encoder,
+    PostgresType::Numeric,
+    |dt: &DataType| matches!(dt, DataType::Decimal64(_, _))
+);
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct Decimal128EncoderBuilder {
+    field: Arc<Field>,
+}
+impl_encoder_builder_stateless!(
+    Decimal128EncoderBuilder,
+    Encoder::Decimal128,
+    Decimal128Encoder,
+    PostgresType::Numeric,
+    |dt: &DataType| matches!(dt, DataType::Decimal128(_, _))
+);
+
+#[derive(Debug, Clone, PartialEq)]
 pub struct TimestampMicrosecondEncoderBuilder {
     field: Arc<Field>,
 }
@@ -1209,6 +1319,9 @@ pub enum EncoderBuilder {
     Float16(Float16EncoderBuilder),
     Float32(Float32EncoderBuilder),
     Float64(Float64EncoderBuilder),
+    Decimal32(Decimal32EncoderBuilder),
+    Decimal64(Decimal64EncoderBuilder),
+    Decimal128(Decimal128EncoderBuilder),
     TimestampMicrosecond(TimestampMicrosecondEncoderBuilder),
     TimestampMillisecond(TimestampMillisecondEncoderBuilder),
     TimestampSecond(TimestampSecondEncoderBuilder),
@@ -1247,6 +1360,9 @@ impl EncoderBuilder {
             DataType::Float16 => Self::Float16(Float16EncoderBuilder { field }),
             DataType::Float32 => Self::Float32(Float32EncoderBuilder { field }),
             DataType::Float64 => Self::Float64(Float64EncoderBuilder { field }),
+            DataType::Decimal32(_, _) => Self::Decimal32(Decimal32EncoderBuilder { field }),
+            DataType::Decimal64(_, _) => Self::Decimal64(Decimal64EncoderBuilder { field }),
+            DataType::Decimal128(_, _) => Self::Decimal128(Decimal128EncoderBuilder { field }),
             DataType::Timestamp(unit, _) => match unit {
                 TimeUnit::Nanosecond => {
                     return Err(ErrorKind::type_unsupported(

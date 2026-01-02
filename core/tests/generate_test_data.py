@@ -1,4 +1,5 @@
 from dataclasses import dataclass
+from decimal import Decimal
 from math import floor
 from pathlib import Path
 from typing import Any, List
@@ -47,6 +48,45 @@ primitive_cols: list[tuple[pa.field, list[Any]]] = [
     (pa.field("int64", pa.int64()), [-1, 0, 1]),
     (pa.field("float32", pa.float32()), [-1, 0, 1, float("inf")]),
     (pa.field("float64", pa.float64()), [-1, 0, 1, float("inf")]),
+    (
+        pa.field("decimal32", pa.decimal32(9, 6)),
+        [
+            Decimal("0"),
+            Decimal("0.000"),
+            Decimal("0.001"),
+            Decimal("123"),
+            Decimal("123.45"),
+            Decimal("-123.45"),
+            Decimal("123.4567"),
+            Decimal("123.45678"),
+        ],
+    ),
+    (
+        pa.field("decimal64", pa.decimal64(9, 6)),
+        [
+            Decimal("0"),
+            Decimal("0.000"),
+            Decimal("0.001"),
+            Decimal("123"),
+            Decimal("123.45"),
+            Decimal("-123.45"),
+            Decimal("123.4567"),
+            Decimal("123.45678"),
+        ],
+    ),
+    (
+        pa.field("decimal128", pa.decimal128(9, 6)),
+        [
+            Decimal("0"),
+            Decimal("0.000"),
+            Decimal("0.001"),
+            Decimal("123"),
+            Decimal("123.45"),
+            Decimal("-123.45"),
+            Decimal("123.4567"),
+            Decimal("123.45678"),
+        ],
+    ),
     (pa.field("timestamp_us_notz", pa.timestamp("us", None)), [0, 1, timestamp_us]),
     (pa.field("timestamp_ms_notz", pa.timestamp("ms", None)), [0, 1, timestamp_ms]),
     (pa.field("timestamp_s_notz", pa.timestamp("s", None)), [0, 1, timestamp_s]),

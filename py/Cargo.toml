@@ -10,13 +10,13 @@ name = "_pgpq"
 crate-type = ["cdylib"]
 
 [dependencies]
-arrow = {version = "55.1.0", features = ["pyarrow"] }
-arrow-schema = "55.1.0"
+arrow = {version = "56.0.0", features = ["pyarrow"] }
+arrow-schema = "56.0.0"
 bytes = "^1.4.0"
 pgpq = { path = "../core" }
 
 [dependencies.pyo3]
-version = "^0.24.0"
+version = "^0.25.1"
 features = ["extension-module", "abi3-py39", "py-clone"]
 
 [package.metadata.maturin]
