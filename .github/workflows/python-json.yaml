@@ -20,7 +20,7 @@ env:
 jobs:
   macos:
     name: Build / MacOS
-    # if: github.ref == format('refs/heads/{0}', github.event.repository.default_branch)
+    if: github.ref == format('refs/heads/{0}', github.event.repository.default_branch)
     runs-on: macos-14
     timeout-minutes: 30
     steps:
@@ -44,9 +44,9 @@ jobs:
           target: x86_64
           args: -m ${{ env.PACKAGE_DIR }}/Cargo.toml --release --out dist --sdist
           maturin-version: ${{ env.MATURIN_VERSION }}
-      ##- name: Install built wheel - x86_64
-      ##  run: |
-      ##    python -m pip install "$(find dist -name '*.whl' -type f | head -n 1)" --force-reinstall --no-dependencies
+      - name: Install built wheel - x86_64
+        run: |
+          uv pip install "$(find dist -name '*.whl' -type f | head -n 1)" --force-reinstall --no-dependencies
       - name: Build wheels - universal2
         uses: messense/maturin-action@v1
         with:
@@ -64,7 +64,7 @@ jobs:
 
   windows:
     name: Build / Windows (${{ matrix.target }})
-    # if: github.ref == format('refs/heads/{0}', github.event.repository.default_branch)
+    if: github.ref == format('refs/heads/{0}', github.event.repository.default_branch)
     runs-on: windows-latest
     timeout-minutes: 30
     strategy:
@@ -134,7 +134,7 @@ jobs:
         run: |
           uv pip install "$(find dist -name '*.whl' -type f | head -n 1)[test]" --force-reinstall
           uv pip freeze
-          python -m pytest -v ${{ env.PACKAGE_DIR }}
+          uv run pytest -v ${{ env.PACKAGE_DIR }}
       - name: Upload wheels
         uses: actions/upload-artifact@v6
         with:
@@ -142,7 +142,7 @@ jobs:
           path: dist
   musllinux:
     name: Build / MuslLinux (${{ matrix.target }})
-    # if: github.ref == format('refs/heads/{0}', github.event.repository.default_branch)
+    if: github.ref == format('refs/heads/{0}', github.event.repository.default_branch)
     runs-on: ubuntu-latest
     timeout-minutes: 30
     strategy:
@@ -251,4 +251,4 @@ jobs:
           TWINE_PASSWORD: ${{ secrets.PYPI_TOKEN }}
         run: |
           uv pip install --upgrade twine
-          twine upload --skip-existing *
+          uv run twine upload --skip-existing *
