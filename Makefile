@@ -13,8 +13,8 @@ PHONY: init build test
 init: .clean .init
 
 build-develop: .init
-	. ./.venv/bin/activate && maturin develop -m py/Cargo.toml
-	. ./.venv/bin/activate && maturin develop -m json/Cargo.toml
+	uvx maturin develop -m py/Cargo.toml
+	uvx maturin develop -m json/Cargo.toml
 
 test: build-develop
 	cargo test
