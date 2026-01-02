@@ -249,5 +249,4 @@ jobs:
           TWINE_USERNAME: __token__
           TWINE_PASSWORD: ${{ secrets.PYPI_TOKEN }}
         run: |
-          uv pip install --upgrade twine
-          uv run twine upload --skip-existing *
+          uvx twine upload --skip-existing *
