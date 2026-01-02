@@ -140,49 +140,6 @@ jobs:
         with:
           name: wheels-linux-${{ matrix.target }}
           path: dist
-
-  linux-cross:
-    name: Build / Linux (${{ matrix.target }})
-    # if: github.ref == format('refs/heads/{0}', github.event.repository.default_branch)
-    runs-on: ubuntu-latest
-    timeout-minutes: 45
-    strategy:
-      matrix:
-        target: [aarch64, armv7, s390x, ppc64le, ppc64]
-    steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
-        with:
-          python-version: ${{ env.PYTHON_VERSION }}
-      - name: Build wheels
-        uses: messense/maturin-action@v1
-        with:
-          target: ${{ matrix.target }}
-          manylinux: auto
-          args: -m ${{ env.PACKAGE_DIR }}/Cargo.toml --release --out dist
-          maturin-version: ${{ env.MATURIN_VERSION }}
-      - uses: uraimo/run-on-arch-action@v3
-        if: matrix.target != 'ppc64'
-        name: Install built wheel
-        with:
-          arch: ${{ matrix.target }}
-          distro: ubuntu20.04
-          githubToken: ${{ github.token }}
-          install: |
-            apt-get update
-            apt-get install -y --no-install-recommends python3 curl ca-certificates
-            curl -LsSf https://astral.sh/uv/install.sh | sh
-          run: |
-            export PATH="$HOME/.local/bin:$PATH"
-            uv venv
-            . .venv/bin/activate
-            uv pip install ${{ env.PACKAGE_NAME }} --no-index --find-links dist/ --force-reinstall --no-deps
-      - name: Upload wheels
-        uses: actions/upload-artifact@v6
-        with:
-          name: wheels-linux-${{ matrix.target }}
-          path: dist
-
   musllinux:
     name: Build / MuslLinux (${{ matrix.target }})
     # if: github.ref == format('refs/heads/{0}', github.event.repository.default_branch)
@@ -224,108 +181,6 @@ jobs:
         with:
           name: wheels-musllinux-${{ matrix.target }}
           path: dist
-
-  musllinux-cross:
-    name: Build / MuslLinux (${{ matrix.platform.arch }})
-    # if: github.ref == format('refs/heads/{0}', github.event.repository.default_branch)
-    runs-on: ubuntu-latest
-    timeout-minutes: 45
-    strategy:
-      matrix:
-        platform:
-          - target: aarch64-unknown-linux-musl
-            arch: aarch64
-          - target: armv7-unknown-linux-musleabihf
-            arch: armv7
-    steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
-        with:
-          python-version: ${{ env.PYTHON_VERSION }}
-      - name: Build wheels
-        uses: messense/maturin-action@v1
-        with:
-          target: ${{ matrix.platform.target }}
-          manylinux: musllinux_1_2
-          args: -m ${{ env.PACKAGE_DIR }}/Cargo.toml --release --out dist
-          maturin-version: ${{ env.MATURIN_VERSION }}
-      - uses: uraimo/run-on-arch-action@v3
-        name: Install built wheel
-        with:
-          arch: ${{ matrix.platform.arch }}
-          distro: alpine_latest
-          githubToken: ${{ github.token }}
-          install: |
-            apk add python3 curl bash
-          run: |
-            curl -LsSf https://astral.sh/uv/install.sh | sh
-            . $HOME/.local/bin/env
-            uv venv
-            . .venv/bin/activate
-            uv pip install ${{ env.PACKAGE_NAME }} --no-index --find-links dist/ --force-reinstall --no-deps
-      - name: Upload wheels
-        uses: actions/upload-artifact@v6
-        with:
-          name: wheels-musllinux-${{ matrix.platform.target }}
-          path: dist
-
-  pypy:
-    name: Build / PyPy (${{ matrix.os }}, ${{ matrix.target }})
-    # if: github.ref == format('refs/heads/{0}', github.event.repository.default_branch)
-    runs-on: ${{ matrix.os }}
-    timeout-minutes: 30
-    strategy:
-      matrix:
-        os: [ubuntu-latest, macos-14, macos-latest]
-        target: [x86_64, aarch64]
-        python-version:
-          - '3.9'
-          - '3.10'
-          - '3.11'
-          - '3.12'
-          - '3.13'
-        exclude:
-          - os: macos-14
-            target: aarch64
-          - os: macos-latest
-            target: aarch64
-          - os: macos-latest
-            python-version: '3.9'
-          - os: macos-latest
-            python-version: '3.10'
-          - os: macos-latest
-            python-version: '3.12'
-          - os: macos-latest
-            python-version: '3.13'
-          - os: macos-14
-            python-version: '3.12'
-          - os: macos-14
-            python-version: '3.13'
-    steps:
-      - uses: actions/checkout@v4
-      - uses: astral-sh/setup-uv@v5
-        with:
-          enable-cache: true
-      - uses: actions/setup-python@v5
-        with:
-          python-version: pypy${{ matrix.python-version }}
-      - name: Build wheels
-        uses: messense/maturin-action@v1
-        with:
-          maturin-version: ${{ env.MATURIN_VERSION }}
-          target: ${{ matrix.target }}
-          manylinux: auto
-          args: -m ${{ env.PACKAGE_DIR }}/Cargo.toml --release --out dist -i pypy${{ matrix.python-version }}
-      - name: Install built wheel
-        if: matrix.target == 'x86_64'
-        run: |
-          uv pip install "$(find dist -name '*.whl' -type f | head -n 1)" --force-reinstall --no-deps
-      - name: Upload wheels
-        uses: actions/upload-artifact@v6
-        with:
-          name: wheels-pypy-${{ matrix.os }}-${{ matrix.target }}-${{ matrix.python-version }}
-          path: dist
-
   lint:
     name: Lint (${{ matrix.python }})
     runs-on: ubuntu-latest
@@ -364,10 +219,7 @@ jobs:
       - linux
       - macos
       - windows
-      - linux-cross
       - musllinux
-      - musllinux-cross
-      - pypy
     runs-on: ubuntu-latest
     steps:
       - name: Decide whether the needed jobs succeeded or failed
@@ -385,10 +237,7 @@ jobs:
       - macos
       - windows
       - linux
-      - linux-cross
       - musllinux
-      - musllinux-cross
-      - pypy
     steps:
       - uses: actions/download-artifact@v4
         with:
