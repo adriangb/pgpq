@@ -1,0 +1,3 @@
+list_nullable_string_nullable
+"{"""",""some data! "",NULL}"
+null
