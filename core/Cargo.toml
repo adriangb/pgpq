@@ -30,6 +30,10 @@ arrow = { version = ">=56.0.0", features = ["ipc"]}
 arrow-ipc = ">=56.0.0"
 postgres-types = {version = ">=0.2.4", features = ["with-chrono-0_4"]}
 ureq = "2.6.2"
+postgresql_embedded = { version = "0.20.0", features = ["blocking"] }
+postgres = "0.19.12"
+similar = "2.7.0"
+console = "0.16.2"
 
 [[bench]]
 name = "yellow_cab_dataset"
