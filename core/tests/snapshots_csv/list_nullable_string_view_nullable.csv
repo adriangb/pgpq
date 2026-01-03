@@ -1,0 +1,3 @@
+list_nullable_string_view_nullable
+"{"""",""some data! "",""some large string"",NULL}"
+null
