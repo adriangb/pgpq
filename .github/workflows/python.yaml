@@ -225,6 +225,10 @@ jobs:
         uses: re-actors/alls-green@release/v1
         with:
           jobs: ${{ toJSON(needs) }}
+          # These get skipped in PRs and only run on main
+          # If they get skipped in a PR, we still want to consider them "green"
+          # If they fail in main, we want to fail the alls-green check
+          allowed-skips: macos,windows, musllinux
 
   release:
     name: Release
