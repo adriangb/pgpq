@@ -85,12 +85,47 @@ jobs:
         with:
           jobs: ${{ toJSON(needs) }}
 
+  check-version:
+    name: Check if version changed
+    runs-on: ubuntu-latest
+    if: ${{ github.ref == 'refs/heads/main' }}
+    outputs:
+      version-changed: ${{ steps.check.outputs.changed }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 2
+      - name: Check if version changed
+        id: check
+        run: |
+          # Get the version from the current commit
+          CURRENT_VERSION=$(grep '^version = ' core/Cargo.toml | head -n 1 | cut -d '"' -f 2)
+          echo "Current version: $CURRENT_VERSION"
+
+          # Get the version from the previous commit
+          git checkout HEAD~1 -- core/Cargo.toml 2>/dev/null || true
+          PREVIOUS_VERSION=$(grep '^version = ' core/Cargo.toml | head -n 1 | cut -d '"' -f 2)
+          echo "Previous version: $PREVIOUS_VERSION"
+
+          # Restore current version
+          git checkout HEAD -- core/Cargo.toml
+
+          # Compare versions
+          if [ "$CURRENT_VERSION" != "$PREVIOUS_VERSION" ]; then
+            echo "Version changed from $PREVIOUS_VERSION to $CURRENT_VERSION"
+            echo "changed=true" >> $GITHUB_OUTPUT
+          else
+            echo "Version unchanged: $CURRENT_VERSION"
+            echo "changed=false" >> $GITHUB_OUTPUT
+          fi
+
   release:
     name: Release
     runs-on: ubuntu-latest
     needs:
       - check
-    if: ${{ github.ref == 'refs/heads/main' }}
+      - check-version
+    if: ${{ github.ref == 'refs/heads/main' && needs.check-version.outputs.version-changed == 'true' }}
     steps:
       - uses: actions/checkout@v4
       - uses: actions-rs/toolchain@v1
