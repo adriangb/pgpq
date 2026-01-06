@@ -250,7 +250,7 @@ jobs:
           echo "Current version: $CURRENT_VERSION"
 
           # Get the latest tag for this package
-          LATEST_TAG=$(git tag -l "${{ env.PACKAGE_NAME }}-*" --sort=-version:refname | head -n 1)
+          LATEST_TAG=$(git tag -l "${{ env.PACKAGE_NAME }}-*" | sort -V | tail -n 1)
           if [ -z "$LATEST_TAG" ]; then
             echo "No existing tags found, will create release"
             echo "should_release=true" >> $GITHUB_OUTPUT
