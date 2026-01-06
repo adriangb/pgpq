@@ -242,10 +242,12 @@ jobs:
       - uses: actions/checkout@v4
         with:
           fetch-depth: 0
+      - uses: astral-sh/setup-uv@v5
       - name: Check version against latest tag
         id: check
         run: |
-          CURRENT_VERSION=$(grep '^version = ' ${{ env.PACKAGE_DIR }}/pyproject.toml | head -n 1 | cut -d '"' -f 2)
+          cd ${{ env.PACKAGE_DIR }}
+          CURRENT_VERSION=$(uv version --no-sync)
           echo "Current version: $CURRENT_VERSION"
 
           # Get the latest tag for this package
