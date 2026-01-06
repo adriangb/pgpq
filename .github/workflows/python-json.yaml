@@ -232,44 +232,43 @@ jobs:
           allowed-skips: macos,windows, musllinux
 
   check-version:
-    name: Check if version changed
+    name: Check if version needs release
     runs-on: ubuntu-latest
     if: github.ref == format('refs/heads/{0}', github.event.repository.default_branch)
     permissions:
       contents: read
     outputs:
-      version-changed: ${{ steps.check.outputs.changed }}
+      should-release: ${{ steps.check.outputs.should_release }}
     steps:
       - uses: actions/checkout@v4
         with:
-          fetch-depth: 2
-      - name: Check if version changed
+          fetch-depth: 0
+      - name: Check version against latest tag
         id: check
         run: |
-          # Get the version from the current commit
           CURRENT_VERSION=$(grep '^version = ' ${{ env.PACKAGE_DIR }}/pyproject.toml | head -n 1 | cut -d '"' -f 2)
           echo "Current version: $CURRENT_VERSION"
 
-          # Get the version from the previous commit
-          git checkout HEAD~1 -- ${{ env.PACKAGE_DIR }}/pyproject.toml 2>/dev/null || true
-          PREVIOUS_VERSION=$(grep '^version = ' ${{ env.PACKAGE_DIR }}/pyproject.toml | head -n 1 | cut -d '"' -f 2)
-          echo "Previous version: $PREVIOUS_VERSION"
-
-          # Restore current version
-          git checkout HEAD -- ${{ env.PACKAGE_DIR }}/pyproject.toml
-
-          # Compare versions
-          if [ "$CURRENT_VERSION" != "$PREVIOUS_VERSION" ]; then
-            echo "Version changed from $PREVIOUS_VERSION to $CURRENT_VERSION"
-            echo "changed=true" >> $GITHUB_OUTPUT
+          # Get the latest tag for this package
+          LATEST_TAG=$(git tag -l "${{ env.PACKAGE_NAME }}-*" --sort=-version:refname | head -n 1)
+          if [ -z "$LATEST_TAG" ]; then
+            echo "No existing tags found, will create release"
+            echo "should_release=true" >> $GITHUB_OUTPUT
           else
-            echo "Version unchanged: $CURRENT_VERSION"
-            echo "changed=false" >> $GITHUB_OUTPUT
+            TAG_VERSION=${LATEST_TAG#${{ env.PACKAGE_NAME }}-}
+            echo "Latest tag version: $TAG_VERSION"
+            if [ "$CURRENT_VERSION" = "$TAG_VERSION" ]; then
+              echo "Version $CURRENT_VERSION already released, skipping"
+              echo "should_release=false" >> $GITHUB_OUTPUT
+            else
+              echo "Version changed from $TAG_VERSION to $CURRENT_VERSION, will create release"
+              echo "should_release=true" >> $GITHUB_OUTPUT
+            fi
           fi
 
   release:
     name: Release
-    if: github.ref == format('refs/heads/{0}', github.event.repository.default_branch) && needs.check-version.outputs.version-changed == 'true'
+    if: github.ref == format('refs/heads/{0}', github.event.repository.default_branch) && needs.check-version.outputs.should-release == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 15
     needs:
