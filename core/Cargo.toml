@@ -13,36 +13,21 @@ authors = ["Adrian Garcia Badaracco <dev@adriangb.com>"]
 
 [dependencies]
 bytes = "^1.4.0"
-<<<<<<< HEAD
-arrow-schema = ">=55.1.0"
-=======
-arrow-schema = ">=56.0.0"
->>>>>>> upstream/main
+arrow-schema.workspace = true
 enum_dispatch = "0.3.11"
 anyhow = "1.0.70"
 thiserror = "1.0.40"
 
 [dependencies.arrow-array]
-<<<<<<< HEAD
-version = ">=55.1.0"
-=======
-version = ">=56.0.0"
->>>>>>> upstream/main
+workspace = true
 default-features = false
 
 [dev-dependencies]
 rstest = ">=0.16.0"
-<<<<<<< HEAD
-parquet = ">=55.1.0"
+parquet.workspace = true
 criterion = ">=0.4.0"
-arrow = { version = ">=55.1.0", features = ["ipc"]}
-arrow-ipc = ">=55.1.0"
-=======
-parquet = ">=56.0.0"
-criterion = ">=0.4.0"
-arrow = { version = ">=56.0.0", features = ["ipc"]}
-arrow-ipc = ">=56.0.0"
->>>>>>> upstream/main
+arrow = { workspace = true, features = ["ipc"]}
+arrow-ipc.workspace = true
 postgres-types = {version = ">=0.2.4", features = ["with-chrono-0_4"]}
 ureq = "2.6.2"
 postgresql_embedded = { version = "0.20.0", features = ["blocking"] }

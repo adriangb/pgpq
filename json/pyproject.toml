@@ -19,10 +19,6 @@ classifiers = [
 dependencies = [
     "pyarrow>=11",
 ]
-<<<<<<< HEAD
-requires-python = ">=3.9"
-=======
->>>>>>> upstream/main
 
 [project.optional-dependencies]
 test = [
