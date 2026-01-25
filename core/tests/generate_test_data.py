@@ -175,7 +175,12 @@ nested_struct = [
     (
         pa.field(
             "nested_struct",
-            pa.struct([pa.field("a", pa.int32()), pa.field("s", pa.struct([pa.field("b", pa.float32())]))]),
+            pa.struct(
+                [
+                    pa.field("a", pa.int32()),
+                    pa.field("s", pa.struct([pa.field("b", pa.float32())])),
+                ]
+            ),
         ),
         [{"a": 1, "s": {"b": 2}}],
     )

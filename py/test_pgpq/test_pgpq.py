@@ -50,7 +50,10 @@ def copy_buffer_and_get_rows(
 
 
 TESTCASES = sorted(
-    [os.path.splitext(os.path.basename(f))[0] for f in sorted(glob("core/tests/snapshots/*"))]
+    [
+        os.path.splitext(os.path.basename(f))[0]
+        for f in sorted(glob("core/tests/snapshots/*"))
+    ]
 )
 
 
@@ -91,18 +94,18 @@ def test_encode_record_batch(dbconn: Connection, testcase: str) -> None:
             depth = 0
             start = 0
             for i, c in enumerate(s):
-                if c == '(':
+                if c == "(":
                     depth += 1
-                elif c == ')':
+                elif c == ")":
                     depth -= 1
-                elif c == ',' and depth == 0:
+                elif c == "," and depth == 0:
                     fields.append(s[start:i])
                     start = i + 1
             fields.append(s[start:])  # last field
             struct_fields = field.type
             result = {}
             for f, v in zip(struct_fields, fields):
-                v = v if v != '' else None
+                v = v if v != "" else None
                 if pa.types.is_struct(f.type):
                     result[f.name] = parse_row_value(v, f)
                 else:
@@ -113,7 +116,8 @@ def test_encode_record_batch(dbconn: Connection, testcase: str) -> None:
     col = arrow_table.schema.names[0]
     field = arrow_table.schema.field(col)
     new_table = pa.Table.from_pylist(
-        [{col: parse_row_value(row[0], field)} for row in rows], schema=arrow_table.schema
+        [{col: parse_row_value(row[0], field)} for row in rows],
+        schema=arrow_table.schema,
     )
 
     assert arrow_table == new_table
@@ -152,28 +156,28 @@ def test_schema(dbconn: Connection) -> None:
         [
             pgpq.schema.Column("int", True, pgpq.schema.Int4()),
             pgpq.schema.Column("nullable bool", True, pgpq.schema.Bool()),
-                pgpq.schema.Column(
+            pgpq.schema.Column(
                 "a nullable list of strings",
-                    True,
-                    pgpq.schema.List(
-                        pgpq.schema.Column(
+                True,
+                pgpq.schema.List(
+                    pgpq.schema.Column(
                         "field",
-                            False,
-                            pgpq.schema.Text(),
-                        )
-                    ),
+                        False,
+                        pgpq.schema.Text(),
+                    )
                 ),
-                pgpq.schema.Column(
+            ),
+            pgpq.schema.Column(
                 "a list of nullable strings",
-                    False,
-                    pgpq.schema.List(
-                        pgpq.schema.Column(
+                False,
+                pgpq.schema.List(
+                    pgpq.schema.Column(
                         "field",
-                            True,
-                            pgpq.schema.Text(),
-                        )
-                    ),
+                        True,
+                        pgpq.schema.Text(),
+                    )
                 ),
+            ),
         ]
     )
 
