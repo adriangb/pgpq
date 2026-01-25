@@ -32,6 +32,9 @@ class Float4:
 class Float8:
     def ddl(self) -> str | None: ...
 
+class Numeric:
+    def ddl(self) -> str | None: ...
+
 class Date:
     def ddl(self) -> str | None: ...
 
@@ -68,6 +71,7 @@ PostgresType = Union[
     Int8,
     Float4,
     Float8,
+    Numeric,
     Char,
     Text,
     Jsonb,
@@ -128,6 +132,15 @@ class Float32EncoderBuilder:
 class Float64EncoderBuilder:
     def __init__(self, field: pyarrow.Field) -> None: ...
 
+class Decimal32EncoderBuilder:
+    def __init__(self, field: pyarrow.Field) -> None: ...
+
+class Decimal64EncoderBuilder:
+    def __init__(self, field: pyarrow.Field) -> None: ...
+
+class Decimal128EncoderBuilder:
+    def __init__(self, field: pyarrow.Field) -> None: ...
+
 class TimestampMicrosecondEncoderBuilder:
     def __init__(self, field: pyarrow.Field) -> None: ...
 
@@ -163,14 +176,21 @@ class StringEncoderBuilder:
     @classmethod
     def new_with_output(
         cls, field: pyarrow.Field, output: Text | Jsonb
-    ) -> Int8EncoderBuilder: ...
+    ) -> StringEncoderBuilder: ...
 
 class LargeStringEncoderBuilder:
     def __init__(self, field: pyarrow.Field) -> None: ...
     @classmethod
     def new_with_output(
         cls, field: pyarrow.Field, output: Text | Jsonb
-    ) -> Int8EncoderBuilder: ...
+    ) -> LargeStringEncoderBuilder: ...
+
+class StringViewEncoderBuilder:
+    def __init__(self, field: pyarrow.Field) -> None: ...
+    @classmethod
+    def new_with_output(
+        cls, field: pyarrow.Field, output: Text | Jsonb
+    ) -> StringViewEncoderBuilder: ...
 
 class BinaryEncoderBuilder:
     def __init__(self, field: pyarrow.Field) -> None: ...
@@ -204,6 +224,9 @@ EncoderBuilder = (
     | Float16EncoderBuilder
     | Float32EncoderBuilder
     | Float64EncoderBuilder
+    | Decimal32EncoderBuilder
+    | Decimal64EncoderBuilder
+    | Decimal128EncoderBuilder
     | TimestampMicrosecondEncoderBuilder
     | TimestampMillisecondEncoderBuilder
     | TimestampSecondEncoderBuilder
@@ -216,6 +239,7 @@ EncoderBuilder = (
     | DurationSecondEncoderBuilder
     | StringEncoderBuilder
     | LargeStringEncoderBuilder
+    | StringViewEncoderBuilder
     | BinaryEncoderBuilder
     | LargeBinaryEncoderBuilder
     | ListEncoderBuilder

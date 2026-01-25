@@ -18,3 +18,5 @@ __pycache__
 *.pyd
 .venv
 .DS_Store
+
+_pgpq.pyd

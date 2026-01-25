@@ -273,6 +273,30 @@ impl_passthrough_encoder_builder!(Float64EncoderBuilder);
 
 #[pyclass(module = "pgpq._pgpq")]
 #[derive(Debug, Clone)]
+pub struct Decimal32EncoderBuilder {
+    field: Py<PyAny>,
+    inner: pgpq::encoders::EncoderBuilder,
+}
+impl_passthrough_encoder_builder!(Decimal32EncoderBuilder);
+
+#[pyclass(module = "pgpq._pgpq")]
+#[derive(Debug, Clone)]
+pub struct Decimal64EncoderBuilder {
+    field: Py<PyAny>,
+    inner: pgpq::encoders::EncoderBuilder,
+}
+impl_passthrough_encoder_builder!(Decimal64EncoderBuilder);
+
+#[pyclass(module = "pgpq._pgpq")]
+#[derive(Debug, Clone)]
+pub struct Decimal128EncoderBuilder {
+    field: Py<PyAny>,
+    inner: pgpq::encoders::EncoderBuilder,
+}
+impl_passthrough_encoder_builder!(Decimal128EncoderBuilder);
+
+#[pyclass(module = "pgpq._pgpq")]
+#[derive(Debug, Clone)]
 pub struct TimestampMicrosecondEncoderBuilder {
     field: Py<PyAny>,
     inner: pgpq::encoders::EncoderBuilder,
@@ -375,6 +399,19 @@ impl_passthrough_encoder_builder_variable_output!(
     LargeStringEncoderBuilder,
     pgpq::encoders::LargeStringEncoderBuilder,
     pgpq::encoders::EncoderBuilder::LargeString
+);
+
+#[pyclass(module = "pgpq._pgpq")]
+#[derive(Debug, Clone)]
+pub struct StringViewEncoderBuilder {
+    field: Py<PyAny>,
+    output: crate::pg_schema::PostgresType,
+    inner: pgpq::encoders::EncoderBuilder,
+}
+impl_passthrough_encoder_builder_variable_output!(
+    StringViewEncoderBuilder,
+    pgpq::encoders::StringViewEncoderBuilder,
+    pgpq::encoders::EncoderBuilder::StringView
 );
 
 #[pyclass(module = "pgpq._pgpq")]
@@ -532,6 +569,9 @@ pub enum EncoderBuilder {
     Float16(Float16EncoderBuilder),
     Float32(Float32EncoderBuilder),
     Float64(Float64EncoderBuilder),
+    Decimal32(Decimal32EncoderBuilder),
+    Decimal64(Decimal64EncoderBuilder),
+    Decimal128(Decimal128EncoderBuilder),
     TimestampMicrosecond(TimestampMicrosecondEncoderBuilder),
     TimestampMillisecond(TimestampMillisecondEncoderBuilder),
     TimestampSecond(TimestampSecondEncoderBuilder),
@@ -544,6 +584,7 @@ pub enum EncoderBuilder {
     DurationSecond(DurationSecondEncoderBuilder),
     String(StringEncoderBuilder),
     LargeString(LargeStringEncoderBuilder),
+    StringView(StringViewEncoderBuilder),
     Binary(BinaryEncoderBuilder),
     LargeBinary(LargeBinaryEncoderBuilder),
     List(ListEncoderBuilder),
@@ -565,6 +606,9 @@ impl crate::utils::PythonRepr for EncoderBuilder {
             EncoderBuilder::Float16(inner) => inner.py_repr(py),
             EncoderBuilder::Float32(inner) => inner.py_repr(py),
             EncoderBuilder::Float64(inner) => inner.py_repr(py),
+            EncoderBuilder::Decimal32(inner) => inner.py_repr(py),
+            EncoderBuilder::Decimal64(inner) => inner.py_repr(py),
+            EncoderBuilder::Decimal128(inner) => inner.py_repr(py),
             EncoderBuilder::TimestampMicrosecond(inner) => inner.py_repr(py),
             EncoderBuilder::TimestampMillisecond(inner) => inner.py_repr(py),
             EncoderBuilder::TimestampSecond(inner) => inner.py_repr(py),
@@ -577,6 +621,7 @@ impl crate::utils::PythonRepr for EncoderBuilder {
             EncoderBuilder::DurationSecond(inner) => inner.py_repr(py),
             EncoderBuilder::String(inner) => inner.py_repr(py),
             EncoderBuilder::LargeString(inner) => inner.py_repr(py),
+            EncoderBuilder::StringView(inner) => inner.py_repr(py),
             EncoderBuilder::Binary(inner) => inner.py_repr(py),
             EncoderBuilder::LargeBinary(inner) => inner.py_repr(py),
             EncoderBuilder::List(inner) => inner.py_repr(py),
@@ -668,6 +713,24 @@ impl EncoderBuilder {
                     inner,
                 })
             }
+            pgpq::encoders::EncoderBuilder::Decimal32(_) => {
+                EncoderBuilder::Decimal32(Decimal32EncoderBuilder {
+                    field: py_field.clone().unbind(),
+                    inner,
+                })
+            }
+            pgpq::encoders::EncoderBuilder::Decimal64(_) => {
+                EncoderBuilder::Decimal64(Decimal64EncoderBuilder {
+                    field: py_field.clone().unbind(),
+                    inner,
+                })
+            }
+            pgpq::encoders::EncoderBuilder::Decimal128(_) => {
+                EncoderBuilder::Decimal128(Decimal128EncoderBuilder {
+                    field: py_field.clone().unbind(),
+                    inner,
+                })
+            }
             pgpq::encoders::EncoderBuilder::TimestampMicrosecond(_) => {
                 EncoderBuilder::TimestampMicrosecond(TimestampMicrosecondEncoderBuilder {
                     field: py_field.clone().unbind(),
@@ -737,6 +800,13 @@ impl EncoderBuilder {
             }
             pgpq::encoders::EncoderBuilder::LargeString(_) => {
                 EncoderBuilder::LargeString(LargeStringEncoderBuilder {
+                    field: py_field.clone().unbind(),
+                    output: pg_output_type,
+                    inner,
+                })
+            }
+            pgpq::encoders::EncoderBuilder::StringView(_) => {
+                EncoderBuilder::StringView(StringViewEncoderBuilder {
                     field: py_field.clone().unbind(),
                     output: pg_output_type,
                     inner,
@@ -879,6 +949,33 @@ impl From<pgpq::encoders::EncoderBuilder> for EncoderBuilder {
                     inner: value,
                 })
             }
+            pgpq::encoders::EncoderBuilder::Decimal32(inner) => {
+                let field = inner.field();
+                EncoderBuilder::Decimal32(Decimal32EncoderBuilder {
+                    field: field
+                        .to_pyarrow(py)
+                        .expect("Field to_pyarrow should not fail"),
+                    inner: value,
+                })
+            }
+            pgpq::encoders::EncoderBuilder::Decimal64(inner) => {
+                let field = inner.field();
+                EncoderBuilder::Decimal64(Decimal64EncoderBuilder {
+                    field: field
+                        .to_pyarrow(py)
+                        .expect("Field to_pyarrow should not fail"),
+                    inner: value,
+                })
+            }
+            pgpq::encoders::EncoderBuilder::Decimal128(inner) => {
+                let field = inner.field();
+                EncoderBuilder::Decimal128(Decimal128EncoderBuilder {
+                    field: field
+                        .to_pyarrow(py)
+                        .expect("Field to_pyarrow should not fail"),
+                    inner: value,
+                })
+            }
             pgpq::encoders::EncoderBuilder::TimestampMicrosecond(inner) => {
                 let field = inner.field();
                 EncoderBuilder::TimestampMicrosecond(TimestampMicrosecondEncoderBuilder {
@@ -991,6 +1088,17 @@ impl From<pgpq::encoders::EncoderBuilder> for EncoderBuilder {
                     output,
                 })
             }
+            pgpq::encoders::EncoderBuilder::StringView(inner) => {
+                let field = inner.field();
+                let output: crate::pg_schema::PostgresType = inner.schema().data_type.into();
+                EncoderBuilder::StringView(StringViewEncoderBuilder {
+                    field: field
+                        .to_pyarrow(py)
+                        .expect("Field to_pyarrow should not fail"),
+                    inner: value,
+                    output,
+                })
+            }
             pgpq::encoders::EncoderBuilder::Binary(inner) => {
                 let field = inner.field();
                 EncoderBuilder::Binary(BinaryEncoderBuilder {
@@ -1089,6 +1197,18 @@ impl<'py> IntoPyObject<'py> for EncoderBuilder {
                 .into_pyobject(py)
                 .map(|b| b.into_any())
                 .expect("pyclass into_pyobject")),
+            EncoderBuilder::Decimal32(inner) => Ok(inner
+                .into_pyobject(py)
+                .map(|b| b.into_any())
+                .expect("pyclass into_pyobject")),
+            EncoderBuilder::Decimal64(inner) => Ok(inner
+                .into_pyobject(py)
+                .map(|b| b.into_any())
+                .expect("pyclass into_pyobject")),
+            EncoderBuilder::Decimal128(inner) => Ok(inner
+                .into_pyobject(py)
+                .map(|b| b.into_any())
+                .expect("pyclass into_pyobject")),
             EncoderBuilder::TimestampMicrosecond(inner) => Ok(inner
                 .into_pyobject(py)
                 .map(|b| b.into_any())
@@ -1137,6 +1257,10 @@ impl<'py> IntoPyObject<'py> for EncoderBuilder {
                 .into_pyobject(py)
                 .map(|b| b.into_any())
                 .expect("pyclass into_pyobject")),
+            EncoderBuilder::StringView(inner) => Ok(inner
+                .into_pyobject(py)
+                .map(|b| b.into_any())
+                .expect("pyclass into_pyobject")),
             EncoderBuilder::Binary(inner) => Ok(inner
                 .into_pyobject(py)
                 .map(|b| b.into_any())
@@ -1175,6 +1299,9 @@ impl From<EncoderBuilder> for pgpq::encoders::EncoderBuilder {
             EncoderBuilder::Float16(inner) => inner.inner,
             EncoderBuilder::Float32(inner) => inner.inner,
             EncoderBuilder::Float64(inner) => inner.inner,
+            EncoderBuilder::Decimal32(inner) => inner.inner,
+            EncoderBuilder::Decimal64(inner) => inner.inner,
+            EncoderBuilder::Decimal128(inner) => inner.inner,
             EncoderBuilder::TimestampMicrosecond(inner) => inner.inner,
             EncoderBuilder::TimestampMillisecond(inner) => inner.inner,
             EncoderBuilder::TimestampSecond(inner) => inner.inner,
@@ -1187,6 +1314,7 @@ impl From<EncoderBuilder> for pgpq::encoders::EncoderBuilder {
             EncoderBuilder::DurationSecond(inner) => inner.inner,
             EncoderBuilder::String(inner) => inner.inner,
             EncoderBuilder::LargeString(inner) => inner.inner,
+            EncoderBuilder::StringView(inner) => inner.inner,
             EncoderBuilder::Binary(inner) => inner.inner,
             EncoderBuilder::LargeBinary(inner) => inner.inner,
             EncoderBuilder::List(inner) => inner.inner,

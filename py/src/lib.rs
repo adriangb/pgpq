@@ -118,6 +118,9 @@ fn _pgpq(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_class::<crate::encoders::Float16EncoderBuilder>()?;
     m.add_class::<crate::encoders::Float32EncoderBuilder>()?;
     m.add_class::<crate::encoders::Float64EncoderBuilder>()?;
+    m.add_class::<crate::encoders::Decimal32EncoderBuilder>()?;
+    m.add_class::<crate::encoders::Decimal64EncoderBuilder>()?;
+    m.add_class::<crate::encoders::Decimal128EncoderBuilder>()?;
     m.add_class::<crate::encoders::TimestampMicrosecondEncoderBuilder>()?;
     m.add_class::<crate::encoders::TimestampMillisecondEncoderBuilder>()?;
     m.add_class::<crate::encoders::TimestampSecondEncoderBuilder>()?;
@@ -130,6 +133,7 @@ fn _pgpq(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_class::<crate::encoders::DurationSecondEncoderBuilder>()?;
     m.add_class::<crate::encoders::StringEncoderBuilder>()?;
     m.add_class::<crate::encoders::LargeStringEncoderBuilder>()?;
+    m.add_class::<crate::encoders::StringViewEncoderBuilder>()?;
     m.add_class::<crate::encoders::BinaryEncoderBuilder>()?;
     m.add_class::<crate::encoders::LargeBinaryEncoderBuilder>()?;
     m.add_class::<crate::encoders::ListEncoderBuilder>()?;
@@ -146,6 +150,7 @@ fn _pgpq(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_class::<crate::pg_schema::Jsonb>()?;
     m.add_class::<crate::pg_schema::Float4>()?;
     m.add_class::<crate::pg_schema::Float8>()?;
+    m.add_class::<crate::pg_schema::Numeric>()?;
     m.add_class::<crate::pg_schema::Date>()?;
     m.add_class::<crate::pg_schema::Time>()?;
     m.add_class::<crate::pg_schema::Timestamp>()?;

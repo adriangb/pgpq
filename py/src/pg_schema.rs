@@ -114,6 +114,11 @@ impl_simple!(Float8, pgpq::pg_schema::PostgresType::Float8);
 
 #[pyclass(module = "pgpq._pgpq")]
 #[derive(Debug, Clone, PartialEq)]
+pub struct Numeric;
+impl_simple!(Numeric, pgpq::pg_schema::PostgresType::Numeric);
+
+#[pyclass(module = "pgpq._pgpq")]
+#[derive(Debug, Clone, PartialEq)]
 pub struct Date;
 impl_simple!(Date, pgpq::pg_schema::PostgresType::Date);
 
@@ -247,6 +252,7 @@ pub enum PostgresType {
     Jsonb(Jsonb),
     Float4(Float4),
     Float8(Float8),
+    Numeric(Numeric),
     Date(Date),
     Time(Time),
     Timestamp(Timestamp),
@@ -269,6 +275,7 @@ impl From<PostgresType> for pgpq::pg_schema::PostgresType {
             PostgresType::Jsonb(inner) => inner.into(),
             PostgresType::Float4(inner) => inner.into(),
             PostgresType::Float8(inner) => inner.into(),
+            PostgresType::Numeric(inner) => inner.into(),
             PostgresType::Date(inner) => inner.into(),
             PostgresType::Time(inner) => inner.into(),
             PostgresType::Timestamp(inner) => inner.into(),
@@ -293,6 +300,7 @@ impl From<pgpq::pg_schema::PostgresType> for PostgresType {
             pgpq::pg_schema::PostgresType::Jsonb => PostgresType::Jsonb(Jsonb),
             pgpq::pg_schema::PostgresType::Float4 => PostgresType::Float4(Float4),
             pgpq::pg_schema::PostgresType::Float8 => PostgresType::Float8(Float8),
+            pgpq::pg_schema::PostgresType::Numeric => PostgresType::Numeric(Numeric),
             pgpq::pg_schema::PostgresType::Date => PostgresType::Date(Date),
             pgpq::pg_schema::PostgresType::Time => PostgresType::Time(Time),
             pgpq::pg_schema::PostgresType::Timestamp => PostgresType::Timestamp(Timestamp),
@@ -323,6 +331,7 @@ impl PythonRepr for PostgresType {
             PostgresType::Jsonb(inner) => inner.py_repr(py),
             PostgresType::Float4(inner) => inner.py_repr(py),
             PostgresType::Float8(inner) => inner.py_repr(py),
+            PostgresType::Numeric(inner) => inner.py_repr(py),
             PostgresType::Date(inner) => inner.py_repr(py),
             PostgresType::Time(inner) => inner.py_repr(py),
             PostgresType::Timestamp(inner) => inner.py_repr(py),
@@ -406,6 +415,11 @@ impl Column {
                 .map(|b| b.clone().into_any().unbind())
                 .expect("pyclass into_pyobject should not fail"),
             PostgresType::Float8(inner) => inner
+                .clone()
+                .into_pyobject(py)
+                .map(|b| b.clone().into_any().unbind())
+                .expect("pyclass into_pyobject should not fail"),
+            PostgresType::Numeric(inner) => inner
                 .clone()
                 .into_pyobject(py)
                 .map(|b| b.clone().into_any().unbind())

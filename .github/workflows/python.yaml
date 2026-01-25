@@ -13,35 +13,58 @@ concurrency:
 env:
   PACKAGE_NAME: pgpq
   PYTHON_VERSION: "3.11" # to build abi3 wheels
+<<<<<<< HEAD
   MATURIN_VERSION: "v1.4.0"
+=======
+  MATURIN_VERSION: "v1.7.4"
+>>>>>>> upstream/main
   PACKAGE_DIR: py
+  UV_SYSTEM_PYTHON: 1
 
 jobs:
   macos:
     name: Build / MacOS
+<<<<<<< HEAD
     # if: github.ref == format('refs/heads/{0}', github.event.repository.default_branch)
     runs-on: macos-14
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v4
+=======
+    if: github.ref == format('refs/heads/{0}', github.event.repository.default_branch)
+    runs-on: macos-14
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v5
+        with:
+          enable-cache: true
+      - uses: actions/setup-python@v5
+>>>>>>> upstream/main
         with:
           python-version: ${{ env.PYTHON_VERSION }}
-          architecture: x64
-      - name: Install Rust toolchain
-        uses: actions-rs/toolchain@v1
+      - name: Install Rust
+        run: |
+          curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y
+          echo "$HOME/.cargo/bin" >> $GITHUB_PATH
+      - uses: Swatinem/rust-cache@v2
         with:
-          toolchain: stable
-          profile: minimal
-          default: true
+          workspaces: ${{ env.PACKAGE_DIR }}
       - name: Build wheels - x86_64
         uses: messense/maturin-action@v1
         with:
           target: x86_64
           args: -m ${{ env.PACKAGE_DIR }}/Cargo.toml --release --out dist --sdist
           maturin-version: ${{ env.MATURIN_VERSION }}
+<<<<<<< HEAD
       ##- name: Install built wheel - x86_64
       ##  run: |
       ##    python -m pip install "$(find dist -name '*.whl' -type f | head -n 1)" --force-reinstall --no-dependencies
+=======
+      - name: Install built wheel - x86_64
+        run: |
+          uv pip install "$(find dist -name '*.whl' -type f | head -n 1)" --force-reinstall --no-deps
+>>>>>>> upstream/main
       - name: Build wheels - universal2
         uses: messense/maturin-action@v1
         with:
@@ -50,9 +73,13 @@ jobs:
           target: universal2-apple-darwin
       - name: Install built wheel - universal2
         run: |
-          python -m pip install "$(find dist -name '*_universal2.whl' -type f | head -n 1)" --force-reinstall --no-dependencies
+          uv pip install "$(find dist -name '*_universal2.whl' -type f | head -n 1)" --force-reinstall --no-deps
       - name: Upload wheels
+<<<<<<< HEAD
         uses: actions/upload-artifact@v4
+=======
+        uses: actions/upload-artifact@v6
+>>>>>>> upstream/main
         with:
           name: wheels-macos
           path: dist
@@ -61,21 +88,31 @@ jobs:
     name: Build / Windows (${{ matrix.target }})
     if: github.ref == format('refs/heads/{0}', github.event.repository.default_branch)
     runs-on: windows-latest
+    timeout-minutes: 30
     strategy:
       matrix:
         target: [x64, x86]
     steps:
       - uses: actions/checkout@v4
+<<<<<<< HEAD
       - uses: actions/setup-python@v4
+=======
+      - uses: astral-sh/setup-uv@v5
+        with:
+          enable-cache: true
+      - uses: actions/setup-python@v5
+>>>>>>> upstream/main
         with:
           python-version: ${{ env.PYTHON_VERSION }}
           architecture: ${{ matrix.target }}
-      - name: Install Rust toolchain
-        uses: actions-rs/toolchain@v1
+      - name: Install Rust
+        run: |
+          curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y --default-host x86_64-pc-windows-msvc
+          echo "$HOME/.cargo/bin" >> $GITHUB_PATH
+        shell: bash
+      - uses: Swatinem/rust-cache@v2
         with:
-          toolchain: stable
-          profile: minimal
-          default: true
+          workspaces: ${{ env.PACKAGE_DIR }}
       - name: Build wheels
         uses: messense/maturin-action@v1
         with:
@@ -85,9 +122,13 @@ jobs:
       - name: Install built wheel
         shell: bash
         run: |
-          python -m pip install "$(find dist -name '*.whl' -type f | head -n 1)" --force-reinstall --no-dependencies
+          uv pip install "$(find dist -name '*.whl' -type f | head -n 1)" --force-reinstall --no-deps
       - name: Upload wheels
+<<<<<<< HEAD
         uses: actions/upload-artifact@v4
+=======
+        uses: actions/upload-artifact@v6
+>>>>>>> upstream/main
         with:
           name: wheels-windows-${{ matrix.target }}
           path: dist
@@ -95,15 +136,26 @@ jobs:
   linux:
     name: Build & Test / Linux (${{ matrix.target }})
     runs-on: ubuntu-latest
+    timeout-minutes: 20
     strategy:
       matrix:
         target: [x86_64, i686]
     steps:
       - uses: actions/checkout@v4
+<<<<<<< HEAD
       - uses: actions/setup-python@v4
+=======
+      - uses: astral-sh/setup-uv@v5
+        with:
+          enable-cache: true
+      - uses: actions/setup-python@v5
+>>>>>>> upstream/main
         with:
           python-version: ${{ env.PYTHON_VERSION }}
           architecture: x64
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: ${{ env.PACKAGE_DIR }}
       - name: Build wheels
         uses: messense/maturin-action@v1
         with:
@@ -114,10 +166,11 @@ jobs:
       - name: Install built wheel and test
         if: matrix.target == 'x86_64'
         run: |
-          python -m pip install "$(find dist -name '*.whl' -type f | head -n 1)[test]" --force-reinstall
-          python -m pip freeze
-          python -m pytest -v ${{ env.PACKAGE_DIR }}
+          uv pip install "$(find dist -name '*.whl' -type f | head -n 1)[test]" --force-reinstall
+          uv pip freeze
+          uv run pytest -v ${{ env.PACKAGE_DIR }}
       - name: Upload wheels
+<<<<<<< HEAD
         uses: actions/upload-artifact@v4
         with:
           name: wheels-linux-${{ matrix.target }}
@@ -161,10 +214,17 @@ jobs:
           name: wheels-linux-${{ matrix.target }}
           path: dist
 
+=======
+        uses: actions/upload-artifact@v6
+        with:
+          name: wheels-linux-${{ matrix.target }}
+          path: dist
+>>>>>>> upstream/main
   musllinux:
     name: Build / MuslLinux (${{ matrix.target }})
     if: github.ref == format('refs/heads/{0}', github.event.repository.default_branch)
     runs-on: ubuntu-latest
+    timeout-minutes: 30
     strategy:
       matrix:
         target:
@@ -172,7 +232,11 @@ jobs:
           - i686-unknown-linux-musl
     steps:
       - uses: actions/checkout@v4
+<<<<<<< HEAD
       - uses: actions/setup-python@v4
+=======
+      - uses: actions/setup-python@v5
+>>>>>>> upstream/main
         with:
           python-version: ${{ env.PYTHON_VERSION }}
           architecture: x64
@@ -190,13 +254,18 @@ jobs:
           image: alpine:latest
           options: -v ${{ github.workspace }}:/io -w /io
           run: |
-            apk add py3-pip
-            pip3 install ${{ env.PACKAGE_NAME }} --no-index --find-links /io/dist/ --force-reinstall --no-dependencies
+            apk add python3 curl
+            curl -LsSf https://astral.sh/uv/install.sh | sh
+            . $HOME/.local/bin/env
+            uv venv
+            . .venv/bin/activate
+            uv pip install ${{ env.PACKAGE_NAME }} --no-index --find-links /io/dist/ --force-reinstall --no-deps
       - name: Upload wheels
-        uses: actions/upload-artifact@v2
+        uses: actions/upload-artifact@v6
         with:
           name: wheels-musllinux-${{ matrix.target }}
           path: dist
+<<<<<<< HEAD
 
   musllinux-cross:
     name: Build / MuslLinux (${{ matrix.platform.arch }})
@@ -280,72 +349,101 @@ jobs:
           name: wheels-pypy-${{ matrix.os }}-${{ matrix.target }}-${{ matrix.python-version }}
           path: dist
 
+=======
+>>>>>>> upstream/main
   lint:
     name: Lint (${{ matrix.python }})
     runs-on: ubuntu-latest
+    timeout-minutes: 15
     strategy:
       matrix:
         # Lint on earliest and latest
         python: ["3.8", "3.x"]
     steps:
-      - uses: actions/checkout@v3
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v5
+        with:
+          enable-cache: true
       - name: Set up Python
-        uses: actions/setup-python@v2
+        uses: actions/setup-python@v5
         with:
           python-version: "3.x"
-      - name: Install Rust toolchain
-        uses: actions-rs/toolchain@v1
+      - name: Install Rust
+        run: |
+          curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y
+          echo "$HOME/.cargo/bin" >> $GITHUB_PATH
+      - uses: Swatinem/rust-cache@v2
         with:
-          toolchain: stable
-          profile: minimal
-          default: true
+          workspaces: ${{ env.PACKAGE_DIR }}
       - name: Lint
         run: |
           make lint
 
   # https://github.com/marketplace/actions/alls-green
   alls-green:
+<<<<<<< HEAD
     name: "Check release process"
     if: always() && github.ref == format('refs/heads/{0}', github.event.repository.default_branch)
+=======
+    name: "Check release process - pgpq"
+    if: always()
+>>>>>>> upstream/main
     needs:
       - lint
       - linux
       - macos
       - windows
+<<<<<<< HEAD
       - linux-cross
       - musllinux
       - musllinux-cross
       - pypy
+=======
+      - musllinux
+>>>>>>> upstream/main
     runs-on: ubuntu-latest
     steps:
       - name: Decide whether the needed jobs succeeded or failed
         uses: re-actors/alls-green@release/v1
         with:
           jobs: ${{ toJSON(needs) }}
+          # These get skipped in PRs and only run on main
+          # If they get skipped in a PR, we still want to consider them "green"
+          # If they fail in main, we want to fail the alls-green check
+          allowed-skips: macos,windows, musllinux
 
   release:
     name: Release
     runs-on: ubuntu-latest
+<<<<<<< HEAD
+=======
+    timeout-minutes: 15
+>>>>>>> upstream/main
     if: github.ref == format('refs/heads/{0}', github.event.repository.default_branch)
     needs:
       - lint
       - linux
       - macos
       - windows
+<<<<<<< HEAD
       - linux-cross
+=======
+>>>>>>> upstream/main
       - musllinux
-      - musllinux-cross
-      - pypy
     steps:
       - uses: actions/download-artifact@v4
         with:
           pattern: wheels-*
           merge-multiple: true
+<<<<<<< HEAD
       - uses: actions/setup-python@v4
+=======
+      - uses: astral-sh/setup-uv@v5
+      - uses: actions/setup-python@v5
+>>>>>>> upstream/main
       - name: Publish to PyPi
         env:
           TWINE_USERNAME: __token__
           TWINE_PASSWORD: ${{ secrets.PYPI_TOKEN }}
         run: |
-          pip install --upgrade twine
-          twine upload --skip-existing *
+          uvx twine upload --skip-existing *
