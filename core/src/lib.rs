@@ -91,7 +91,7 @@ impl ArrowToPostgresBinaryEncoder {
             columns: self
                 .encoder_builders
                 .iter()
-                .map(|builder| (builder.schema()))
+                .map(|builder| builder.schema())
                 .collect(),
         }
     }

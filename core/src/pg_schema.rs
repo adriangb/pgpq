@@ -113,7 +113,9 @@ pub struct PostgresSchema {
 }
 
 impl PostgresSchema {
-    pub fn ddl(&self, table_name: &str) -> String {
+    /// Generate DDL for creating the table and any required types.
+    /// If `temp_table` is true, creates a TEMP TABLE, otherwise a regular TABLE.
+    pub fn ddl(&self, table_name: &str, temp_table: bool) -> String {
         // Collect user-defined type DDLs and a mapping from column path to type name
         fn collect_types(
             col: &Column,
@@ -202,7 +204,11 @@ impl PostgresSchema {
             .collect::<Vec<_>>()
             .join(", ");
 
-        ddl.push_str(&format!("CREATE TEMP TABLE \"{}\" ({});", table_name, cols));
+        let table_type = if temp_table { "TEMP TABLE" } else { "TABLE" };
+        ddl.push_str(&format!(
+            "CREATE {} \"{}\" ({});",
+            table_type, table_name, cols
+        ));
         ddl
     }
 }
@@ -241,11 +247,17 @@ mod tests {
             ],
         };
 
-        let ddl = schema.ddl("test_table");
+        let ddl = schema.ddl("test_table", true);
 
         let expected_ddl = r#"CREATE TYPE data_t AS ("f0" TEXT, "f1" INT8);
 CREATE TEMP TABLE "test_table" ("id" INT4 NOT NULL, "data" data_t);"#;
 
         assert_eq!(ddl.trim(), expected_ddl.trim());
+
+        // Test with temp_table = false
+        let ddl_regular = schema.ddl("test_table", false);
+        let expected_ddl_regular = r#"CREATE TYPE data_t AS ("f0" TEXT, "f1" INT8);
+CREATE TABLE "test_table" ("id" INT4 NOT NULL, "data" data_t);"#;
+        assert_eq!(ddl_regular.trim(), expected_ddl_regular.trim());
     }
 }

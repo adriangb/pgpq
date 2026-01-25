@@ -297,7 +297,7 @@ macro_rules! decimal_encoder {
                 Ok(())
             }
 
-            fn size_hint(&self) -> Result<usize, ErrorKind> {
+            fn byte_size_hint(&self) -> Result<usize, ErrorKind> {
                 let integer_length = self.arr.precision() as usize - self.arr.scale() as usize;
                 let fractional_length = self.arr.scale() as usize;
                 let numeric_integers = (integer_length as f32 / 4.0).ceil() as usize
@@ -1383,18 +1383,18 @@ impl StructEncoderBuilder {
 impl BuildEncoder for StructEncoderBuilder {
     fn try_new<'a, 'b: 'a>(&'b self, arr: &'a dyn Array) -> Result<Encoder<'a>, ErrorKind> {
         let arr: &'a arrow_array::StructArray = downcast_checked(arr, self.field.name())?;
-        
+
         // Build encoders for each field at build time and collect OIDs
         let mut field_encoders = Vec::new();
         let mut field_oids = Vec::new();
-        
+
         for (field, encoder_builder) in arr.columns().iter().zip(&self.field_encoder_builders) {
             let encoder = encoder_builder.try_new(field)?;
             let oid = encoder_builder.schema().data_type.oid().unwrap();
             field_encoders.push(encoder);
             field_oids.push(oid);
         }
-        
+
         Ok(Encoder::Struct(StructEncoder {
             arr,
             field: self.field.name().to_string(),

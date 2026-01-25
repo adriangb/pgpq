@@ -163,8 +163,18 @@ impl UserDefined {
     }
     fn __richcmp__(&self, other: &Self, op: CompareOp, py: Python<'_>) -> PyResult<PyObject> {
         let res = match op {
-            CompareOp::Eq => (self == other).into_py(py),
-            CompareOp::Ne => (self != other).into_py(py),
+            CompareOp::Eq => {
+                let result = (self == other)
+                    .into_pyobject(py)
+                    .expect("bool into_pyobject should not fail");
+                result.to_owned().into_any().unbind()
+            }
+            CompareOp::Ne => {
+                let result = (self != other)
+                    .into_pyobject(py)
+                    .expect("bool into_pyobject should not fail");
+                result.to_owned().into_any().unbind()
+            }
             _ => py.NotImplemented(),
         };
         Ok(res)
@@ -545,9 +555,11 @@ impl PostgresSchema {
         };
         Ok(res)
     }
-    #[pyo3(text_signature = "(self, table_name)")]
-    fn ddl(&self, table_name: &str) -> String {
-        pgpq::pg_schema::PostgresSchema::from(self.clone()).ddl(table_name)
+    /// Generate DDL for creating the table and any required types.
+    /// If `temp_table` is true (default), creates a TEMP TABLE, otherwise a regular TABLE.
+    #[pyo3(signature = (table_name, temp_table=true))]
+    fn ddl(&self, table_name: &str, temp_table: bool) -> String {
+        pgpq::pg_schema::PostgresSchema::from(self.clone()).ddl(table_name, temp_table)
     }
 }
 
