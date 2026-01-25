@@ -2,9 +2,9 @@ PHONY: init build test
 
 .init:
 	rm -rf .venv
-	python -m venv .venv
-	./.venv/bin/pip install -e ./py[test,bench]
-	./.venv/bin/pre-commit install
+	uv venv
+	uv pip install -e ./py[test,bench]
+	uv run pre-commit install
 	touch .init
 
 .clean:
@@ -18,7 +18,7 @@ build-develop: .init
 
 test: build-develop
 	cargo test
-	./.venv/bin/python -m pytest
+	uv run pytest
 
 lint: build-develop
-	./.venv/bin/pre-commit run --all-files
+	uv run pre-commit run --all-files
