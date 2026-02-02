@@ -212,6 +212,14 @@ impl_passthrough_encoder_builder!(UInt32EncoderBuilder);
 
 #[pyclass(module = "pgpq._pgpq")]
 #[derive(Debug, Clone)]
+pub struct UInt64EncoderBuilder {
+    field: Py<PyAny>,
+    inner: pgpq::encoders::EncoderBuilder,
+}
+impl_passthrough_encoder_builder!(UInt64EncoderBuilder);
+
+#[pyclass(module = "pgpq._pgpq")]
+#[derive(Debug, Clone)]
 pub struct Int8EncoderBuilder {
     field: Py<PyAny>,
     output: PostgresType,
@@ -562,6 +570,7 @@ pub enum EncoderBuilder {
     UInt8(UInt8EncoderBuilder),
     UInt16(UInt16EncoderBuilder),
     UInt32(UInt32EncoderBuilder),
+    UInt64(UInt64EncoderBuilder),
     Int8(Int8EncoderBuilder),
     Int16(Int16EncoderBuilder),
     Int32(Int32EncoderBuilder),
@@ -599,6 +608,7 @@ impl crate::utils::PythonRepr for EncoderBuilder {
             EncoderBuilder::UInt8(inner) => inner.py_repr(py),
             EncoderBuilder::UInt16(inner) => inner.py_repr(py),
             EncoderBuilder::UInt32(inner) => inner.py_repr(py),
+            EncoderBuilder::UInt64(inner) => inner.py_repr(py),
             EncoderBuilder::Int8(inner) => inner.py_repr(py),
             EncoderBuilder::Int16(inner) => inner.py_repr(py),
             EncoderBuilder::Int32(inner) => inner.py_repr(py),
@@ -668,6 +678,12 @@ impl EncoderBuilder {
             }
             pgpq::encoders::EncoderBuilder::UInt32(_) => {
                 EncoderBuilder::UInt32(UInt32EncoderBuilder {
+                    field: py_field.clone().unbind(),
+                    inner,
+                })
+            }
+            pgpq::encoders::EncoderBuilder::UInt64(_) => {
+                EncoderBuilder::UInt64(UInt64EncoderBuilder {
                     field: py_field.clone().unbind(),
                     inner,
                 })
@@ -878,6 +894,15 @@ impl From<pgpq::encoders::EncoderBuilder> for EncoderBuilder {
             pgpq::encoders::EncoderBuilder::UInt32(inner) => {
                 let field = inner.field();
                 EncoderBuilder::UInt32(UInt32EncoderBuilder {
+                    field: field
+                        .to_pyarrow(py)
+                        .expect("Field to_pyarrow should not fail"),
+                    inner: value,
+                })
+            }
+            pgpq::encoders::EncoderBuilder::UInt64(inner) => {
+                let field = inner.field();
+                EncoderBuilder::UInt64(UInt64EncoderBuilder {
                     field: field
                         .to_pyarrow(py)
                         .expect("Field to_pyarrow should not fail"),
@@ -1169,6 +1194,10 @@ impl<'py> IntoPyObject<'py> for EncoderBuilder {
                 .into_pyobject(py)
                 .map(|b| b.into_any())
                 .expect("pyclass into_pyobject")),
+            EncoderBuilder::UInt64(inner) => Ok(inner
+                .into_pyobject(py)
+                .map(|b| b.into_any())
+                .expect("pyclass into_pyobject")),
             EncoderBuilder::Int8(inner) => Ok(inner
                 .into_pyobject(py)
                 .map(|b| b.into_any())
@@ -1292,6 +1321,7 @@ impl From<EncoderBuilder> for pgpq::encoders::EncoderBuilder {
             EncoderBuilder::UInt8(inner) => inner.inner,
             EncoderBuilder::UInt16(inner) => inner.inner,
             EncoderBuilder::UInt32(inner) => inner.inner,
+            EncoderBuilder::UInt64(inner) => inner.inner,
             EncoderBuilder::Int8(inner) => inner.inner,
             EncoderBuilder::Int16(inner) => inner.inner,
             EncoderBuilder::Int32(inner) => inner.inner,

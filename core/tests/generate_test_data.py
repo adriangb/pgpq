@@ -42,6 +42,7 @@ primitive_cols: list[tuple[pa.field, list[Any]]] = [
     (pa.field("uint8", pa.uint8()), [0, 1, 2]),
     (pa.field("uint16", pa.uint16()), [0, 1, 2]),
     (pa.field("uint32", pa.uint32()), [0, 1, 2]),
+    (pa.field("uint64", pa.uint64()), [0, 1, 18446744073709551615]),
     (pa.field("int8", pa.int8()), [-1, 0, 1]),
     (pa.field("int16", pa.int16()), [-1, 0, 1]),
     (pa.field("int32", pa.int32()), [-1, 0, 1]),

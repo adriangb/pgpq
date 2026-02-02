@@ -37,6 +37,7 @@ pub enum Encoder<'a> {
     UInt8(UInt8Encoder<'a>),
     UInt16(UInt16Encoder<'a>),
     UInt32(UInt32Encoder<'a>),
+    UInt64(UInt64Encoder<'a>),
     Int8(Int8Encoder<'a>),
     Int16(Int16Encoder<'a>),
     Int32(Int32Encoder<'a>),
@@ -242,8 +243,57 @@ impl_encode!(
     BufMut::put_f64
 );
 
+macro_rules! encode_decimal {
+    ($name:ident, $int:ty) => {
+        fn $name(value: $int, scale: i8, buf: &mut BytesMut) {
+            let mut value = value;
+            let sign = if value < 0 {
+                value = -value;
+                0x4000
+            } else {
+                0
+            };
+            let div = (10 as $int).pow(scale as u32);
+            let mut integer_part = value / div;
+            let mut fractional_part = value % div;
+            let mut numeric_digits: Vec<i16> = vec![];
+            let mut weight: i16 = -1;
+
+            // need to pad the fractional part to ensure the total number of digits is
+            // multiple of four, to build complete base-10000 digits
+            // (e.g., 1 -> 1000, 12 -> 1200, 123 -> 1230, 1234 -> 1234)
+            fractional_part *= (10 as $int).pow(((4 - (scale % 4)) % 4) as u32);
+            while fractional_part > 0 {
+                numeric_digits.push((fractional_part % 10_000) as i16);
+                fractional_part /= 10_000;
+            }
+
+            while integer_part > 0 {
+                numeric_digits.push((integer_part % 10_000) as i16);
+                integer_part /= 10_000;
+                weight += 1;
+            }
+
+            buf.put_i32(8 + 2 * numeric_digits.len() as i32); // num of bytes
+            buf.put_i16(numeric_digits.len() as i16);
+            buf.put_i16(weight);
+            buf.put_i16(sign);
+            buf.put_i16(scale as i16);
+            // postgres expects the digits to be encoded from largest to smallest, so we
+            // need to iterate the vec in reverse
+            for d in numeric_digits.into_iter().rev() {
+                buf.put_i16(d);
+            }
+        }
+    };
+}
+
+encode_decimal!(encode_decimal_32, i32);
+encode_decimal!(encode_decimal_64, i64);
+encode_decimal!(encode_decimal_128, i128);
+
 macro_rules! decimal_encoder {
-    ($encoder:ident, $arr:ty, $int:ty) => {
+    ($encoder:ident, $arr:ty, $decimal_encoder:ident) => {
         #[derive(Debug)]
         pub struct $encoder<'a> {
             arr: &'a $arr,
@@ -254,45 +304,7 @@ macro_rules! decimal_encoder {
                 if self.arr.is_null(row) {
                     buf.put_i32(-1);
                 } else {
-                    let mut value = self.arr.value(row);
-                    let sign = if value < 0 {
-                        value = -value;
-                        0x4000
-                    } else {
-                        0
-                    };
-                    let scale = self.arr.scale();
-                    let div = (10 as $int).pow(scale as u32);
-                    let mut integer_part = value / div;
-                    let mut fractional_part = value % div;
-                    let mut numeric_digits: Vec<i16> = vec![];
-                    let mut weight: i16 = -1;
-
-                    // need to pad the fractional part to ensure the total number of digits is
-                    // multiple of four, to build complete base-10000 digits
-                    // (e.g., 1 -> 1000, 12 -> 1200, 123 -> 1230, 1234 -> 1234)
-                    fractional_part *= (10 as $int).pow(((4 - (scale % 4)) % 4) as u32);
-                    while fractional_part > 0 {
-                        numeric_digits.push((fractional_part % 10_000) as i16);
-                        fractional_part /= 10_000;
-                    }
-
-                    while integer_part > 0 {
-                        numeric_digits.push((integer_part % 10_000) as i16);
-                        integer_part /= 10_000;
-                        weight += 1;
-                    }
-
-                    buf.put_i32(8 + 2 * numeric_digits.len() as i32); // num of bytes
-                    buf.put_i16(numeric_digits.len() as i16);
-                    buf.put_i16(weight);
-                    buf.put_i16(sign);
-                    buf.put_i16(scale as i16);
-                    // postgres expects the digits to be encoded from largest to smallest, so we
-                    // need to iterate the vec in reverse
-                    for d in numeric_digits.into_iter().rev() {
-                        buf.put_i16(d);
-                    }
+                    $decimal_encoder(self.arr.value(row), self.arr.scale(), buf)
                 }
                 Ok(())
             }
@@ -308,9 +320,33 @@ macro_rules! decimal_encoder {
     };
 }
 
-decimal_encoder!(Decimal32Encoder, Decimal32Array, i32);
-decimal_encoder!(Decimal64Encoder, Decimal64Array, i64);
-decimal_encoder!(Decimal128Encoder, Decimal128Array, i128);
+decimal_encoder!(Decimal32Encoder, Decimal32Array, encode_decimal_32);
+decimal_encoder!(Decimal64Encoder, Decimal64Array, encode_decimal_64);
+decimal_encoder!(Decimal128Encoder, Decimal128Array, encode_decimal_128);
+
+#[derive(Debug)]
+pub struct UInt64Encoder<'a> {
+    arr: &'a arrow_array::UInt64Array,
+}
+
+impl<'a> Encode for UInt64Encoder<'a> {
+    fn encode(&self, row: usize, buf: &mut BytesMut) -> Result<(), ErrorKind> {
+        if self.arr.is_null(row) {
+            buf.put_i32(-1);
+        } else {
+            // since postgres does not support unsigned values, it must be promoted to the next
+            // largest type. in this case, we will encoded it as a numeric (with no decimal places)
+            let value = self.arr.value(row) as i128;
+            encode_decimal_128(value, 0, buf);
+        }
+        Ok(())
+    }
+
+    fn byte_size_hint(&self) -> Result<usize, ErrorKind> {
+        let numeric_integers = 5;
+        Ok(self.arr.len() * (8 + 2 * numeric_integers))
+    }
+}
 
 const PG_BASE_TIMESTAMP_OFFSET_US: i64 = 946_684_800_000_000; // microseconds between 2000-01-01 at midnight (Postgres's epoch) and 1970-01-01 (Arrow's / UNIX epoch)
 const PG_BASE_TIMESTAMP_OFFSET_MS: i64 = 946_684_800_000; // milliseconds between 2000-01-01 at midnight (Postgres's epoch) and 1970-01-01 (Arrow's / UNIX epoch)
@@ -892,6 +928,18 @@ impl_encoder_builder_stateless!(
 );
 
 #[derive(Debug, Clone, PartialEq)]
+pub struct UInt64EncoderBuilder {
+    field: Arc<Field>,
+}
+impl_encoder_builder_stateless!(
+    UInt64EncoderBuilder,
+    Encoder::UInt64,
+    UInt64Encoder,
+    PostgresType::Numeric,
+    |dt: &DataType| matches!(dt, DataType::UInt64)
+);
+
+#[derive(Debug, Clone, PartialEq)]
 pub struct Int8EncoderBuilder {
     field: Arc<Field>,
     output: PostgresType,
@@ -1436,6 +1484,7 @@ pub enum EncoderBuilder {
     UInt8(UInt8EncoderBuilder),
     UInt16(UInt16EncoderBuilder),
     UInt32(UInt32EncoderBuilder),
+    UInt64(UInt64EncoderBuilder),
     Int8(Int8EncoderBuilder),
     Int16(Int16EncoderBuilder),
     Int32(Int32EncoderBuilder),
@@ -1474,6 +1523,7 @@ impl EncoderBuilder {
             DataType::UInt8 => Self::UInt8(UInt8EncoderBuilder { field }),
             DataType::UInt16 => Self::UInt16(UInt16EncoderBuilder { field }),
             DataType::UInt32 => Self::UInt32(UInt32EncoderBuilder { field }),
+            DataType::UInt64 => Self::UInt64(UInt64EncoderBuilder { field }),
             // Note that rust-postgres encodes int8 to CHAR by default
             DataType::Int8 => Self::Int8(Int8EncoderBuilder {
                 field,
