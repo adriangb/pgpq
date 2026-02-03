@@ -17,6 +17,7 @@ field_only = [
     "UInt8EncoderBuilder",
     "UInt16EncoderBuilder",
     "UInt32EncoderBuilder",
+    "UInt64EncoderBuilder",
     "Int8EncoderBuilder",
     "Int16EncoderBuilder",
     "Int32EncoderBuilder",

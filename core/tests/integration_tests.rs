@@ -74,6 +74,11 @@ fn test_uint32() {
 }
 
 #[test]
+fn test_uint64() {
+    run_test_case("uint64")
+}
+
+#[test]
 fn test_int8() {
     run_test_case("int8")
 }
@@ -226,6 +231,11 @@ fn test_uint16_nullable() {
 #[test]
 fn test_uint32_nullable() {
     run_test_case("uint32_nullable")
+}
+
+#[test]
+fn test_uint64_nullable() {
+    run_test_case("uint64_nullable")
 }
 
 #[test]
@@ -384,6 +394,11 @@ fn test_list_uint32() {
 }
 
 #[test]
+fn test_list_uint64() {
+    run_test_case("list_uint64")
+}
+
+#[test]
 fn test_list_int8() {
     run_test_case("list_int8")
 }
@@ -536,6 +551,11 @@ fn test_list_uint16_nullable() {
 #[test]
 fn test_list_uint32_nullable() {
     run_test_case("list_uint32_nullable")
+}
+
+#[test]
+fn test_list_uint64_nullable() {
+    run_test_case("list_uint64_nullable")
 }
 
 #[test]
@@ -694,6 +714,11 @@ fn test_list_nullable_uint32() {
 }
 
 #[test]
+fn test_list_nullable_uint64() {
+    run_test_case("list_nullable_uint64")
+}
+
+#[test]
 fn test_list_nullable_int8() {
     run_test_case("list_nullable_int8")
 }
@@ -846,6 +871,11 @@ fn test_list_nullable_uint16_nullable() {
 #[test]
 fn test_list_nullable_uint32_nullable() {
     run_test_case("list_nullable_uint32_nullable")
+}
+
+#[test]
+fn test_list_nullable_uint64_nullable() {
+    run_test_case("list_nullable_uint64_nullable")
 }
 
 #[test]

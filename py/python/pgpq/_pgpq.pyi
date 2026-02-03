@@ -107,6 +107,9 @@ class UInt16EncoderBuilder:
 class UInt32EncoderBuilder:
     def __init__(self, field: pyarrow.Field) -> None: ...
 
+class UInt64EncoderBuilder:
+    def __init__(self, field: pyarrow.Field) -> None: ...
+
 class Int8EncoderBuilder:
     def __init__(self, field: pyarrow.Field) -> None: ...
     @classmethod
@@ -217,6 +220,7 @@ EncoderBuilder = (
     | UInt8EncoderBuilder
     | UInt16EncoderBuilder
     | UInt32EncoderBuilder
+    | UInt64EncoderBuilder
     | Int8EncoderBuilder
     | Int16EncoderBuilder
     | Int32EncoderBuilder

@@ -49,6 +49,7 @@ There's no reason we can't support struct data types as well.
 |   UInt8                   |   INT2           |
 |   UInt16                  |   INT4           |
 |   UInt32                  |   INT8           |
+|   UInt64                  |   NUMERIC        |
 |   Int8                    |   CHAR,INT2      |
 |   Int16                   |   INT2           |
 |   Int32                   |   INT4           |
