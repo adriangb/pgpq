@@ -12,9 +12,9 @@ PHONY: init build test
 
 init: .clean .init
 
-build-develop: .init
-	uvx maturin develop -m py/Cargo.toml
-	uvx maturin develop -m json/Cargo.toml
+build-develop: .init 
+	uvx maturin develop -m py/Cargo.toml --strip
+	uvx maturin develop -m json/Cargo.toml --strip
 
 test: build-develop
 	cargo test
