@@ -13,7 +13,11 @@ rust-version = "1.84"
 
 [workspace.dependencies]
 arrow = ">=56.0.0"
-arrow-array = ">=56.0.0"
+# `default-features` must be declared here, not only at the use site: cargo
+# ignores (and warns about) `default-features = false` on an inherited
+# dependency unless the workspace entry sets it too. arrow-array's `default` is
+# empty today, so this is a correctness/lint fix rather than a behaviour change.
+arrow-array = { version = ">=56.0.0", default-features = false }
 arrow-schema = ">=56.0.0"
 arrow-json = ">=56.0.0"
 arrow-ipc = ">=56.0.0"

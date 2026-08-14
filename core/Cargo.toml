@@ -15,12 +15,11 @@ authors = ["Adrian Garcia Badaracco <dev@adriangb.com>"]
 [dependencies]
 bytes = "^1.4.0"
 arrow-schema.workspace = true
+# `default-features = false` lives on `[workspace.dependencies.arrow-array]`;
+# repeating it here is what cargo used to warn about (and ignore).
+arrow-array.workspace = true
 enum_dispatch = "0.3.11"
 thiserror = "2.0.20"
-
-[dependencies.arrow-array]
-workspace = true
-default-features = false
 
 [dev-dependencies]
 rstest = ">=0.16.0"
