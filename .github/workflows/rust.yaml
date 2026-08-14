@@ -1,4 +1,12 @@
-on: [push, pull_request]
+# `push` is restricted to `main` (as in the Python workflows): a PR from a
+# branch in this repository would otherwise fire two identical runs, which race
+# each other into the unauthenticated GitHub API rate limit while downloading
+# the embedded Postgres archives (see #76).
+on:
+  push:
+    branches:
+      - main
+  pull_request:
 
 name: Rust CI
 
@@ -49,7 +57,14 @@ jobs:
         with:
           toolchain: stable
       - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2.9.2
-      - run: cargo test --locked
+      - uses: ./.github/actions/cache-embedded-postgres
+      - name: Run tests
+        # See the note on the Coverage job: the integration tests download an
+        # embedded Postgres from GitHub releases and need an authenticated
+        # client to stay inside the API rate limit (#76).
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: cargo test --locked
 
   coverage:
     name: Coverage
@@ -65,6 +80,7 @@ jobs:
       - uses: taiki-e/install-action@82cd3e7658a6f96c86c0234aeeda1748937cb0a1 # v2.85.13
         with:
           tool: cargo-llvm-cov
+      - uses: ./.github/actions/cache-embedded-postgres
       - name: Collect coverage
         # The integration tests download an embedded Postgres from GitHub
         # releases via postgresql_embedded, which shares the unauthenticated
