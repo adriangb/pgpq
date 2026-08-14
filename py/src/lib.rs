@@ -72,9 +72,11 @@ impl ArrowToPostgresBinaryEncoder {
             empty: PyBytes::new(py, &vec![][..]).unbind().into(),
         })
     }
-    fn write_header(&mut self, py: Python) -> Py<PyAny> {
-        self.encoder.write_header(&mut self.buf);
-        PyBytes::new(py, &self.buf.split()[..]).unbind().into()
+    fn write_header(&mut self, py: Python) -> PyResult<Py<PyAny>> {
+        self.encoder
+            .write_header(&mut self.buf)
+            .map_err(|e| PyValueError::new_err(format!("Failed to write header: {:?}", e)))?;
+        Ok(PyBytes::new(py, &self.buf.split()[..]).unbind().into())
     }
     fn write_batch(&mut self, py_batch: &Bound<'_, PyAny>) -> PyResult<Py<PyAny>> {
         let batch = &RecordBatch::from_pyarrow_bound(py_batch)?;

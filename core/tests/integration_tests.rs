@@ -20,7 +20,7 @@ fn run_test_case(case: &str) {
     let (batches, schema) = read_batches(&path);
     let mut encoder = ArrowToPostgresBinaryEncoder::try_new(&schema).unwrap();
     let mut buf = BytesMut::new();
-    encoder.write_header(&mut buf);
+    encoder.write_header(&mut buf).unwrap();
     for batch in batches {
         encoder.write_batch(&batch, &mut buf).unwrap();
     }

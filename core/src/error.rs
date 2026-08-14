@@ -2,6 +2,7 @@ use arrow_schema::DataType;
 use thiserror::Error;
 
 use crate::pg_schema::PostgresType;
+use crate::EncoderState;
 
 #[derive(Debug, Error)]
 pub enum ErrorKind {
@@ -40,6 +41,13 @@ pub enum ErrorKind {
     EncoderMissing { field: String },
     #[error("No fields match supplied encoder fields: {fields:?}")]
     UnknownFields { fields: Vec<String> },
+    #[error("encoder is {actual} but this call requires it to be {expected}")]
+    EncoderStateError {
+        expected: EncoderState,
+        actual: EncoderState,
+    },
+    #[error("expected a batch with {expected} columns but got {actual}")]
+    ColumnCountMismatch { expected: usize, actual: usize },
 }
 
 impl ErrorKind {
