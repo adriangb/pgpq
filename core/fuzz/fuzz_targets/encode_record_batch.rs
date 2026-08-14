@@ -43,8 +43,8 @@ const MAX_STRUCT_FIELDS: usize = 3;
 
 /// The scalar Arrow types pgpq claims to support.
 ///
-/// `Decimal` carries no precision/scale here: those are drawn separately so that the known
-/// panicking regions can be excluded (see `scalar_type`).
+/// `Decimal` carries no precision/scale here: those are drawn separately from the fuzzer's
+/// entropy (see `scalar_type`).
 #[derive(Debug, Clone, Copy, Arbitrary)]
 enum Scalar {
     Boolean,
@@ -83,11 +83,11 @@ enum Column {
     Struct(Vec<Scalar>),
 }
 
-/// KNOWN BUG (see `core/tests/proptest_roundtrip.rs`): `encode_decimal!` overflows for large
-/// scales and `byte_size_hint` underflows for negative scales, so the fuzzer draws a Decimal128
-/// scale from the region that is expected to work.
-const DECIMAL_PRECISION: u8 = 28;
-const MAX_DECIMAL_SCALE: i8 = 28;
+/// Arrow's bounds for a `Decimal128`: up to 38 significant digits and a scale anywhere in
+/// `-precision..=precision`. The whole space is fuzzed — the overflow and underflow that used to
+/// keep it narrower (issue #79) were fixed by PR #85, and unlike the proptest suite this target
+/// has no expectation side, so `rust_decimal`'s 28 digit ceiling does not apply here either.
+const MAX_DECIMAL_PRECISION: u8 = 38;
 
 fn scalar_type(scalar: Scalar, u: &mut Unstructured<'_>) -> arbitrary::Result<DataType> {
     Ok(match scalar {
@@ -103,7 +103,9 @@ fn scalar_type(scalar: Scalar, u: &mut Unstructured<'_>) -> arbitrary::Result<Da
         Scalar::Float32 => DataType::Float32,
         Scalar::Float64 => DataType::Float64,
         Scalar::Decimal128 => {
-            DataType::Decimal128(DECIMAL_PRECISION, u.int_in_range(0..=MAX_DECIMAL_SCALE)?)
+            let precision = u.int_in_range(1..=MAX_DECIMAL_PRECISION)?;
+            let scale = u.int_in_range(-(precision as i8)..=precision as i8)?;
+            DataType::Decimal128(precision, scale)
         }
         Scalar::TimestampMicrosecond => {
             let tz = if u.arbitrary()? {
