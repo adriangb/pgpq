@@ -25,6 +25,9 @@ use super::value::{expected_rows, Value};
 
 /// One roundtrip case: some Arrow data, optionally custom encoders, and the values Postgres is
 /// expected to hand back.
+///
+/// `Debug` is required by `proptest`, which prints the generated (and shrunk) case on failure.
+#[derive(Debug)]
 pub struct Case {
     pub name: String,
     pub schema: Schema,

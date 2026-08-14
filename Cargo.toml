@@ -1,5 +1,8 @@
 [workspace]
 members = ["core", "py", "json"]
+# `core/fuzz` is a cargo-fuzz crate: it needs nightly and the libfuzzer sanitizer runtime, so it is
+# its own workspace and must not be built by `cargo test` / `cargo clippy` here.
+exclude = ["core/fuzz"]
 resolver = "2"
 
 [workspace.package]

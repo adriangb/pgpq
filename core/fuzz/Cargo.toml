@@ -1,0 +1,31 @@
+[package]
+name = "pgpq-fuzz"
+version = "0.0.0"
+publish = false
+edition = "2021"
+
+[package.metadata]
+cargo-fuzz = true
+
+[dependencies]
+libfuzzer-sys = "0.4"
+arbitrary = { version = "1", features = ["derive"] }
+arrow-array = ">=56.0.0"
+arrow-buffer = ">=56.0.0"
+arrow-schema = ">=56.0.0"
+bytes = "1"
+
+[dependencies.pgpq]
+path = ".."
+
+[[bin]]
+name = "encode_record_batch"
+path = "fuzz_targets/encode_record_batch.rs"
+test = false
+doc = false
+bench = false
+
+# Keep the fuzz crate out of the main workspace: it needs a nightly toolchain and the
+# `libfuzzer-sys` sanitizer runtime, neither of which should affect `cargo test` on stable.
+[workspace]
+members = ["."]

@@ -1,0 +1,6 @@
+# proptest writes a `<family>.txt` file here whenever a property in
+# `core/tests/proptest_roundtrip.rs` fails, recording the seed that produced the
+# counterexample. Those files are meant to be committed: replaying them turns a random
+# CI failure into a deterministic regression test on every later run.
+#
+# This placeholder only exists so the directory itself is tracked while it is empty.
