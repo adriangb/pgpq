@@ -9,7 +9,9 @@ repos:
       pass_filenames: false
     - id: cargo-clippy
       name: cargo-clippy
-      entry: cargo clippy --fix --allow-dirty --allow-staged --all -- -D warnings
+      # Keep the target selection in sync with the Clippy job in
+      # .github/workflows/rust.yaml: `--all` skips benches and test targets.
+      entry: cargo clippy --fix --allow-dirty --allow-staged --workspace --all-targets -- -D warnings
       language: system
       types: [rust]
       pass_filenames: false

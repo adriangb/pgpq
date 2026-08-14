@@ -16,4 +16,5 @@ jobs:
     with:
       package_name: arrow-json
       package_dir: json
+      import_name: arrow_json
     secrets: inherit
