@@ -52,6 +52,3 @@ profile = "release"
 module-name = "pgpq._pgpq"
 bindings = "pyo3"
 features = ["pyo3/extension-module"]
-
-[tool.isort]
-profile = "black"

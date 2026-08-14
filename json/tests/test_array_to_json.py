@@ -1,10 +1,9 @@
 import json
 from typing import Any, Dict, List
+
 import pyarrow as pa
 import pytest
-
 from arrow_json import array_to_utf8_json_array
-
 
 int_array = pa.array([1, 2, 3, 4])
 string_array = pa.array(["A", "B", "C", "D"])

@@ -2,11 +2,11 @@
 
 from shutil import rmtree
 from tempfile import mkdtemp
+
 import psycopg
 import pyarrow.dataset as ds
 import requests
 from pgpq import ArrowToPostgresBinaryEncoder
-
 
 # let's get some example data
 tmpdir = mkdtemp()

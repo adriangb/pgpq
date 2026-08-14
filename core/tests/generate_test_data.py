@@ -3,8 +3,8 @@ from decimal import Decimal
 from math import floor
 from pathlib import Path
 from typing import Any, List
-import pyarrow as pa
 
+import pyarrow as pa
 
 DIR = (Path(__file__).parent / "testdata").resolve()
 DIR.mkdir(exist_ok=True)
