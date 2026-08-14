@@ -90,6 +90,11 @@ fn test_int64() {
 }
 
 #[test]
+fn test_float16() {
+    run_test_case("float16")
+}
+
+#[test]
 fn test_float32() {
     run_test_case("float32")
 }
@@ -247,6 +252,11 @@ fn test_int32_nullable() {
 #[test]
 fn test_int64_nullable() {
     run_test_case("int64_nullable")
+}
+
+#[test]
+fn test_float16_nullable() {
+    run_test_case("float16_nullable")
 }
 
 #[test]
@@ -410,6 +420,11 @@ fn test_list_int64() {
 }
 
 #[test]
+fn test_list_float16() {
+    run_test_case("list_float16")
+}
+
+#[test]
 fn test_list_float32() {
     run_test_case("list_float32")
 }
@@ -567,6 +582,11 @@ fn test_list_int32_nullable() {
 #[test]
 fn test_list_int64_nullable() {
     run_test_case("list_int64_nullable")
+}
+
+#[test]
+fn test_list_float16_nullable() {
+    run_test_case("list_float16_nullable")
 }
 
 #[test]
@@ -730,6 +750,11 @@ fn test_list_nullable_int64() {
 }
 
 #[test]
+fn test_list_nullable_float16() {
+    run_test_case("list_nullable_float16")
+}
+
+#[test]
 fn test_list_nullable_float32() {
     run_test_case("list_nullable_float32")
 }
@@ -890,6 +915,11 @@ fn test_list_nullable_int64_nullable() {
 }
 
 #[test]
+fn test_list_nullable_float16_nullable() {
+    run_test_case("list_nullable_float16_nullable")
+}
+
+#[test]
 fn test_list_nullable_float32_nullable() {
     run_test_case("list_nullable_float32_nullable")
 }
@@ -1002,6 +1032,46 @@ fn test_list_nullable_large_string_nullable() {
 #[test]
 fn test_list_nullable_string_view_nullable() {
     run_test_case("list_nullable_string_view_nullable")
+}
+
+#[test]
+fn test_large_list_int32() {
+    run_test_case("large_list_int32")
+}
+
+#[test]
+fn test_large_list_string() {
+    run_test_case("large_list_string")
+}
+
+#[test]
+fn test_large_list_int32_nullable() {
+    run_test_case("large_list_int32_nullable")
+}
+
+#[test]
+fn test_large_list_string_nullable() {
+    run_test_case("large_list_string_nullable")
+}
+
+#[test]
+fn test_large_list_nullable_int32() {
+    run_test_case("large_list_nullable_int32")
+}
+
+#[test]
+fn test_large_list_nullable_string() {
+    run_test_case("large_list_nullable_string")
+}
+
+#[test]
+fn test_large_list_nullable_int32_nullable() {
+    run_test_case("large_list_nullable_int32_nullable")
+}
+
+#[test]
+fn test_large_list_nullable_string_nullable() {
+    run_test_case("large_list_nullable_string_nullable")
 }
 
 #[test]

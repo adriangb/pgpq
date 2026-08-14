@@ -47,6 +47,7 @@ primitive_cols: list[tuple[pa.field, list[Any]]] = [
     (pa.field("int16", pa.int16()), [-1, 0, 1]),
     (pa.field("int32", pa.int32()), [-1, 0, 1]),
     (pa.field("int64", pa.int64()), [-1, 0, 1]),
+    (pa.field("float16", pa.float16()), [-1, 0, 1, float("inf")]),
     (pa.field("float32", pa.float32()), [-1, 0, 1, float("inf")]),
     (pa.field("float64", pa.float64()), [-1, 0, 1, float("inf")]),
     (
@@ -136,14 +137,25 @@ nullable_list_cols = [
 ]
 
 
+# LargeList differs from List only in the width of the offsets, which the encoder
+# never puts on the wire (a Postgres array carries element counts, not offsets), so a
+# handful of element types is enough to pin the bytes down. The `large_list_` prefix
+# keeps these from colliding with the `list_` names above.
+LARGE_LIST_ELEMENTS = {"int32", "string", "int32_nullable", "string_nullable"}
+
 large_list_cols = [
-    (pa.field(f"list_{f.name}", pa.large_list(f), nullable=False), [data])
+    (pa.field(f"large_list_{f.name}", pa.large_list(f), nullable=False), [data])
     for f, data in [*primitive_cols, *nullable_primitives]
+    if f.name in LARGE_LIST_ELEMENTS
 ]
 
 large_nullable_list_cols = [
-    (pa.field(f"list_nullable_{f.name}", pa.large_list(f), nullable=True), [data, None])
+    (
+        pa.field(f"large_list_nullable_{f.name}", pa.large_list(f), nullable=True),
+        [data, None],
+    )
     for f, data in [*primitive_cols, *nullable_primitives]
+    if f.name in LARGE_LIST_ELEMENTS
 ]
 
 fixed_size_list_cols = [
@@ -192,6 +204,8 @@ all_cols = [
     *nullable_primitives,
     *list_cols,
     *nullable_list_cols,
+    *large_list_cols,
+    *large_nullable_list_cols,
     *struct_with_two_primitive_cols,
     *nested_struct,
 ]
