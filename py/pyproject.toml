@@ -28,6 +28,7 @@ test = [
     "testing.postgresql>=1.3.0",
     "psycopg[binary]>=3.3.2",
     "pyarrow>=22.0.0",
+    "hypothesis>=6.0.0",
 ]
 bench = [
     "jupyter>=1.0.0",

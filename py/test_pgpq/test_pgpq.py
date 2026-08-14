@@ -12,7 +12,9 @@ What this module covers instead is the pyo3 surface:
   bindings hand Postgres bytes it accepts,
 * the schema objects (``PostgresSchema``/``Column``) and DDL generation,
 * encoder inference and the encoder builder classes, including a custom output type,
-* translation of Rust errors into Python exceptions.
+* translation of Rust errors into Python exceptions,
+* a light ``hypothesis`` roundtrip over arbitrary primitive tables, so the binding layer
+  itself sees generated input rather than only hand written fixtures.
 
 The fixtures are built inline with pyarrow, so these tests do not read anything from
 the repository and can run from any working directory (including against an installed
@@ -21,6 +23,7 @@ wheel).
 
 from __future__ import annotations
 
+import math
 from typing import Any, Iterator, List, Tuple
 
 import pgpq.encoders
@@ -28,6 +31,8 @@ import pgpq.schema
 import psycopg
 import pyarrow as pa
 import pytest
+from hypothesis import given, settings
+from hypothesis import strategies as st
 from pgpq import ArrowToPostgresBinaryEncoder
 from pgpq._pgpq import Column
 from pgpq.schema import PostgresSchema
@@ -209,6 +214,73 @@ def test_roundtrip_custom_encoding_to_jsonb(dbconn: Connection) -> None:
 
     rows = copy_buffer_and_get_rows(encoder.schema(), bytes(buffer), dbconn)
     assert rows == [([[]],), ([{"foo": "bar"}],), ([123],)]
+
+
+# --------------------------------------------------------------------------------------
+# Property based roundtrip
+# --------------------------------------------------------------------------------------
+#
+# The heavy generative work lives in Rust (``core/tests/proptest_roundtrip.rs``), which
+# generates every supported Arrow type against embedded Postgres. This is the light
+# equivalent whose job is to keep the *pyo3 boundary* in the loop: arbitrary pyarrow
+# tables of mixed primitive columns, encoded through the Python bindings and pushed
+# through the same Postgres fixture as the tests above.
+
+
+#: Column types and the values to fill them with. Deliberately primitive: decimals are
+#: excluded because the Rust suite documents open encoder bugs there, and ``\x00`` is
+#: excluded from text because Postgres rejects it in ``text`` regardless of pgpq.
+_COLUMN_TYPES: List[Tuple[pa.DataType, st.SearchStrategy[Any]]] = [
+    (pa.int16(), st.integers(min_value=-(2**15), max_value=2**15 - 1)),
+    (pa.int32(), st.integers(min_value=-(2**31), max_value=2**31 - 1)),
+    (pa.int64(), st.integers(min_value=-(2**63), max_value=2**63 - 1)),
+    (pa.float64(), st.floats(width=64)),
+    (pa.bool_(), st.booleans()),
+    (
+        pa.string(),
+        st.text(alphabet=st.characters(blacklist_characters="\x00"), max_size=32),
+    ),
+    (pa.large_binary(), st.binary(max_size=32)),
+]
+
+
+@st.composite
+def _mixed_tables(draw: st.DrawFn) -> pa.Table:
+    """A small table of 1-4 primitive columns, with nulls and the zero row edge case."""
+    num_rows = draw(st.integers(min_value=0, max_value=6))
+    num_columns = draw(st.integers(min_value=1, max_value=4))
+    columns = {}
+    for i in range(num_columns):
+        arrow_type, values = draw(st.sampled_from(_COLUMN_TYPES))
+        column = draw(
+            st.lists(st.none() | values, min_size=num_rows, max_size=num_rows)
+        )
+        columns[f"c{i}"] = pa.array(column, arrow_type)
+    return pa.table(columns)
+
+
+def _values_equal(expected: Any, actual: Any) -> bool:
+    # NaN != NaN, but "Postgres gave back the NaN that went in" is what we assert.
+    if isinstance(expected, float) and isinstance(actual, float):
+        return expected == actual or (math.isnan(expected) and math.isnan(actual))
+    return bool(expected == actual)
+
+
+@settings(max_examples=25, deadline=None)
+@given(table=_mixed_tables())
+def test_roundtrip_arbitrary_primitive_tables(
+    dbconn: Connection, table: pa.Table
+) -> None:
+    rows = roundtrip(table, dbconn)
+
+    expected = list(zip(*(column.to_pylist() for column in table.columns)))
+    assert len(rows) == table.num_rows
+    for actual_row, expected_row in zip(rows, expected):
+        assert len(actual_row) == len(expected_row)
+        for actual, expected_value in zip(actual_row, expected_row):
+            assert _values_equal(expected_value, actual), (
+                f"{expected_value!r} != {actual!r} in {table.schema}"
+            )
 
 
 # --------------------------------------------------------------------------------------

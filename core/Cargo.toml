@@ -37,6 +37,7 @@ similar = "2.7.0"
 console = "0.16.2"
 chrono = { version = "0.4.34", default-features = false, features = ["std"] }
 rust_decimal = { version = "1.36", features = ["db-postgres"] }
+proptest = ">=1.4.0"
 
 [[bench]]
 name = "yellow_cab_dataset"
