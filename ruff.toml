@@ -1,0 +1,17 @@
+# Shared Ruff configuration for every Python file in this repository.
+# Ruff (check + format) replaces the previous black + [tool.isort] + ancient
+# ruff 0.0.239 combination.
+target-version = "py310"
+
+# The benchmark notebooks were never covered by the old `black` (which was
+# configured for `types: [python]`) or by ruff 0.0.239 (no notebook support),
+# and they are scratch/benchmarking material. Keep them out of scope.
+extend-exclude = ["*.ipynb"]
+
+[lint]
+# ruff 0.0.239, which this repo used to pin, defaulted to pycodestyle `E` plus
+# Pyflakes `F`; recent ruff enables a much larger set by default. Keep the
+# historical selection so this change stays a tooling swap rather than a
+# codebase-wide lint sweep, and add `I` so import sorting is still enforced now
+# that the (never actually wired up) `[tool.isort]` config is gone.
+select = ["E", "F", "I"]
