@@ -37,7 +37,7 @@ pub fn encode(
     };
     let pg_schema = encoder.schema();
     let mut buf = BytesMut::new();
-    encoder.write_header(&mut buf);
+    encoder.write_header(&mut buf)?;
     for batch in batches {
         encoder.write_batch(batch, &mut buf)?;
     }

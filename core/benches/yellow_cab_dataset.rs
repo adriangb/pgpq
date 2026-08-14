@@ -53,7 +53,7 @@ fn setup(row_limit: Option<usize>) -> (Vec<RecordBatch>, Schema) {
 fn bench(batches: &Vec<RecordBatch>, schema: &Schema) {
     let mut encoder = ArrowToPostgresBinaryEncoder::try_new(schema).unwrap();
     let mut buff = BytesMut::new();
-    encoder.write_header(&mut buff);
+    encoder.write_header(&mut buff).unwrap();
     for batch in batches {
         encoder.write_batch(batch, &mut buff);
     }
