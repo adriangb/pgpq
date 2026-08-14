@@ -22,16 +22,16 @@ enum_dispatch = "0.3.11"
 thiserror = "2.0.20"
 
 [dev-dependencies]
-rstest = ">=0.16.0"
+rstest = "0.26.1"
 parquet.workspace = true
-criterion = ">=0.4.0"
+criterion = "0.8.2"
 arrow = { workspace = true, features = ["ipc"]}
 arrow-ipc.workspace = true
-postgres-types = {version = ">=0.2.4", features = ["with-chrono-0_4"]}
-ureq = "2.6.2"
-postgresql_embedded = { version = "0.20.0", features = ["blocking"] }
+postgres-types = {version = "0.2.14", features = ["with-chrono-0_4"]}
+ureq = "3.4.0"
+postgresql_embedded = { version = "0.21.0", features = ["blocking"] }
 postgres = "0.19.12"
-similar = "2.7.0"
+similar = "3.1.2"
 console = "0.16.2"
 chrono = { version = "0.4.34", default-features = false, features = ["std"] }
 rust_decimal = { version = "1.36", features = ["db-postgres"] }

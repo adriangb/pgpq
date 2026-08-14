@@ -6,9 +6,10 @@ use arrow::record_batch::RecordBatchReader;
 use arrow_array::{Array, PrimitiveArray, RecordBatch};
 use arrow_schema::{DataType, Field, TimeUnit};
 use bytes::{BufMut, BytesMut};
-use criterion::{black_box, criterion_group, criterion_main, Criterion};
+use criterion::{criterion_group, criterion_main, Criterion};
 use postgres_types::{ToSql, Type};
 use std::fs;
+use std::hint::black_box;
 use std::sync::Arc;
 
 fn get_start_end(row: usize, col: usize, n_rows: usize, offsets: &[usize]) -> (usize, usize) {
