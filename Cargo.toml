@@ -7,21 +7,32 @@ resolver = "2"
 
 [workspace.package]
 edition = "2021"
-# Minimum supported Rust version for the library targets. Note that the test
-# suite needs a newer toolchain than this (dev-dependencies floor at 1.89).
-rust-version = "1.84"
+# Minimum supported Rust version for the library targets. Raised from 1.84 by
+# the arrow 59 bump: arrow 59.x is edition 2024 and declares `rust-version =
+# "1.85"`, so 1.84 cannot even parse its manifest. Verified by hand:
+# `cargo +1.85 check --workspace --locked` passes, `cargo +1.84` fails.
+# Note that the *test* suite still needs a much newer toolchain than this: the
+# dev-dependency floor is 1.94, set by postgresql_embedded 0.21 / sqlx 0.9.
+rust-version = "1.85"
 
 [workspace.dependencies]
-arrow = ">=56.0.0"
+# Caret ranges (`59` == `>=59.0.0, <60.0.0`) rather than the open `>=56.0.0`
+# these used to be. Arrow types (`RecordBatch`, `Schema`, `Field`, ...) appear in
+# pgpq's *public* API, so an arrow major is a breaking change for pgpq's own
+# consumers and must not be picked up silently. The open range also let cargo
+# resolve a split tree -- direct deps at 56 while `arrow-pyarrow` pulled 59 --
+# which compiles but fails at the type level. Dependabot (see
+# .github/dependabot.yml) now proposes the major bumps instead.
+arrow = "59"
 # `default-features` must be declared here, not only at the use site: cargo
 # ignores (and warns about) `default-features = false` on an inherited
 # dependency unless the workspace entry sets it too. arrow-array's `default` is
 # empty today, so this is a correctness/lint fix rather than a behaviour change.
-arrow-array = { version = ">=56.0.0", default-features = false }
-arrow-schema = ">=56.0.0"
-arrow-json = ">=56.0.0"
-arrow-ipc = ">=56.0.0"
-parquet = ">=56.0.0"
+arrow-array = { version = "59", default-features = false }
+arrow-schema = "59"
+arrow-json = "59"
+arrow-ipc = "59"
+parquet = "59"
 
 [profile.bench.package.pgpq]
 debug = true
