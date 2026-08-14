@@ -81,6 +81,11 @@ impl Value {
         };
         // Postgres does not preserve the exact trailing-zero representation of a NUMERIC across
         // every operation, so compare on the normalized (mathematical) value.
+        //
+        // NOTE: normalizing means the typed compare says nothing about the NUMERIC *dscale* (the
+        // declared number of fractional digits) pgpq writes — `1.50` and `1.5` compare equal here.
+        // dscale is pinned instead by the byte-exact `tests/snapshots/*.bin` and by the
+        // `tests/snapshots_csv/*.csv` text exports, both of which do render it.
         Value::Numeric(decimal.normalize())
     }
 
@@ -264,6 +269,9 @@ fn timestamp(value: i64, unit: &TimeUnit) -> Value {
         TimeUnit::Second => value * 1_000_000,
         TimeUnit::Millisecond => value * 1_000,
         TimeUnit::Microsecond => value,
+        // Truncates toward zero rather than flooring, so a negative sub-microsecond value would
+        // round the wrong way. Unreachable today — pgpq has no nanosecond encoder, so no case can
+        // reach here — but revisit deliberately if nanosecond support is ever added.
         TimeUnit::Nanosecond => value / 1_000,
     };
     let seconds = micros.div_euclid(1_000_000);
