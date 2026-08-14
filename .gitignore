@@ -6,6 +6,8 @@
 !/json
 !/Cargo.toml
 !/Cargo.lock
+!/pyproject.toml
+!/uv.lock
 !/.pre-commit-config.yaml
 !/ruff.toml
 !/Makefile

@@ -1,10 +1,15 @@
-PHONY: init build test
+.PHONY: init build-develop test lint
 
-.init:
-	rm -rf .venv
-	uv venv
-	uv pip install -e ./py[test,bench]
-	uv run pre-commit install
+# `uv sync --locked` fails rather than silently re-resolving if `uv.lock` is out
+# of date. If you changed a dependency in one of the pyproject.toml files, run
+# `uv lock` (or `uv lock --upgrade` to refresh pins) and commit the result.
+#
+# `--no-install-workspace` keeps uv from building pgpq/arrow-json: those are
+# installed into the same virtualenv by `maturin develop` below, which is what
+# we actually want to test against.
+.init: pyproject.toml uv.lock py/pyproject.toml json/pyproject.toml
+	uv sync --locked --group test --group bench --no-install-workspace
+	uv run --no-sync pre-commit install
 	touch .init
 
 .clean:
@@ -12,13 +17,16 @@ PHONY: init build test
 
 init: .clean .init
 
+# `--no-sync` on every `uv run`: the maturin-built extension modules are not
+# part of the lock, so letting uv re-sync would prune them from the venv.
 build-develop: .init
-	uvx maturin develop -m py/Cargo.toml --strip
-	uvx maturin develop -m json/Cargo.toml --strip
+	uv run --no-sync maturin develop -m py/Cargo.toml --strip
+	uv run --no-sync maturin develop -m json/Cargo.toml --strip
 
 test: build-develop
 	cargo test
-	uv run pytest
+	uv run --no-sync pytest
 
 lint: build-develop
-	uv run pre-commit run --all-files
+	uv lock --check
+	uv run --no-sync pre-commit run --all-files
