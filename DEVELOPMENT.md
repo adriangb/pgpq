@@ -7,8 +7,10 @@ environment.
 
 ## Prerequisites
 
-- **Rust** — stable, at least the `rust-version` declared in the root
-  `Cargo.toml` (`[workspace.package]`). `rustup` users get this automatically.
+- **Rust** — current stable. The `rust-version` in the root `Cargo.toml`
+  (`[workspace.package]`) is the *library* floor; the dev-dependencies used by
+  `cargo test` have a higher one (see the comment next to `rust-version`), so
+  building the test suite needs a reasonably recent stable.
 - **[uv](https://docs.astral.sh/uv/)** — manages the Python environment. Do not
   use `pip` directly.
 - **PostgreSQL client/server binaries** — needed only for the *Python* test
@@ -43,9 +45,13 @@ group** (`uv sync --locked --only-group test --no-install-workspace`), so:
 > `py/pyproject.toml` (or `json/pyproject.toml`) *and* the root
 > `[dependency-groups]` — then re-run `uv lock` and commit `uv.lock`.
 
-Adding it only to the package extra will pass locally (editable installs consult
-the extra) and then fail in CI with `ModuleNotFoundError`. `make lint` runs
-`uv lock --check`, which catches a stale lock but *not* a missing mirror entry.
+Adding it only to the package extra installs nothing anywhere — neither the
+Makefile's `uv sync` nor `maturin develop` consults the extras — but it can
+*appear* to work locally when the package happens to be present transitively
+(or via the `bench` group, which local `make init` installs and CI does not).
+CI, which installs only the root `test` group, then fails with
+`ModuleNotFoundError`. `make lint` runs `uv lock --check`, which catches a
+stale lock but *not* a missing mirror entry.
 
 The `--no-sync` flags on `uv run` in the Makefile are load-bearing: the
 maturin-built extension modules are not part of the lock, and an implicit sync
