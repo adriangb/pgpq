@@ -35,6 +35,8 @@ postgresql_embedded = { version = "0.20.0", features = ["blocking"] }
 postgres = "0.19.12"
 similar = "2.7.0"
 console = "0.16.2"
+chrono = { version = "0.4.34", default-features = false, features = ["std"] }
+rust_decimal = { version = "1.36", features = ["db-postgres"] }
 
 [[bench]]
 name = "yellow_cab_dataset"
