@@ -278,6 +278,47 @@ mod tests {
         )
     }
 
+    /// A list of lists has no Postgres equivalent (arrays are flat), so `try_new` must reject it
+    /// rather than build an encoder that produces nonsense.
+    ///
+    /// Neither generative suite reaches this: the proptest strategies and the fuzz target both
+    /// draw list *elements* from the scalar types only, so this `Err` is covered here instead.
+    #[test]
+    fn nested_lists_are_rejected() {
+        let inner = Arc::new(Field::new("item", DataType::Int32, true));
+        for outer in [
+            DataType::List(Arc::new(Field::new(
+                "item",
+                DataType::List(inner.clone()),
+                true,
+            ))),
+            DataType::List(Arc::new(Field::new(
+                "item",
+                DataType::LargeList(inner.clone()),
+                true,
+            ))),
+            DataType::LargeList(Arc::new(Field::new(
+                "item",
+                DataType::List(inner.clone()),
+                true,
+            ))),
+            DataType::LargeList(Arc::new(Field::new(
+                "item",
+                DataType::LargeList(inner.clone()),
+                true,
+            ))),
+        ] {
+            let schema = Schema::new(vec![Field::new("nested", outer.clone(), true)]);
+            let err = ArrowToPostgresBinaryEncoder::try_new(&schema)
+                .err()
+                .unwrap_or_else(|| panic!("{outer:?} was accepted"));
+            assert!(
+                matches!(&err, ErrorKind::TypeNotSupported { msg, .. } if msg == "nested lists are not supported"),
+                "{outer:?}: {err:?}"
+            );
+        }
+    }
+
     /// Every way of breaking the `header -> batches -> footer` contract has to come back as an
     /// `Err`; these used to be `assert!`s, i.e. a process abort inside a library.
     mod misuse {
