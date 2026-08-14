@@ -23,7 +23,7 @@ dependencies = [
 [project.optional-dependencies]
 test = [
     "pytest>=7.0.0",
-    "maturin>=1.0.0",
+    "maturin>=1.14.1",
     "pre-commit>=2.16.0",
     "pyarrow>=11.0.0",
     "polars>=0.16.1",
@@ -47,6 +47,3 @@ profile = "release"
 module-name = "arrow_json._arrow_json"
 bindings = "pyo3"
 features = ["pyo3/extension-module"]
-
-[tool.isort]
-profile = "black"

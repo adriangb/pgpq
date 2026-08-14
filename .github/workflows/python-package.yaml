@@ -1,0 +1,258 @@
+name: Python package
+
+# Reusable workflow that builds, tests and publishes one of the Python
+# packages in this repository. Callers: python.yaml, python-json.yaml.
+
+on:
+  workflow_call:
+    inputs:
+      package_name:
+        description: "PyPI distribution name of the package (e.g. pgpq)"
+        required: true
+        type: string
+      package_dir:
+        description: "Directory containing the package's Cargo.toml/pyproject.toml"
+        required: true
+        type: string
+      python_version:
+        description: "Python version used to build the abi3 wheels"
+        required: false
+        default: "3.11"
+        type: string
+
+env:
+  MATURIN_VERSION: "v1.14.1"
+  UV_SYSTEM_PYTHON: 1
+
+jobs:
+  macos:
+    name: Build / MacOS
+    if: github.ref == format('refs/heads/{0}', github.event.repository.default_branch)
+    runs-on: macos-14
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: astral-sh/setup-uv@20cfd1bf945f4377ade1205e4dbc17946fc9a30d # v10.0.1
+        with:
+          enable-cache: true
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version: ${{ inputs.python_version }}
+      - uses: dtolnay/rust-toolchain@4360b52568e2003a75bf9bc1d59f33a8e3fc893c # stable
+        with:
+          toolchain: stable
+      - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2.9.2
+        with:
+          workspaces: ${{ inputs.package_dir }}
+      - name: Build wheels - x86_64
+        uses: messense/maturin-action@e83996d129638aa358a18fbd1dfb82f0b0fb5d3b # v1.51.0
+        with:
+          target: x86_64
+          args: -m ${{ inputs.package_dir }}/Cargo.toml --release --out dist --sdist
+          maturin-version: ${{ env.MATURIN_VERSION }}
+      - name: Install built wheel - x86_64
+        run: |
+          uv pip install "$(find dist -name '*.whl' -type f | head -n 1)" --force-reinstall --no-deps
+      - name: Build wheels - universal2
+        uses: messense/maturin-action@e83996d129638aa358a18fbd1dfb82f0b0fb5d3b # v1.51.0
+        with:
+          args: -m ${{ inputs.package_dir }}/Cargo.toml --release --out dist
+          maturin-version: ${{ env.MATURIN_VERSION }}
+          target: universal2-apple-darwin
+      - name: Install built wheel - universal2
+        run: |
+          uv pip install "$(find dist -name '*_universal2.whl' -type f | head -n 1)" --force-reinstall --no-deps
+      - name: Upload wheels
+        uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6.0.0
+        with:
+          name: wheels-macos
+          path: dist
+
+  windows:
+    name: Build / Windows (${{ matrix.target }})
+    if: github.ref == format('refs/heads/{0}', github.event.repository.default_branch)
+    runs-on: windows-latest
+    timeout-minutes: 30
+    strategy:
+      matrix:
+        target: [x64, x86]
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: astral-sh/setup-uv@20cfd1bf945f4377ade1205e4dbc17946fc9a30d # v10.0.1
+        with:
+          enable-cache: true
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version: ${{ inputs.python_version }}
+          architecture: ${{ matrix.target }}
+      - uses: dtolnay/rust-toolchain@4360b52568e2003a75bf9bc1d59f33a8e3fc893c # stable
+        with:
+          toolchain: stable
+      - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2.9.2
+        with:
+          workspaces: ${{ inputs.package_dir }}
+      - name: Build wheels
+        uses: messense/maturin-action@e83996d129638aa358a18fbd1dfb82f0b0fb5d3b # v1.51.0
+        with:
+          target: ${{ matrix.target }}
+          args: -m ${{ inputs.package_dir }}/Cargo.toml --release --out dist
+          maturin-version: ${{ env.MATURIN_VERSION }}
+      - name: Install built wheel
+        shell: bash
+        run: |
+          uv pip install "$(find dist -name '*.whl' -type f | head -n 1)" --force-reinstall --no-deps
+      - name: Upload wheels
+        uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6.0.0
+        with:
+          name: wheels-windows-${{ matrix.target }}
+          path: dist
+
+  linux:
+    name: Build & Test / Linux (${{ matrix.target }})
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    strategy:
+      matrix:
+        target: [x86_64, i686]
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: astral-sh/setup-uv@20cfd1bf945f4377ade1205e4dbc17946fc9a30d # v10.0.1
+        with:
+          enable-cache: true
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version: ${{ inputs.python_version }}
+          architecture: x64
+      - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2.9.2
+        with:
+          workspaces: ${{ inputs.package_dir }}
+      - name: Build wheels
+        uses: messense/maturin-action@e83996d129638aa358a18fbd1dfb82f0b0fb5d3b # v1.51.0
+        with:
+          target: ${{ matrix.target }}
+          manylinux: auto
+          args: -m ${{ inputs.package_dir }}/Cargo.toml --release --out dist
+          maturin-version: ${{ env.MATURIN_VERSION }}
+      - name: Install built wheel and test
+        if: matrix.target == 'x86_64'
+        run: |
+          uv pip install "$(find dist -name '*.whl' -type f | head -n 1)[test]" --force-reinstall
+          uv pip freeze
+          uv run pytest -v ${{ inputs.package_dir }}
+      - name: Upload wheels
+        uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6.0.0
+        with:
+          name: wheels-linux-${{ matrix.target }}
+          path: dist
+
+  musllinux:
+    name: Build / MuslLinux (${{ matrix.target }})
+    if: github.ref == format('refs/heads/{0}', github.event.repository.default_branch)
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    strategy:
+      matrix:
+        target:
+          - x86_64-unknown-linux-musl
+          - i686-unknown-linux-musl
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version: ${{ inputs.python_version }}
+          architecture: x64
+      - name: Build wheels
+        uses: messense/maturin-action@e83996d129638aa358a18fbd1dfb82f0b0fb5d3b # v1.51.0
+        with:
+          target: ${{ matrix.target }}
+          manylinux: musllinux_1_2
+          args: -m ${{ inputs.package_dir }}/Cargo.toml --release --out dist
+          maturin-version: ${{ env.MATURIN_VERSION }}
+      - name: Install built wheel
+        if: matrix.target == 'x86_64-unknown-linux-musl'
+        uses: addnab/docker-run-action@4f65fabd2431ebc8d299f8e5a018d79a769ae185 # v3
+        with:
+          image: alpine:latest
+          options: -v ${{ github.workspace }}:/io -w /io
+          run: |
+            apk add python3 curl
+            curl -LsSf https://astral.sh/uv/install.sh | sh
+            . $HOME/.local/bin/env
+            uv venv
+            . .venv/bin/activate
+            uv pip install ${{ inputs.package_name }} --no-index --find-links /io/dist/ --force-reinstall --no-deps
+      - name: Upload wheels
+        uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6.0.0
+        with:
+          name: wheels-musllinux-${{ matrix.target }}
+          path: dist
+
+  lint:
+    name: Lint
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: astral-sh/setup-uv@20cfd1bf945f4377ade1205e4dbc17946fc9a30d # v10.0.1
+        with:
+          enable-cache: true
+      - name: Set up Python
+        uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version: "3.x"
+      - uses: dtolnay/rust-toolchain@4360b52568e2003a75bf9bc1d59f33a8e3fc893c # stable
+        with:
+          toolchain: stable
+          components: clippy, rustfmt
+      - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2.9.2
+        with:
+          workspaces: ${{ inputs.package_dir }}
+      - name: Lint
+        run: |
+          make lint
+
+  # https://github.com/marketplace/actions/alls-green
+  alls-green:
+    name: Check release process
+    if: always()
+    needs:
+      - lint
+      - linux
+      - macos
+      - windows
+      - musllinux
+    runs-on: ubuntu-latest
+    steps:
+      - name: Decide whether the needed jobs succeeded or failed
+        uses: re-actors/alls-green@05ac9388f0aebcb5727afa17fcccfecd6f8ec5fe # v1.2.2
+        with:
+          jobs: ${{ toJSON(needs) }}
+          # These get skipped in PRs and only run on main
+          # If they get skipped in a PR, we still want to consider them "green"
+          # If they fail in main, we want to fail the alls-green check
+          allowed-skips: macos,windows,musllinux
+
+  release:
+    name: Release
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    if: github.ref == format('refs/heads/{0}', github.event.repository.default_branch)
+    needs:
+      - lint
+      - linux
+      - macos
+      - windows
+      - musllinux
+    steps:
+      - uses: actions/download-artifact@37930b1c2abaa49bbe596cd826c3c89aef350131 # v7.0.0
+        with:
+          pattern: wheels-*
+          merge-multiple: true
+      - uses: astral-sh/setup-uv@20cfd1bf945f4377ade1205e4dbc17946fc9a30d # v10.0.1
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+      - name: Publish to PyPi
+        env:
+          TWINE_USERNAME: __token__
+          TWINE_PASSWORD: ${{ secrets.PYPI_TOKEN }}
+        run: |
+          uvx twine upload --skip-existing *

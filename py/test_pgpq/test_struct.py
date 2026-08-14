@@ -5,14 +5,12 @@ from __future__ import annotations
 import ast
 from typing import Any, Iterator, List, Tuple
 
+import psycopg
 import pyarrow as pa
 import pytest
-from testing.postgresql import Postgresql
-import psycopg
-
 from pgpq import ArrowToPostgresBinaryEncoder
 from pgpq.schema import PostgresSchema
-
+from testing.postgresql import Postgresql
 
 Connection = psycopg.Connection[Tuple[Any, ...]]
 
@@ -335,12 +333,12 @@ def test_array_of_structs(dbconn: Connection) -> None:
 
         # First row should have list with THREE structs: [(1, "a"), (2, "b"), (3, "c")]
         # Second row should have list with ONE struct: [(4, "d")]
-        assert parsed_rows[0] == (
-            [(1, "a"), (2, "b"), (3, "c")],
-        ), f"Expected ([(1, 'a'), (2, 'b'), (3, 'c')],), got {parsed_rows[0]}"
-        assert parsed_rows[1] == (
-            [(4, "d")],
-        ), f"Expected ([(4, 'd')],), got {parsed_rows[1]}"
+        assert parsed_rows[0] == ([(1, "a"), (2, "b"), (3, "c")],), (
+            f"Expected ([(1, 'a'), (2, 'b'), (3, 'c')],), got {parsed_rows[0]}"
+        )
+        assert parsed_rows[1] == ([(4, "d")],), (
+            f"Expected ([(4, 'd')],), got {parsed_rows[1]}"
+        )
 
         print(
             f"✓ Arrays of structs work! "

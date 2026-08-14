@@ -1,8 +1,4 @@
 repos:
-  - repo: https://github.com/psf/black
-    rev: 24.10.0
-    hooks:
-      - id: black
   - repo: local
     hooks:
     - id: cargo-fmt
@@ -23,7 +19,9 @@ repos:
       - id: end-of-file-fixer
       - id: trailing-whitespace
         exclude: ^core/tests/snapshots_csv
-  - repo: https://github.com/charliermarsh/ruff-pre-commit
-    rev: 'v0.0.239'
+  - repo: https://github.com/astral-sh/ruff-pre-commit
+    rev: v0.16.3
     hooks:
-      - id: ruff
+      - id: ruff-check
+        args: [--fix]
+      - id: ruff-format

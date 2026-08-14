@@ -1,22 +1,20 @@
 from __future__ import annotations
 
 import os
-
 from glob import glob
 from pathlib import Path
 from typing import Any, Iterator, List, Tuple
 
-from pgpq._pgpq import Column
+import pgpq.encoders
+import pgpq.schema
+import psycopg
 import pyarrow as pa
 import pyarrow.ipc as paipc
 import pytest
-from testing.postgresql import Postgresql
-import psycopg
-
-import pgpq.schema
-import pgpq.encoders
 from pgpq import ArrowToPostgresBinaryEncoder
+from pgpq._pgpq import Column
 from pgpq.schema import PostgresSchema
+from testing.postgresql import Postgresql
 
 
 @pytest.fixture(scope="session")

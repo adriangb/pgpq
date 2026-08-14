@@ -7,6 +7,7 @@
 !/Cargo.toml
 !/Cargo.lock
 !/.pre-commit-config.yaml
+!/ruff.toml
 !/Makefile
 !/README.md
 !/.github
