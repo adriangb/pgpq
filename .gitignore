@@ -12,6 +12,7 @@
 !/ruff.toml
 !/Makefile
 !/README.md
+!/DEVELOPMENT.md
 !/.github
 !/LICENSE.txt
 !/.gitattributes
