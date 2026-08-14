@@ -19,6 +19,7 @@ members = ["py", "json"]
 [dependency-groups]
 test = [
     "pytest>=7.0.0",
+    "pytest-cov>=7.0.0",
     "maturin>=1.14.1",
     "pre-commit>=4.5.1",
     "testing.postgresql>=1.3.0",
@@ -32,4 +33,29 @@ bench = [
     "jupyter>=1.0.0",
     "requests",
     "duckdb",
+]
+
+# Coverage settings for `pytest --cov` (pytest runs with this file's directory as
+# its rootdir, so coverage picks the config up from here).
+#
+# Only the thin pure-Python wrappers -- `py/python/pgpq/*.py` and
+# `json/python/arrow_json/*.py` -- can be measured this way: everything else in
+# these packages is compiled Rust behind pyo3, and is covered by the Rust suite
+# (`cargo llvm-cov`) instead.
+[tool.coverage.run]
+# Emit repo-relative paths so the Codecov report lines up with the files in the
+# repository rather than with an absolute runner path.
+relative_files = true
+
+# Both locally (`maturin develop`) and in CI (`uv pip install <wheel>`) the
+# packages under test are *installed*, so coverage records them under
+# `site-packages/`. Map those back onto the source tree.
+[tool.coverage.paths]
+pgpq = [
+    "py/python/pgpq",
+    "*/site-packages/pgpq",
+]
+arrow_json = [
+    "json/python/arrow_json",
+    "*/site-packages/arrow_json",
 ]

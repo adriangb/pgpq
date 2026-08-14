@@ -1,6 +1,7 @@
 # pgpq
 
 ![CI](https://github.com/adriangb/pgpq/actions/workflows/python.yaml/badge.svg)
+[![codecov](https://codecov.io/gh/adriangb/pgpq/branch/main/graph/badge.svg)](https://codecov.io/gh/adriangb/pgpq)
 
 Stream Apache Arrow RecordBatches into Postgres.
 
