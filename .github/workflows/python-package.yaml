@@ -14,6 +14,10 @@ on:
         description: "Directory containing the package's Cargo.toml/pyproject.toml"
         required: true
         type: string
+      import_name:
+        description: "Python import name of the package (e.g. arrow_json for arrow-json); used as the coverage target"
+        required: true
+        type: string
       python_version:
         description: "Python version used to build the abi3 wheels"
         required: false
@@ -146,12 +150,35 @@ jobs:
       - name: Install test dependencies from uv.lock
         if: matrix.target == 'x86_64'
         run: uv sync --locked --only-group test --no-install-workspace
+      # `--cov=<import name>` targets the *installed* package; the
+      # `[tool.coverage.paths]` section of the root pyproject.toml maps the
+      # site-packages paths back onto the source tree so the report lines up
+      # with the repository. Only the pure-Python wrappers show up here -- the
+      # rest of each package is compiled Rust, covered by `cargo llvm-cov` in
+      # the Rust CI workflow.
       - name: Install built wheel and test
         if: matrix.target == 'x86_64'
         run: |
           uv pip install "$(find dist -name '*.whl' -type f | head -n 1)" --force-reinstall --no-deps
           uv pip freeze
-          uv run --no-sync pytest -v ${{ inputs.package_dir }}
+          uv run --no-sync pytest -v ${{ inputs.package_dir }} --cov=${{ inputs.import_name }} --cov-report=xml
+      # A CODECOV_TOKEN repository secret is required for the report to land:
+      # tokenless uploads are rejected here ("Token required because branch is
+      # protected"). `fail_ci_if_error: false` keeps that -- and any Codecov
+      # outage -- from failing the build; until the secret exists the upload is
+      # simply a no-op.
+      - name: Upload coverage to Codecov
+        if: matrix.target == 'x86_64'
+        # This job is a required check; the upload must never be able to fail it.
+        # fail_ci_if_error covers upload rejections but not e.g. a failed download
+        # of the Codecov CLI itself, hence also continue-on-error.
+        continue-on-error: true
+        uses: codecov/codecov-action@fb8b3582c8e4def4969c97caa2f19720cb33a72f # v7.0.0
+        with:
+          files: coverage.xml
+          flags: python-${{ inputs.import_name }}
+          token: ${{ secrets.CODECOV_TOKEN }}
+          fail_ci_if_error: false
       - name: Upload wheels
         uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6.0.0
         with:

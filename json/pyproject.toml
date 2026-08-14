@@ -23,6 +23,7 @@ dependencies = [
 [project.optional-dependencies]
 test = [
     "pytest>=7.0.0",
+    "pytest-cov>=7.0.0",
     "maturin>=1.14.1",
     "pre-commit>=2.16.0",
     "pyarrow>=11.0.0",

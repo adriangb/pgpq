@@ -16,4 +16,5 @@ jobs:
     with:
       package_name: pgpq
       package_dir: py
+      import_name: pgpq
     secrets: inherit

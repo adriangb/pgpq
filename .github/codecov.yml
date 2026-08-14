@@ -1,0 +1,27 @@
+# Codecov configuration.
+#
+# Coverage is *informational* for now: `informational: true` keeps the
+# project/patch checks visible on pull requests (and in the Codecov comment)
+# while making sure they can never turn the build red. There are deliberately
+# no coverage targets or thresholds yet -- see #68.
+coverage:
+  status:
+    project:
+      default:
+        informational: true
+    patch:
+      default:
+        informational: true
+
+comment:
+  layout: "reach, diff, flags, files"
+  require_changes: false
+
+# `rust` comes from `cargo llvm-cov` in .github/workflows/rust.yaml;
+# `python-pgpq` / `python-arrow_json` come from `pytest --cov` in the reusable
+# .github/workflows/python-package.yaml.
+flag_management:
+  default_rules:
+    statuses:
+      - type: project
+        informational: true
