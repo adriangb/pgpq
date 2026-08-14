@@ -17,8 +17,14 @@ bytes = "^1.4.0"
 pgpq = { path = "../core" }
 
 [dependencies.pyo3]
-version = "^0.25.1"
-features = ["extension-module", "abi3-py39", "py-clone"]
+# Must match the pyo3 that `arrow`'s `pyarrow` feature pulls in via
+# `arrow-pyarrow` (arrow 59.x -> pyo3 ^0.29), otherwise the `FromPyArrow`
+# impls take a `Bound` from a different pyo3 and nothing type-checks.
+version = "0.29.2"
+# abi3-py310 matches `requires-python = ">=3.10"` in py/pyproject.toml. They
+# disagreed before (abi3-py39), which is what stamped a too-low floor into the
+# wheel filename while the metadata said 3.10 (#54).
+features = ["extension-module", "abi3-py310", "py-clone"]
 
 [package.metadata.maturin]
 name = "pgpq._pgpq"

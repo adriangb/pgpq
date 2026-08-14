@@ -10,9 +10,14 @@ cargo-fuzz = true
 [dependencies]
 libfuzzer-sys = "0.4"
 arbitrary = { version = "1", features = ["derive"] }
-arrow-array = ">=56.0.0"
-arrow-buffer = ">=56.0.0"
-arrow-schema = ">=56.0.0"
+# Kept in lockstep with the root workspace's arrow pins. This crate is its own
+# workspace with its own (gitignored) lockfile, so it resolves arrow
+# independently -- an open `>=56.0.0` range here could resolve to a different
+# arrow major than the `pgpq` it path-depends on, and the two would not share
+# types.
+arrow-array = "59"
+arrow-buffer = "59"
+arrow-schema = "59"
 bytes = "1"
 
 [dependencies.pgpq]

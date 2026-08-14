@@ -1,0 +1,60 @@
+version: 2
+
+updates:
+  # Rust: one manifest set for the whole cargo workspace (root Cargo.toml plus
+  # core/, py/, json/) -- Dependabot resolves workspace members from the root.
+  - package-ecosystem: cargo
+    directory: "/"
+    schedule:
+      interval: weekly
+      day: monday
+    open-pull-requests-limit: 5
+    groups:
+      # The arrow family must move in lockstep: `arrow`'s `pyarrow` feature ties
+      # the arrow version to a specific pyo3 major via `arrow-pyarrow`, so
+      # splitting these across PRs produces trees that do not type-check.
+      arrow:
+        patterns:
+          - "arrow"
+          - "arrow-*"
+          - "parquet"
+          - "pyo3"
+      # Everything else that is not a major bump rolls up into a single PR.
+      cargo-minor-patch:
+        patterns:
+          - "*"
+        exclude-patterns:
+          - "arrow"
+          - "arrow-*"
+          - "parquet"
+          - "pyo3"
+        update-types:
+          - minor
+          - patch
+
+  # Workflow actions are pinned to commit SHAs (with a `# vX.Y.Z` comment);
+  # Dependabot understands and preserves that format when it bumps them.
+  - package-ecosystem: github-actions
+    directory: "/"
+    schedule:
+      interval: weekly
+      day: monday
+    groups:
+      actions:
+        patterns:
+          - "*"
+
+  # The uv lockfile for the dev/test environment (root pyproject.toml plus the
+  # py/ and json/ workspace members).
+  - package-ecosystem: uv
+    directory: "/"
+    schedule:
+      interval: weekly
+      day: monday
+    groups:
+      python-minor-patch:
+        patterns:
+          - "*"
+        update-types:
+          - minor
+          - patch

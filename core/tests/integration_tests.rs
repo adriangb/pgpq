@@ -1174,7 +1174,8 @@ fn validate_snapshots() {
 }
 
 // from https://github.com/mitsuhiko/similar/blob/main/examples/terminal.rs
-fn pretty_print_diff(diff: TextDiff<'_, '_, '_, str>) {
+// similar 3 dropped the third ('bufs) lifetime from `TextDiff`.
+fn pretty_print_diff(diff: TextDiff<'_, '_, str>) {
     for op in diff.ops() {
         for change in diff.iter_changes(op) {
             let (sign, style) = match change.tag() {

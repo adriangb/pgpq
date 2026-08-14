@@ -1,5 +1,9 @@
+# `from_py_object` is required from pyo3 0.29 on: `#[pyclass]` types that
+# implement Clone no longer get a `FromPyObject` impl implicitly, and these
+# builders are extracted from Python (dicts of encoders, lists of columns).
+# Keep this in sync with the hand-written classes in encoders.rs/pg_schema.rs.
 PYCLASS_TEMPLATE = """\
-#[pyclass(module = "pgpq._pgpq")]
+#[pyclass(module = "pgpq._pgpq", from_py_object)]
 struct {name} {{
     inner: encoders::EncoderBuilder,
 }}
@@ -67,8 +71,9 @@ types = [
     "Interval",
 ]
 
+# See the note on PYCLASS_TEMPLATE: pyo3 0.29 needs the `from_py_object` opt-in.
 TYPE_TEMPLATE = """\
-#[pyclass(module = "pgpq._pgpq")]
+#[pyclass(module = "pgpq._pgpq", from_py_object)]
 struct {name} {{
     inner: PostgresType,
 }}

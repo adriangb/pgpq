@@ -40,7 +40,7 @@ impl ArrowToPostgresBinaryEncoder {
         })
     }
     #[staticmethod]
-    fn infer_encoder(py: Python, py_field: &Bound<'_, PyAny>) -> PyResult<PyObject> {
+    fn infer_encoder(py: Python, py_field: &Bound<'_, PyAny>) -> PyResult<Py<PyAny>> {
         let encoder = EncoderBuilder::try_new(py, py_field)?;
         Ok(encoder
             .into_pyobject(py)
@@ -83,7 +83,7 @@ impl ArrowToPostgresBinaryEncoder {
             .map_err(|e| PyValueError::new_err(format!("Failed to write batch: {:?}", e)))?;
 
         Ok(if self.buf.len() > BUFF_SIZE {
-            Python::with_gil(|py| PyBytes::new(py, &self.buf.split()[..]).unbind().into())
+            Python::attach(|py| PyBytes::new(py, &self.buf.split()[..]).unbind().into())
         } else {
             self.empty.clone()
         })

@@ -11,11 +11,11 @@ use serde_json::{to_string, Value};
 
 #[pyfunction]
 #[pyo3(signature = (array, large = true))]
-fn array_to_utf8_json_array(
-    py: Python,
+fn array_to_utf8_json_array<'py>(
+    py: Python<'py>,
     array: &Bound<'_, PyAny>,
     large: bool,
-) -> PyResult<PyObject> {
+) -> PyResult<Bound<'py, PyAny>> {
     // This is super inefficient, leaving optimization as a TODO
     let array = make_array(ArrayData::from_pyarrow_bound(array)?);
 
