@@ -249,6 +249,10 @@ jobs:
           workspaces: ${{ inputs.package_dir }}
       - name: Check that uv.lock is up to date
         run: uv lock --check
+      # Also run by `make lint`; called out separately here so a drift failure
+      # is obvious in the job log rather than buried in the lint output.
+      - name: Check the root dependency groups cover the member extras
+        run: python3 scripts/check_dep_groups.py
       - name: Lint
         run: |
           make lint
