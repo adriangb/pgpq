@@ -16,7 +16,6 @@ authors = ["Adrian Garcia Badaracco <dev@adriangb.com>"]
 bytes = "^1.4.0"
 arrow-schema.workspace = true
 enum_dispatch = "0.3.11"
-anyhow = "1.0.70"
 thiserror = "1.0.40"
 
 [dependencies.arrow-array]
