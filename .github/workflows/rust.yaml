@@ -8,60 +8,45 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - uses: actions-rs/toolchain@v1
+      - uses: dtolnay/rust-toolchain@stable
         with:
-          profile: minimal
           toolchain: stable
-          override: true
-      - uses: actions-rs/cargo@v1
-        with:
-          command: check
+      - uses: Swatinem/rust-cache@v2
+      - run: cargo check
 
   fmt:
     name: Fmt
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - uses: actions-rs/toolchain@v1
+      - uses: dtolnay/rust-toolchain@stable
         with:
-          profile: minimal
           toolchain: stable
-          override: true
-      - run: rustup component add rustfmt
-      - uses: actions-rs/cargo@v1
-        with:
-          command: fmt
-          args: --all -- --check
+          components: rustfmt
+      - run: cargo fmt --all -- --check
 
   clippy:
     name: Clippy
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - uses: actions-rs/toolchain@v1
+      - uses: dtolnay/rust-toolchain@stable
         with:
-          profile: minimal
           toolchain: stable
-          override: true
-      - run: rustup component add clippy
-      - uses: actions-rs/cargo@v1
-        with:
-          command: clippy
-          args: --all -- -D warnings
+          components: clippy
+      - uses: Swatinem/rust-cache@v2
+      - run: cargo clippy --all -- -D warnings
 
   test:
     name: Test Suite
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - uses: actions-rs/toolchain@v1
+      - uses: dtolnay/rust-toolchain@stable
         with:
-          profile: minimal
           toolchain: stable
-          override: true
-      - uses: actions-rs/cargo@v1
-        with:
-          command: test
+      - uses: Swatinem/rust-cache@v2
+      - run: cargo test
 
   # https://github.com/marketplace/actions/alls-green
   check:  # This job does nothing and is only used for the branch protection
@@ -93,12 +78,7 @@ jobs:
     if: ${{ github.ref == 'refs/heads/main' }}
     steps:
       - uses: actions/checkout@v4
-      - uses: actions-rs/toolchain@v1
+      - uses: dtolnay/rust-toolchain@stable
         with:
-          profile: minimal
           toolchain: stable
-          override: true
-      - uses: actions-rs/cargo@v1
-        with:
-          command: publish
-          args: --package pgpq --token ${{ secrets.CRATES_TOKEN }}
+      - run: cargo publish --package pgpq --token ${{ secrets.CRATES_TOKEN }}
