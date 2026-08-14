@@ -73,7 +73,10 @@ pub fn benchmark_nyc_taxi_full(c: &mut Criterion) {
     group.sampling_mode(criterion::SamplingMode::Flat);
     group.sample_size(10); // the minimum
 
-    let (batches, schema) = setup(Some(100));
+    // `None` = read every batch in the dataset. This said `Some(100)`, which is
+    // exactly what `benchmark_nyc_taxi_small` uses, so the "full" benchmark was
+    // silently measuring the same small slice.
+    let (batches, schema) = setup(None);
     group.bench_function("NYC Yello Taxi full", |b| {
         b.iter(|| bench(&batches, &schema))
     });
