@@ -22,7 +22,6 @@ on:
 
 env:
   MATURIN_VERSION: "v1.14.1"
-  UV_SYSTEM_PYTHON: 1
 
 jobs:
   macos:
@@ -30,6 +29,10 @@ jobs:
     if: github.ref == format('refs/heads/{0}', github.event.repository.default_branch)
     runs-on: macos-14
     timeout-minutes: 30
+    # This job only smoke-tests that the wheel installs; there is no project
+    # virtualenv here, so point the `uv pip` interface at the runner's Python.
+    env:
+      UV_SYSTEM_PYTHON: 1
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - uses: astral-sh/setup-uv@20cfd1bf945f4377ade1205e4dbc17946fc9a30d # v10.0.1
@@ -73,6 +76,9 @@ jobs:
     if: github.ref == format('refs/heads/{0}', github.event.repository.default_branch)
     runs-on: windows-latest
     timeout-minutes: 30
+    # See the note on the macos job.
+    env:
+      UV_SYSTEM_PYTHON: 1
     strategy:
       matrix:
         target: [x64, x86]
@@ -133,12 +139,19 @@ jobs:
           manylinux: auto
           args: -m ${{ inputs.package_dir }}/Cargo.toml --release --out dist
           maturin-version: ${{ env.MATURIN_VERSION }}
+      # The test dependencies come from the committed lockfile, but the package
+      # under test must be the wheel we just built, not an editable/source
+      # install: `--no-install-workspace` keeps uv from building pgpq or
+      # arrow-json, and the wheel is then dropped into the same virtualenv.
+      - name: Install test dependencies from uv.lock
+        if: matrix.target == 'x86_64'
+        run: uv sync --locked --only-group test --no-install-workspace
       - name: Install built wheel and test
         if: matrix.target == 'x86_64'
         run: |
-          uv pip install "$(find dist -name '*.whl' -type f | head -n 1)[test]" --force-reinstall
+          uv pip install "$(find dist -name '*.whl' -type f | head -n 1)" --force-reinstall --no-deps
           uv pip freeze
-          uv run pytest -v ${{ inputs.package_dir }}
+          uv run --no-sync pytest -v ${{ inputs.package_dir }}
       - name: Upload wheels
         uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6.0.0
         with:
@@ -207,6 +220,8 @@ jobs:
       - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2.9.2
         with:
           workspaces: ${{ inputs.package_dir }}
+      - name: Check that uv.lock is up to date
+        run: uv lock --check
       - name: Lint
         run: |
           make lint

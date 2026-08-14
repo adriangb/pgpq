@@ -1,0 +1,34 @@
+# Virtual root of the uv workspace.
+#
+# This file exists purely so that the *development and CI* environment can be
+# locked (see `uv.lock`). It intentionally has no `[project]` table: the root is
+# not a distributable package, it is only a container for the workspace members
+# (`py/` -> pgpq, `json/` -> arrow-json) and for the dependency groups used by
+# the Makefile and by CI.
+#
+# The published metadata of the two packages lives in `py/pyproject.toml` and
+# `json/pyproject.toml` and is deliberately *not* pinned here: runtime
+# requirements stay as ranges (`pyarrow>=11`), and the `[test]` / `[bench]`
+# extras are kept intact so wheels remain installable with `pip install pgpq[test]`.
+# The groups below mirror those extras (union of both packages) so that the lock
+# covers everything the test suites need.
+
+[tool.uv.workspace]
+members = ["py", "json"]
+
+[dependency-groups]
+test = [
+    "pytest>=7.0.0",
+    "maturin>=1.14.1",
+    "pre-commit>=4.5.1",
+    "testing.postgresql>=1.3.0",
+    "psycopg[binary]>=3.3.2",
+    "pyarrow>=22.0.0",
+    # Only used by the arrow-json test suite (`json/pyproject.toml` [test]).
+    "polars>=0.16.1",
+]
+bench = [
+    "jupyter>=1.0.0",
+    "requests",
+    "duckdb",
+]
