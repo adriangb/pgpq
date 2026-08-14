@@ -162,10 +162,11 @@ jobs:
           uv pip install "$(find dist -name '*.whl' -type f | head -n 1)" --force-reinstall --no-deps
           uv pip freeze
           uv run --no-sync pytest -v ${{ inputs.package_dir }} --cov=${{ inputs.import_name }} --cov-report=xml
-      # Informational only: `fail_ci_if_error: false` means a missing
-      # CODECOV_TOKEN or a Codecov outage never fails the build. Public repos
-      # can upload without a token, but tokenless uploads are rate limited --
-      # adding a CODECOV_TOKEN repository secret makes this more reliable.
+      # A CODECOV_TOKEN repository secret is required for the report to land:
+      # tokenless uploads are rejected here ("Token required because branch is
+      # protected"). `fail_ci_if_error: false` keeps that -- and any Codecov
+      # outage -- from failing the build; until the secret exists the upload is
+      # simply a no-op.
       - name: Upload coverage to Codecov
         if: matrix.target == 'x86_64'
         uses: codecov/codecov-action@fb8b3582c8e4def4969c97caa2f19720cb33a72f # v7.0.0
