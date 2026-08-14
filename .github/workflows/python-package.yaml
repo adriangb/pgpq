@@ -169,6 +169,10 @@ jobs:
       # simply a no-op.
       - name: Upload coverage to Codecov
         if: matrix.target == 'x86_64'
+        # This job is a required check; the upload must never be able to fail it.
+        # fail_ci_if_error covers upload rejections but not e.g. a failed download
+        # of the Codecov CLI itself, hence also continue-on-error.
+        continue-on-error: true
         uses: codecov/codecov-action@fb8b3582c8e4def4969c97caa2f19720cb33a72f # v7.0.0
         with:
           files: coverage.xml
