@@ -67,20 +67,18 @@ const MAX_LIST_LEN: usize = 4;
 /// Maximum number of fields in a generated struct.
 const MAX_STRUCT_FIELDS: usize = 3;
 
-// KNOWN BUG #1 (reported, deliberately not fixed here): `encode_decimal!` in
-// `core/src/encoders.rs` pads the fractional part up to a multiple of four digits *before*
-// splitting it into base-10000 digits, so `fractional_part * 10^pad` overflows the backing
-// integer once the padded scale exceeds the type's digit capacity. Repro:
-// `Decimal32(9, 9)` holding `999_999_999`, or `Decimal64(18, 17)` holding
-// `99_999_999_999_999_999`, both panic with "attempt to multiply with overflow" in a debug
-// build. Scales are capped below the overflow point so the rest of the decimal space stays
-// covered. `Decimal128` would overflow at scale 37/38, which is already outside the cap below.
-const MAX_DECIMAL32_SCALE: i8 = 8;
-const MAX_DECIMAL64_SCALE: i8 = 16;
-// `rust_decimal::Decimal` (used by the harness to express the expected NUMERIC) holds a 96 bit
-// mantissa and a scale of at most 28, so the Decimal128 space is capped there rather than at
-// Arrow's 38 digits. Postgres itself would accept the wider values.
-const MAX_DECIMAL128_PRECISION: u8 = 28;
+/// Significant decimal digits the *harness* can carry through a NUMERIC.
+///
+/// `rust_decimal::Decimal` (used on both sides: to express the expected value and to decode what
+/// Postgres hands back) holds a 96 bit mantissa and a non-negative scale of at most 28, so the
+/// Decimal128 space is drawn at precision 28 rather than at Arrow's 38 digits, and a negative
+/// scale — which the harness materialises as `value * 10^-scale`, i.e. `precision + (-scale)`
+/// significant digits — is floored accordingly (see [`scale_range`]).
+///
+/// This is an expectation-side limit, not an encoder limit: the encoder handles the full Arrow
+/// range, which `core/tests/decimal_wire_format.rs` and the unit tests in `core/src/encoders.rs`
+/// pin down byte-exactly, and Postgres itself would accept the wider values.
+const MAX_HARNESS_NUMERIC_DIGITS: u8 = 28;
 
 /// Timestamp bounds (microseconds since the Unix epoch) covering 1400-01-01 .. 2400-01-01. Wide
 /// enough to exercise negative values and the Postgres epoch shift, narrow enough that every
@@ -272,43 +270,19 @@ fn binaries() -> BoxedStrategy<Vec<u8>> {
     .boxed()
 }
 
-/// KNOWN BUG #2 (reported, deliberately not fixed here): `encode_decimal!` derives the Postgres
-/// NUMERIC `weight` from the *integer* part alone, but builds the base-10000 digit list with a
-/// `while fractional_part > 0` loop that silently drops the most significant fractional group
-/// when it is zero. The dropped group is never accounted for, so every following digit is shifted
-/// one base-10000 position towards the decimal point and the stored value is wrong by a factor of
-/// 10000^k. Minimal repro: `Decimal64(18, 8)` holding `100_000_001` (i.e. `1.00000001`) encodes as
-/// `ndigits=2 weight=0 digits=[1, 1]`, which Postgres reads back as `1.0001`.
-///
-/// This predicate is the exclusion: a value is only generated when its padded fractional part
-/// really does occupy all `ceil(scale / 4)` base-10000 groups.
-fn decimal_encodes_correctly(value: i128, scale: i8) -> bool {
-    if scale <= 0 {
-        return true;
-    }
-    let scale = scale as u32;
-    let fractional = value.unsigned_abs() % 10u128.pow(scale);
-    if fractional == 0 {
-        return true;
-    }
-    let padding = (4 - (scale % 4)) % 4;
-    let padded = fractional * 10u128.pow(padding);
-    padded >= 10_000u128.pow(scale.div_ceil(4) - 1)
-}
-
 /// Values that fit `precision` decimal digits, biased towards the boundaries.
+///
+/// The whole range is generated: the leading-zero-fractional-group corruption that used to force
+/// an exclusion here (issue #79) was fixed by PR #85, so values such as `1.00000001` — whose most
+/// significant base-10000 fractional group is zero — are now covered.
 macro_rules! decimal_values {
     ($name:ident, $ty:ty) => {
-        fn $name(precision: u8, scale: i8) -> BoxedStrategy<$ty> {
+        fn $name(precision: u8) -> BoxedStrategy<$ty> {
             let max = (10 as $ty).pow(precision as u32) - 1;
             prop_oneof![
                 5 => -max..=max,
                 3 => prop::sample::select(vec![0, 1, -1, max, -max]),
             ]
-            .prop_filter(
-                "KNOWN BUG: leading zero base-10000 fractional group is mis-weighted",
-                move |value| decimal_encodes_correctly(*value as i128, scale),
-            )
             .boxed()
         }
     };
@@ -424,14 +398,14 @@ fn array_of(data_type: DataType, len: usize) -> BoxedStrategy<ArrayRef> {
         ),
         DataType::Float32 => prim_array::<Float32Type>(f32s(), len, dt),
         DataType::Float64 => prim_array::<Float64Type>(f64s(), len, dt),
-        DataType::Decimal32(precision, scale) => {
-            prim_array::<Decimal32Type>(decimal32_values(precision, scale), len, dt)
+        DataType::Decimal32(precision, _) => {
+            prim_array::<Decimal32Type>(decimal32_values(precision), len, dt)
         }
-        DataType::Decimal64(precision, scale) => {
-            prim_array::<Decimal64Type>(decimal64_values(precision, scale), len, dt)
+        DataType::Decimal64(precision, _) => {
+            prim_array::<Decimal64Type>(decimal64_values(precision), len, dt)
         }
-        DataType::Decimal128(precision, scale) => {
-            prim_array::<Decimal128Type>(decimal128_values(precision, scale), len, dt)
+        DataType::Decimal128(precision, _) => {
+            prim_array::<Decimal128Type>(decimal128_values(precision), len, dt)
         }
         DataType::Timestamp(TimeUnit::Second, _) => {
             prim_array::<TimestampSecondType>(timestamp_values(TimeUnit::Second), len, dt)
@@ -581,22 +555,28 @@ fn float_type() -> BoxedStrategy<DataType> {
     .boxed()
 }
 
-/// KNOWN BUG #3 (reported, deliberately not fixed here): Arrow allows a *negative* decimal scale
-/// and the harness knows how to express the expectation for one, but the encoder panics on it —
-/// `byte_size_hint` computes `precision as usize - scale as usize`, which underflows, and
-/// `encode_decimal!` would then call `10.pow(scale as u32)` with a huge exponent. Repro:
-/// `Decimal64(9, -2)` holding `123` panics with "attempt to subtract with overflow". Scales are
-/// therefore drawn from `0..=precision` only.
+/// The scales a decimal of `precision` digits is drawn from.
+///
+/// Arrow's own bound is `-precision..=precision` and the encoder covers all of it, negative scales
+/// (meaning `value * 10^-scale`) included. The floor here is the harness limit documented on
+/// [`MAX_HARNESS_NUMERIC_DIGITS`]: a negative scale widens the value to `precision + (-scale)`
+/// significant digits, which still has to fit `rust_decimal::Decimal`.
+fn scale_range(precision: u8) -> std::ops::RangeInclusive<i8> {
+    let precision = precision as i8;
+    let floor = (precision - MAX_HARNESS_NUMERIC_DIGITS as i8).max(-precision);
+    floor..=precision
+}
+
 fn decimal_type() -> BoxedStrategy<DataType> {
     prop_oneof![
         (1u8..=9)
-            .prop_flat_map(|p| (Just(p), 0i8..=(p as i8).min(MAX_DECIMAL32_SCALE)))
+            .prop_flat_map(|p| (Just(p), scale_range(p)))
             .prop_map(|(p, s)| DataType::Decimal32(p, s)),
         (1u8..=18)
-            .prop_flat_map(|p| (Just(p), 0i8..=(p as i8).min(MAX_DECIMAL64_SCALE)))
+            .prop_flat_map(|p| (Just(p), scale_range(p)))
             .prop_map(|(p, s)| DataType::Decimal64(p, s)),
-        (1u8..=MAX_DECIMAL128_PRECISION)
-            .prop_flat_map(|p| (Just(p), 0i8..=p as i8))
+        (1u8..=MAX_HARNESS_NUMERIC_DIGITS)
+            .prop_flat_map(|p| (Just(p), scale_range(p)))
             .prop_map(|(p, s)| DataType::Decimal128(p, s)),
     ]
     .boxed()

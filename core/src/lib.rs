@@ -15,11 +15,28 @@ use crate::pg_schema::PostgresSchema;
 
 const HEADER_MAGIC_BYTES: &[u8] = b"PGCOPY\n\xff\r\n\0";
 
-#[derive(Debug, PartialEq)]
-enum EncoderState {
+/// Where an [`ArrowToPostgresBinaryEncoder`] is in the `header -> batches -> footer` sequence.
+///
+/// Reported by [`ErrorKind::EncoderStateError`] when a call arrives out of order.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum EncoderState {
+    /// Nothing has been written yet; the header comes next.
     Created,
+    /// The header has been written; batches and then the footer may follow.
     Encoding,
+    /// The footer has been written; nothing more may be encoded.
     Finished,
+}
+
+impl std::fmt::Display for EncoderState {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        let name = match self {
+            EncoderState::Created => "created",
+            EncoderState::Encoding => "encoding",
+            EncoderState::Finished => "finished",
+        };
+        f.write_str(name)
+    }
 }
 
 #[derive(Debug)]
@@ -29,12 +46,21 @@ pub struct ArrowToPostgresBinaryEncoder {
     encoder_builders: Vec<EncoderBuilder>,
 }
 
+/// Build the default encoder for every field of `fields`, paired with the field's name.
+///
+/// The names come back with the builders because that is the key
+/// [`ArrowToPostgresBinaryEncoder::try_new_with_encoders`] expects: the usual flow is to take the
+/// defaults, replace the few columns that need a non-default Postgres type (a `Utf8` column
+/// written as `jsonb`, say) and hand the whole set back.
+///
+/// This fails on the first field pgpq cannot encode. No per-field `Result` is returned because
+/// every [`ErrorKind`] already names the field it is about.
 pub fn build_encoders(
     fields: &arrow_schema::Fields,
-) -> Vec<(String, Result<EncoderBuilder, ErrorKind>)> {
+) -> Result<Vec<(String, EncoderBuilder)>, ErrorKind> {
     fields
         .iter()
-        .map(|f| (f.name().clone(), EncoderBuilder::try_new(f.clone())))
+        .map(|f| Ok((f.name().clone(), EncoderBuilder::try_new(f.clone())?)))
         .collect()
 }
 
@@ -42,16 +68,15 @@ impl ArrowToPostgresBinaryEncoder {
     /// Creates a new writer which will write rows of the provided types to the provided sink.
     pub fn try_new(schema: &Schema) -> Result<Self, ErrorKind> {
         let fields = schema.fields();
-
-        let maybe_encoder_builders: Result<Vec<EncoderBuilder>, ErrorKind> = build_encoders(fields)
+        let encoder_builders = build_encoders(fields)?
             .into_iter()
-            .map(|(_, maybe_encoder)| maybe_encoder)
+            .map(|(_, encoder)| encoder)
             .collect();
 
         Ok(ArrowToPostgresBinaryEncoder {
             fields: fields.clone(),
             state: EncoderState::Created,
-            encoder_builders: maybe_encoder_builders?,
+            encoder_builders,
         })
     }
 
@@ -96,12 +121,28 @@ impl ArrowToPostgresBinaryEncoder {
         }
     }
 
-    pub fn write_header(&mut self, out: &mut BytesMut) {
-        assert_eq!(self.state, EncoderState::Created);
+    /// Fail unless the encoder is in `expected`.
+    ///
+    /// The `header -> batches -> footer` sequence is a caller-visible contract, so breaking it is
+    /// an error value rather than a panic: a library has no business aborting its host process
+    /// over a misuse it can describe.
+    fn expect_state(&self, expected: EncoderState) -> Result<(), ErrorKind> {
+        if self.state != expected {
+            return Err(ErrorKind::EncoderStateError {
+                expected,
+                actual: self.state,
+            });
+        }
+        Ok(())
+    }
+
+    pub fn write_header(&mut self, out: &mut BytesMut) -> Result<(), ErrorKind> {
+        self.expect_state(EncoderState::Created)?;
         out.put(HEADER_MAGIC_BYTES);
         out.put_i32(0); // flags
         out.put_i32(0); // header extension
         self.state = EncoderState::Encoding;
+        Ok(())
     }
 
     pub fn write_batch(
@@ -109,13 +150,13 @@ impl ArrowToPostgresBinaryEncoder {
         batch: &RecordBatch,
         buf: &mut BytesMut,
     ) -> Result<(), ErrorKind> {
-        assert_eq!(self.state, EncoderState::Encoding);
-        assert!(
-            batch.num_columns() == self.fields.len(),
-            "expected {} values but got {}",
-            self.fields.len(),
-            batch.num_columns(),
-        );
+        self.expect_state(EncoderState::Encoding)?;
+        if batch.num_columns() != self.fields.len() {
+            return Err(ErrorKind::ColumnCountMismatch {
+                expected: self.fields.len(),
+                actual: batch.num_columns(),
+            });
+        }
         let n_rows = batch.num_rows();
         let n_cols = batch.num_columns();
 
@@ -142,7 +183,7 @@ impl ArrowToPostgresBinaryEncoder {
     }
 
     pub fn write_footer(&mut self, out: &mut BytesMut) -> Result<(), ErrorKind> {
-        assert_eq!(self.state, EncoderState::Encoding);
+        self.expect_state(EncoderState::Encoding)?;
         out.put_i16(-1);
         self.state = EncoderState::Finished;
         Ok(())
@@ -187,10 +228,10 @@ mod tests {
     #[test]
     fn test_build_with_encoders() {
         let batch = make_test_data();
-        let encoders = build_encoders(batch.schema().fields());
+        let encoders = build_encoders(batch.schema().fields()).unwrap();
         let encoders: HashMap<String, EncoderBuilder> = encoders
             .into_iter()
-            .map(|(field_name, maybe_enc)| match field_name.as_str() {
+            .map(|(field_name, encoder)| match field_name.as_str() {
                 "json" => (
                     field_name.to_string(),
                     EncoderBuilder::String(
@@ -201,7 +242,7 @@ mod tests {
                         .unwrap(),
                     ),
                 ),
-                field_name => (field_name.to_string(), maybe_enc.unwrap()),
+                field_name => (field_name.to_string(), encoder),
             })
             .collect();
         let encoder = ArrowToPostgresBinaryEncoder::try_new_with_encoders(
@@ -235,5 +276,133 @@ mod tests {
                 }
             ]
         )
+    }
+
+    /// Every way of breaking the `header -> batches -> footer` contract has to come back as an
+    /// `Err`; these used to be `assert!`s, i.e. a process abort inside a library.
+    mod misuse {
+        use super::*;
+
+        fn encoder() -> ArrowToPostgresBinaryEncoder {
+            ArrowToPostgresBinaryEncoder::try_new(&make_test_data().schema()).unwrap()
+        }
+
+        #[test]
+        fn batch_before_header() {
+            let mut encoder = encoder();
+            let err = encoder
+                .write_batch(&make_test_data(), &mut BytesMut::new())
+                .unwrap_err();
+            assert!(
+                matches!(
+                    err,
+                    ErrorKind::EncoderStateError {
+                        expected: EncoderState::Encoding,
+                        actual: EncoderState::Created,
+                    }
+                ),
+                "{err:?}"
+            );
+        }
+
+        #[test]
+        fn footer_before_header() {
+            let mut encoder = encoder();
+            let err = encoder.write_footer(&mut BytesMut::new()).unwrap_err();
+            assert!(
+                matches!(
+                    err,
+                    ErrorKind::EncoderStateError {
+                        expected: EncoderState::Encoding,
+                        actual: EncoderState::Created,
+                    }
+                ),
+                "{err:?}"
+            );
+        }
+
+        #[test]
+        fn double_header() {
+            let mut buf = BytesMut::new();
+            let mut encoder = encoder();
+            encoder.write_header(&mut buf).unwrap();
+            let err = encoder.write_header(&mut buf).unwrap_err();
+            assert!(
+                matches!(
+                    err,
+                    ErrorKind::EncoderStateError {
+                        expected: EncoderState::Created,
+                        actual: EncoderState::Encoding,
+                    }
+                ),
+                "{err:?}"
+            );
+        }
+
+        #[test]
+        fn batch_after_footer() {
+            let mut buf = BytesMut::new();
+            let mut encoder = encoder();
+            encoder.write_header(&mut buf).unwrap();
+            encoder.write_footer(&mut buf).unwrap();
+            let err = encoder
+                .write_batch(&make_test_data(), &mut buf)
+                .unwrap_err();
+            assert!(
+                matches!(
+                    err,
+                    ErrorKind::EncoderStateError {
+                        expected: EncoderState::Encoding,
+                        actual: EncoderState::Finished,
+                    }
+                ),
+                "{err:?}"
+            );
+        }
+
+        #[test]
+        fn double_footer() {
+            let mut buf = BytesMut::new();
+            let mut encoder = encoder();
+            encoder.write_header(&mut buf).unwrap();
+            encoder.write_footer(&mut buf).unwrap();
+            let err = encoder.write_footer(&mut buf).unwrap_err();
+            assert!(
+                matches!(
+                    err,
+                    ErrorKind::EncoderStateError {
+                        expected: EncoderState::Encoding,
+                        actual: EncoderState::Finished,
+                    }
+                ),
+                "{err:?}"
+            );
+        }
+
+        #[test]
+        fn wrong_column_count() {
+            let batch = make_test_data();
+            let mut buf = BytesMut::new();
+            let mut encoder = encoder();
+            encoder.write_header(&mut buf).unwrap();
+
+            // A batch built from a prefix of the schema: right types, too few columns.
+            let narrow_schema = Schema::new(vec![batch.schema().field(0).clone()]);
+            let narrow =
+                RecordBatch::try_new(Arc::new(narrow_schema), vec![batch.column(0).clone()])
+                    .unwrap();
+
+            let err = encoder.write_batch(&narrow, &mut buf).unwrap_err();
+            assert!(
+                matches!(
+                    err,
+                    ErrorKind::ColumnCountMismatch {
+                        expected: 4,
+                        actual: 1
+                    }
+                ),
+                "{err:?}"
+            );
+        }
     }
 }
