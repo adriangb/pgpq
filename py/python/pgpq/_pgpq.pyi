@@ -1,4 +1,4 @@
-from typing import Mapping, Union
+from collections.abc import Mapping
 
 import pyarrow
 
@@ -66,24 +66,24 @@ class PostgresSchema:
     def columns(self) -> list[Column]: ...
     def ddl(self, table_name: str, temp_table=False) -> str: ...
 
-PostgresType = Union[
-    Bool,
-    Bytea,
-    Int2,
-    Int4,
-    Int8,
-    Float4,
-    Float8,
-    Numeric,
-    Char,
-    Text,
-    Jsonb,
-    Date,
-    Time,
-    Timestamp,
-    Interval,
-    List,
-]
+PostgresType = (
+    Bool
+    | Bytea
+    | Int2
+    | Int4
+    | Int8
+    | Float4
+    | Float8
+    | Numeric
+    | Char
+    | Text
+    | Jsonb
+    | Date
+    | Time
+    | Timestamp
+    | Interval
+    | List
+)
 
 class ArrowToPostgresBinaryEncoder:
     def __init__(self, __schema: pyarrow.Schema) -> None: ...

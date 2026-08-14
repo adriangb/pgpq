@@ -13,4 +13,3 @@ def array_to_utf8_json_array(array: Any, large: bool = True) -> Any:
     Returns
         Any: A PyArrow array.
     """
-    ...

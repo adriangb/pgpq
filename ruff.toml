@@ -9,12 +9,30 @@ target-version = "py310"
 extend-exclude = ["*.ipynb"]
 
 [lint]
-# ruff 0.0.239, which this repo used to pin, defaulted to pycodestyle `E` plus
-# Pyflakes `F`; recent ruff enables a much larger set by default. Keep the
-# historical selection so this change stays a tooling swap rather than a
-# codebase-wide lint sweep, and add `I` so import sorting is still enforced now
-# that the (never actually wired up) `[tool.isort]` config is gone.
-select = ["E", "F", "I"]
+# The #67 tooling swap deliberately kept the historical `["E", "F", "I"]` so it
+# would not turn into a codebase-wide lint sweep. #83 widens it; the sweep is
+# its own commit.
+#
+# Not selected, on purpose:
+#   * `PT`   -- pytest-raises-too-broad wants an added `match=` on every
+#               `pytest.raises`, which is a test-content change, not a lint fix.
+#   * `FURB` -- preview-adjacent and mostly stylistic (`Decimal("1")` vs
+#               `Decimal(1)`); churn without a correctness payoff here.
+#   * `ANN`/`D` -- this repo does not annotate or docstring its test helpers,
+#               and forcing it would swamp any real finding.
+select = [
+    "E",    # pycodestyle errors
+    "W",    # pycodestyle warnings
+    "F",    # Pyflakes
+    "I",    # isort
+    "UP",   # pyupgrade -- the floor is Python 3.10
+    "B",    # flake8-bugbear
+    "SIM",  # flake8-simplify
+    "C4",   # flake8-comprehensions
+    "PIE",  # flake8-pie
+    "PERF", # perflint
+    "RUF",  # ruff-specific
+]
 
 [lint.isort]
 # `target-version = "py310"` is the *packages'* floor, and it makes ruff classify
