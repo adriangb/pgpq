@@ -1,32 +1,23 @@
+mod harness;
+
 use std::cmp::min;
 use std::fs::{self, File};
 use std::io::{Read, Write};
 use std::path::PathBuf;
-use std::time::Duration;
 
-use arrow_array::RecordBatch;
-use arrow_ipc::reader::FileReader;
-use arrow_schema::Schema;
 use bytes::BytesMut;
 use console::Style;
 use pgpq::ArrowToPostgresBinaryEncoder;
-use postgres::{Client, NoTls};
-use postgresql_embedded::blocking::PostgreSQL;
-use postgresql_embedded::Settings;
 use similar::{ChangeTag, TextDiff};
 
-fn read_batches(file: PathBuf) -> (Vec<RecordBatch>, Schema) {
-    let file = File::open(file).unwrap();
-    let reader = FileReader::try_new(file, None).unwrap();
-    let schema = (*reader.schema()).clone();
-    let batches = reader.map(|v| v.unwrap()).collect();
-    (batches, schema)
-}
+use harness::cases::{all_cases, read_batches, Case};
+use harness::db::TestDb;
+use harness::value::Value;
 
 fn run_test_case(case: &str) {
     let path =
         PathBuf::from(env!("CARGO_MANIFEST_DIR")).join(format!("tests/testdata/{case}.arrow"));
-    let (batches, schema) = read_batches(path);
+    let (batches, schema) = read_batches(&path);
     let mut encoder = ArrowToPostgresBinaryEncoder::try_new(&schema).unwrap();
     let mut buf = BytesMut::new();
     encoder.write_header(&mut buf);
@@ -1023,28 +1014,100 @@ fn test_nested_struct() {
     run_test_case("nested_struct")
 }
 
+/// Roundtrip every case through embedded Postgres and compare the *typed* values Postgres hands
+/// back against the values implied by the source Arrow arrays.
+///
+/// This is the value level correctness gate: the CSV based [`validate_snapshots`] below only
+/// compares text, which can hide differences that happen to render identically.
+///
+/// A single embedded Postgres instance is shared by every case; each case runs inside a
+/// transaction that is rolled back, so the table and any composite types it needs disappear again.
+#[test]
+fn validate_roundtrip_values() {
+    let cases = all_cases();
+    assert!(!cases.is_empty(), "no roundtrip cases were found");
+
+    let mut db = TestDb::start().expect("failed to start embedded postgres");
+    let mut failures: Vec<String> = Vec::new();
+
+    for case in &cases {
+        let expected = case.expected();
+        match db.roundtrip(
+            &case.name,
+            &case.schema,
+            &case.batches,
+            case.encoders.as_ref(),
+        ) {
+            Ok(actual) => {
+                if let Some(diff) = describe_mismatch(case, &expected, &actual) {
+                    failures.push(diff);
+                }
+            }
+            Err(err) => failures.push(format!("{}: roundtrip failed: {err}", case.name)),
+        }
+    }
+
+    println!(
+        "checked {} cases / {} rows",
+        cases.len(),
+        harness::cases::total_rows(&cases)
+    );
+    assert!(
+        failures.is_empty(),
+        "{} of {} roundtrip cases did not match:\n{}",
+        failures.len(),
+        cases.len(),
+        failures.join("\n")
+    );
+}
+
+/// Render the first difference between the expected and actual values of a case, if any.
+fn describe_mismatch(
+    case: &Case,
+    expected: &[Vec<Value>],
+    actual: &[Vec<Value>],
+) -> Option<String> {
+    if expected.len() != actual.len() {
+        return Some(format!(
+            "{}: expected {} rows, got {}",
+            case.name,
+            expected.len(),
+            actual.len()
+        ));
+    }
+    for (row, (expected_row, actual_row)) in expected.iter().zip(actual).enumerate() {
+        if expected_row.len() != actual_row.len() {
+            return Some(format!(
+                "{}: row {row} has {} columns, expected {}",
+                case.name,
+                actual_row.len(),
+                expected_row.len()
+            ));
+        }
+        for (col, (expected_value, actual_value)) in expected_row.iter().zip(actual_row).enumerate()
+        {
+            if expected_value != actual_value {
+                let name = case
+                    .schema
+                    .fields()
+                    .get(col)
+                    .map(|f| f.name().clone())
+                    .unwrap_or_else(|| col.to_string());
+                return Some(format!(
+                    "{}: row {row} column {name}:\n  expected: {expected_value:?}\n  actual:   {actual_value:?}",
+                    case.name
+                ));
+            }
+        }
+    }
+    None
+}
+
 /// Confirm that the binary snapshots are loaded to Postgres correctly.
 #[test]
 fn validate_snapshots() {
-    let settings = Settings {
-        timeout: Some(Duration::from_secs(30)),
-        ..Default::default()
-    };
-    let mut postgresql = PostgreSQL::new(settings);
-    postgresql.setup().unwrap();
-    postgresql.start().unwrap();
-    postgresql.create_database("test").unwrap();
-    let settings = postgresql.settings();
-
-    let mut client = Client::connect(
-        format!(
-            "host=localhost port={} user={} password={} dbname=test",
-            settings.port, settings.username, settings.password
-        )
-        .as_str(),
-        NoTls,
-    )
-    .unwrap();
+    let mut db = TestDb::start().expect("failed to start embedded postgres");
+    let client = db.client();
 
     let binary_snapshots_path = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("tests/snapshots");
     let csv_snapshots_path = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("tests/snapshots_csv");
@@ -1063,7 +1126,7 @@ fn validate_snapshots() {
 
         let name = path.file_stem().unwrap().to_str().unwrap().to_owned();
         let binary_content = fs::read(path.clone()).unwrap();
-        let (_, schema) = read_batches(arrow_data_path.join(format!("{name}.arrow")));
+        let (_, schema) = read_batches(&arrow_data_path.join(format!("{name}.arrow")));
         let encoder = ArrowToPostgresBinaryEncoder::try_new(&schema).unwrap();
 
         // Use ddl() to generate the CREATE TABLE statement (with any required CREATE TYPE for structs)
@@ -1105,8 +1168,6 @@ fn validate_snapshots() {
             failed.push(name);
         }
     }
-
-    postgresql.stop().unwrap();
 
     println!("created csv snapshots: {:?}", created);
     assert_eq!(failed, Vec::<String>::new());
