@@ -3,7 +3,7 @@ use std::collections::HashMap;
 use encoders::EncoderBuilder;
 use pyo3::prelude::*;
 use pyo3::types::{PyBytes, PyDict};
-use pyo3::{exceptions::PyValueError, Python};
+use pyo3::{Python, exceptions::PyValueError};
 
 use arrow::datatypes::Schema as ArrowSchema;
 use arrow::pyarrow::FromPyArrow;

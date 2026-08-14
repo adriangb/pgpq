@@ -31,11 +31,11 @@ use std::sync::Arc;
 
 use arrow::buffer::{NullBuffer, OffsetBuffer};
 use arrow_array::types::{
-    ArrowPrimitiveType, Date32Type, Decimal128Type, Decimal32Type, Decimal64Type,
+    ArrowPrimitiveType, Date32Type, Decimal32Type, Decimal64Type, Decimal128Type,
     DurationMicrosecondType, DurationMillisecondType, DurationSecondType, Float16Type, Float32Type,
-    Float64Type, Int16Type, Int32Type, Int64Type, Int8Type, Time32MillisecondType,
+    Float64Type, Int8Type, Int16Type, Int32Type, Int64Type, Time32MillisecondType,
     Time32SecondType, Time64MicrosecondType, TimestampMicrosecondType, TimestampMillisecondType,
-    TimestampSecondType, UInt16Type, UInt32Type, UInt64Type, UInt8Type,
+    TimestampSecondType, UInt8Type, UInt16Type, UInt32Type, UInt64Type,
 };
 use arrow_array::{
     Array, ArrayRef, BinaryArray, BooleanArray, FixedSizeBinaryArray, FixedSizeListArray,

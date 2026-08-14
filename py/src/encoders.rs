@@ -5,7 +5,7 @@ use arrow_schema::Field;
 use pyo3::class::basic::CompareOp;
 use pyo3::exceptions::PyRuntimeError;
 use pyo3::types::PyType;
-use pyo3::{exceptions::PyValueError, prelude::*, IntoPyObject};
+use pyo3::{IntoPyObject, exceptions::PyValueError, prelude::*};
 
 use pgpq::encoders::BuildEncoder;
 
@@ -677,7 +677,7 @@ impl EncoderBuilder {
                         .repr()
                         .map(|s| s.to_string())
                         .unwrap_or_else(|_| "<repr error>".to_string())
-                )))
+                )));
             }
         };
         let pg_output_type: crate::pg_schema::PostgresType = inner.schema().data_type.into();

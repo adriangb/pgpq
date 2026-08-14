@@ -13,20 +13,20 @@ use std::sync::Arc;
 
 use arrow_array::types::ArrowPrimitiveType;
 use arrow_array::{
-    Array, ArrowNativeTypeOp, BooleanArray, Date32Array, Decimal128Array, Decimal32Array,
-    Decimal64Array, DurationMicrosecondArray, DurationMillisecondArray, DurationSecondArray,
-    Float16Array, Float32Array, Float64Array, Int16Array, Int32Array, Int64Array, Int8Array,
+    Array, ArrowNativeTypeOp, BooleanArray, Date32Array, Decimal32Array, Decimal64Array,
+    Decimal128Array, DurationMicrosecondArray, DurationMillisecondArray, DurationSecondArray,
+    Float16Array, Float32Array, Float64Array, Int8Array, Int16Array, Int32Array, Int64Array,
     PrimitiveArray, Time32MillisecondArray, Time32SecondArray, Time64MicrosecondArray,
-    TimestampMicrosecondArray, TimestampMillisecondArray, TimestampSecondArray, UInt16Array,
-    UInt32Array, UInt64Array, UInt8Array,
+    TimestampMicrosecondArray, TimestampMillisecondArray, TimestampSecondArray, UInt8Array,
+    UInt16Array, UInt32Array, UInt64Array,
 };
 use arrow_schema::{DataType, Field, TimeUnit};
 use bytes::{BufMut, BytesMut};
 
 use super::numeric::{
-    encode_decimal_128, encode_decimal_32, encode_decimal_64, numeric_group_count_hint,
+    encode_decimal_32, encode_decimal_64, encode_decimal_128, numeric_group_count_hint,
 };
-use super::{downcast_checked, BuildEncoder, Encode, Encoder};
+use super::{BuildEncoder, Encode, Encoder, downcast_checked};
 use crate::error::ErrorKind;
 use crate::pg_schema::{Column, PostgresType, TypeSize};
 

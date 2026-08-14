@@ -119,7 +119,7 @@ encode_decimal!(encode_decimal_128, i128, u128);
 mod tests {
     use super::*;
     use crate::encoders::{Decimal64Encoder, Encode};
-    use arrow_array::{Decimal128Array, Decimal32Array, Decimal64Array};
+    use arrow_array::{Decimal32Array, Decimal64Array, Decimal128Array};
 
     /// The decoded contents of a Postgres binary NUMERIC field.
     #[derive(Debug, PartialEq, Eq)]

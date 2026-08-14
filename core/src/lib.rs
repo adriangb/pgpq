@@ -197,7 +197,7 @@ mod tests {
     use crate::{encoders::StringEncoderBuilder, pg_schema::Column};
 
     use super::*;
-    use arrow_array::{Int32Array, Int8Array, StringArray};
+    use arrow_array::{Int8Array, Int32Array, StringArray};
     use arrow_schema::{DataType, Field};
 
     fn make_test_data() -> RecordBatch {

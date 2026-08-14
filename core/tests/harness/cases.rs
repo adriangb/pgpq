@@ -21,7 +21,7 @@ use arrow_schema::{DataType, Field, Fields, Schema};
 use pgpq::encoders::{EncoderBuilder, ListEncoderBuilder, StringEncoderBuilder};
 use pgpq::pg_schema::PostgresType;
 
-use super::value::{expected_rows, Value};
+use super::value::{Value, expected_rows};
 
 /// One roundtrip case: some Arrow data, optionally custom encoders, and the values Postgres is
 /// expected to hand back.
@@ -277,9 +277,11 @@ pub fn custom_encoder_cases() -> Vec<Case> {
         vec![Value::Array(vec![Value::Text("123".into())])],
     ];
 
-    vec![Case::new("json_list", batch)
-        .with_encoders(encoders)
-        .with_expected(expected)]
+    vec![
+        Case::new("json_list", batch)
+            .with_encoders(encoders)
+            .with_expected(expected),
+    ]
 }
 
 /// Every case, in the order they should be run.
