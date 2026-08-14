@@ -10,9 +10,9 @@
 //! ```
 //!
 //! The property under test is "encoding valid Arrow data in the documented call order never
-//! panics". `write_header`/`write_batch`/`write_footer` assert on misuse (calling them out of
-//! order), which is a deliberate panic-on-misuse API and therefore not what this target explores.
-//! Encoder *errors* are values, not failures: they are propagated and ignored.
+//! panics". Calling those methods out of order is a plain `ErrorKind` rather than a panic, so
+//! there is nothing for this target to find there; it always uses the documented order. Encoder
+//! *errors* are values, not failures: they are propagated and ignored.
 
 #![no_main]
 
@@ -337,7 +337,9 @@ fn run(u: &mut Unstructured<'_>) -> arbitrary::Result<()> {
     let _ = encoder.schema().ddl("fuzz", false);
 
     let mut buf = BytesMut::new();
-    encoder.write_header(&mut buf);
+    if encoder.write_header(&mut buf).is_err() {
+        return Ok(());
+    }
     for batch in &batches {
         if encoder.write_batch(batch, &mut buf).is_err() {
             return Ok(());

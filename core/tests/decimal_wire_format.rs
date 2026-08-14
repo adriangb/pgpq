@@ -188,7 +188,7 @@ fn decimals_roundtrip_through_postgres() {
 
         let mut encoder = ArrowToPostgresBinaryEncoder::try_new(&schema).unwrap();
         let mut buf = BytesMut::new();
-        encoder.write_header(&mut buf);
+        encoder.write_header(&mut buf).unwrap();
         encoder.write_batch(&batch, &mut buf).unwrap();
         encoder.write_footer(&mut buf).unwrap();
 
