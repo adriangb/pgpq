@@ -20,14 +20,16 @@ use std::sync::Arc;
 
 use arbitrary::{Arbitrary, Unstructured};
 use arrow_array::types::{
-    Date32Type, Decimal128Type, DurationMicrosecondType, Time64MicrosecondType,
-    TimestampMicrosecondType,
+    ArrowPrimitiveType, Date32Type, Decimal128Type, Decimal32Type, Decimal64Type,
+    DurationMicrosecondType, DurationMillisecondType, DurationSecondType, Float16Type,
+    Time32MillisecondType, Time32SecondType, Time64MicrosecondType, TimestampMicrosecondType,
+    TimestampMillisecondType, TimestampSecondType,
 };
 use arrow_array::{
     Array, ArrayRef, BinaryArray, BooleanArray, Float32Array, Float64Array, Int16Array, Int32Array,
     Int64Array, Int8Array, LargeBinaryArray, LargeListArray, LargeStringArray, ListArray,
-    PrimitiveArray, RecordBatch, StringArray, StructArray, UInt16Array, UInt32Array, UInt64Array,
-    UInt8Array,
+    PrimitiveArray, RecordBatch, StringArray, StringViewArray, StructArray, UInt16Array,
+    UInt32Array, UInt64Array, UInt8Array,
 };
 use arrow_buffer::{NullBuffer, OffsetBuffer};
 use arrow_schema::{DataType, Field, Fields, Schema, TimeUnit};
@@ -56,15 +58,28 @@ enum Scalar {
     UInt16,
     UInt32,
     UInt64,
+    Float16,
     Float32,
     Float64,
+    Decimal32,
+    Decimal64,
     Decimal128,
+    // The second and millisecond variants are drawn from the full `i64`/`i32` range on purpose:
+    // their encoders convert to microseconds with a `checked_mul`, and that overflow path is not
+    // reachable from the proptest suite, whose values are bounded to what Postgres accepts.
+    TimestampSecond,
+    TimestampMillisecond,
     TimestampMicrosecond,
     Date32,
+    Time32Second,
+    Time32Millisecond,
     Time64Microsecond,
+    DurationSecond,
+    DurationMillisecond,
     DurationMicrosecond,
     Utf8,
     LargeUtf8,
+    Utf8View,
     Binary,
     LargeBinary,
 }
@@ -88,6 +103,20 @@ enum Column {
 /// keep it narrower (issue #79) were fixed by PR #85, and unlike the proptest suite this target
 /// has no expectation side, so `rust_decimal`'s 28 digit ceiling does not apply here either.
 const MAX_DECIMAL_PRECISION: u8 = 38;
+/// The narrower Arrow decimals top out at what their storage width can hold.
+const MAX_DECIMAL32_PRECISION: u8 = 9;
+const MAX_DECIMAL64_PRECISION: u8 = 18;
+
+/// A `DataType::DecimalN(precision, scale)` with both drawn from the fuzzer's entropy.
+fn decimal_type(
+    max_precision: u8,
+    make: fn(u8, i8) -> DataType,
+    u: &mut Unstructured<'_>,
+) -> arbitrary::Result<DataType> {
+    let precision = u.int_in_range(1..=max_precision)?;
+    let scale = u.int_in_range(-(precision as i8)..=precision as i8)?;
+    Ok(make(precision, scale))
+}
 
 fn scalar_type(scalar: Scalar, u: &mut Unstructured<'_>) -> arbitrary::Result<DataType> {
     Ok(match scalar {
@@ -100,28 +129,35 @@ fn scalar_type(scalar: Scalar, u: &mut Unstructured<'_>) -> arbitrary::Result<Da
         Scalar::UInt16 => DataType::UInt16,
         Scalar::UInt32 => DataType::UInt32,
         Scalar::UInt64 => DataType::UInt64,
+        Scalar::Float16 => DataType::Float16,
         Scalar::Float32 => DataType::Float32,
         Scalar::Float64 => DataType::Float64,
-        Scalar::Decimal128 => {
-            let precision = u.int_in_range(1..=MAX_DECIMAL_PRECISION)?;
-            let scale = u.int_in_range(-(precision as i8)..=precision as i8)?;
-            DataType::Decimal128(precision, scale)
-        }
-        Scalar::TimestampMicrosecond => {
-            let tz = if u.arbitrary()? {
-                Some(Arc::from("UTC"))
-            } else {
-                None
-            };
-            DataType::Timestamp(TimeUnit::Microsecond, tz)
-        }
+        Scalar::Decimal32 => decimal_type(MAX_DECIMAL32_PRECISION, DataType::Decimal32, u)?,
+        Scalar::Decimal64 => decimal_type(MAX_DECIMAL64_PRECISION, DataType::Decimal64, u)?,
+        Scalar::Decimal128 => decimal_type(MAX_DECIMAL_PRECISION, DataType::Decimal128, u)?,
+        Scalar::TimestampSecond => DataType::Timestamp(TimeUnit::Second, timezone(u)?),
+        Scalar::TimestampMillisecond => DataType::Timestamp(TimeUnit::Millisecond, timezone(u)?),
+        Scalar::TimestampMicrosecond => DataType::Timestamp(TimeUnit::Microsecond, timezone(u)?),
         Scalar::Date32 => DataType::Date32,
+        Scalar::Time32Second => DataType::Time32(TimeUnit::Second),
+        Scalar::Time32Millisecond => DataType::Time32(TimeUnit::Millisecond),
         Scalar::Time64Microsecond => DataType::Time64(TimeUnit::Microsecond),
+        Scalar::DurationSecond => DataType::Duration(TimeUnit::Second),
+        Scalar::DurationMillisecond => DataType::Duration(TimeUnit::Millisecond),
         Scalar::DurationMicrosecond => DataType::Duration(TimeUnit::Microsecond),
         Scalar::Utf8 => DataType::Utf8,
         Scalar::LargeUtf8 => DataType::LargeUtf8,
+        Scalar::Utf8View => DataType::Utf8View,
         Scalar::Binary => DataType::Binary,
         Scalar::LargeBinary => DataType::LargeBinary,
+    })
+}
+
+fn timezone(u: &mut Unstructured<'_>) -> arbitrary::Result<Option<Arc<str>>> {
+    Ok(if u.arbitrary()? {
+        Some(Arc::from("UTC"))
+    } else {
+        None
     })
 }
 
@@ -167,20 +203,59 @@ fn scalar_array(
         DataType::UInt16 => Arc::new(UInt16Array::from(opt_vec::<u16>(len, u)?)),
         DataType::UInt32 => Arc::new(UInt32Array::from(opt_vec::<u32>(len, u)?)),
         DataType::UInt64 => Arc::new(UInt64Array::from(opt_vec::<u64>(len, u)?)),
+        DataType::Float16 => {
+            // `half::f16` is not `Arbitrary`, so draw an `f32` and narrow it. Every f32 (NaN and
+            // the infinities included) has an f16 image, so nothing is lost as coverage.
+            let values: Vec<Option<_>> = opt_vec::<f32>(len, u)?
+                .into_iter()
+                .map(|v| v.map(<Float16Type as ArrowPrimitiveType>::Native::from_f32))
+                .collect();
+            Arc::new(PrimitiveArray::<Float16Type>::from_iter(values))
+        }
         DataType::Float32 => Arc::new(Float32Array::from(opt_vec::<f32>(len, u)?)),
         DataType::Float64 => Arc::new(Float64Array::from(opt_vec::<f64>(len, u)?)),
-        DataType::Decimal128(precision, scale) => {
+        DataType::Decimal32(precision, _) => {
+            let bound = 10i32.pow(*precision as u32);
+            let values: Vec<Option<i32>> = opt_vec::<i32>(len, u)?
+                .into_iter()
+                .map(|v| v.map(|v| v % bound))
+                .collect();
+            Arc::new(
+                PrimitiveArray::<Decimal32Type>::from_iter(values)
+                    .with_data_type(data_type.clone()),
+            )
+        }
+        DataType::Decimal64(precision, _) => {
+            let bound = 10i64.pow(*precision as u32);
+            let values: Vec<Option<i64>> = opt_vec::<i64>(len, u)?
+                .into_iter()
+                .map(|v| v.map(|v| v % bound))
+                .collect();
+            Arc::new(
+                PrimitiveArray::<Decimal64Type>::from_iter(values)
+                    .with_data_type(data_type.clone()),
+            )
+        }
+        DataType::Decimal128(precision, _) => {
             // Keep every value inside the declared precision; Arrow itself rejects wider ones.
-            let bound = 10i128.pow(*precision as u32) - 1;
+            let bound = 10i128.pow(*precision as u32);
             let values: Vec<Option<i128>> = opt_vec::<i128>(len, u)?
                 .into_iter()
-                .map(|v| v.map(|v| v % (bound + 1)))
+                .map(|v| v.map(|v| v % bound))
                 .collect();
             Arc::new(
                 PrimitiveArray::<Decimal128Type>::from_iter(values)
-                    .with_data_type(DataType::Decimal128(*precision, *scale)),
+                    .with_data_type(data_type.clone()),
             )
         }
+        DataType::Timestamp(TimeUnit::Second, _) => Arc::new(
+            PrimitiveArray::<TimestampSecondType>::from_iter(opt_vec::<i64>(len, u)?)
+                .with_data_type(data_type.clone()),
+        ),
+        DataType::Timestamp(TimeUnit::Millisecond, _) => Arc::new(
+            PrimitiveArray::<TimestampMillisecondType>::from_iter(opt_vec::<i64>(len, u)?)
+                .with_data_type(data_type.clone()),
+        ),
         DataType::Timestamp(TimeUnit::Microsecond, _) => Arc::new(
             PrimitiveArray::<TimestampMicrosecondType>::from_iter(opt_vec::<i64>(len, u)?)
                 .with_data_type(data_type.clone()),
@@ -188,8 +263,20 @@ fn scalar_array(
         DataType::Date32 => Arc::new(PrimitiveArray::<Date32Type>::from_iter(opt_vec::<i32>(
             len, u,
         )?)),
+        DataType::Time32(TimeUnit::Second) => Arc::new(
+            PrimitiveArray::<Time32SecondType>::from_iter(opt_vec::<i32>(len, u)?),
+        ),
+        DataType::Time32(TimeUnit::Millisecond) => Arc::new(
+            PrimitiveArray::<Time32MillisecondType>::from_iter(opt_vec::<i32>(len, u)?),
+        ),
         DataType::Time64(TimeUnit::Microsecond) => Arc::new(
             PrimitiveArray::<Time64MicrosecondType>::from_iter(opt_vec::<i64>(len, u)?),
+        ),
+        DataType::Duration(TimeUnit::Second) => Arc::new(
+            PrimitiveArray::<DurationSecondType>::from_iter(opt_vec::<i64>(len, u)?),
+        ),
+        DataType::Duration(TimeUnit::Millisecond) => Arc::new(
+            PrimitiveArray::<DurationMillisecondType>::from_iter(opt_vec::<i64>(len, u)?),
         ),
         DataType::Duration(TimeUnit::Microsecond) => {
             Arc::new(PrimitiveArray::<DurationMicrosecondType>::from_iter(
@@ -198,6 +285,7 @@ fn scalar_array(
         }
         DataType::Utf8 => Arc::new(StringArray::from_iter(opt_vec::<String>(len, u)?)),
         DataType::LargeUtf8 => Arc::new(LargeStringArray::from_iter(opt_vec::<String>(len, u)?)),
+        DataType::Utf8View => Arc::new(StringViewArray::from_iter(opt_vec::<String>(len, u)?)),
         DataType::Binary => Arc::new(BinaryArray::from_iter(opt_vec::<Vec<u8>>(len, u)?)),
         DataType::LargeBinary => Arc::new(LargeBinaryArray::from_iter(opt_vec::<Vec<u8>>(len, u)?)),
         other => unreachable!("unhandled scalar type {other:?}"),
