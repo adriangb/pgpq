@@ -13,8 +13,8 @@ use std::sync::Arc;
 use arrow::buffer::{NullBuffer, OffsetBuffer};
 use arrow_array::builder::{ListBuilder, StringBuilder};
 use arrow_array::{
-    ArrayRef, BooleanArray, Float64Array, Int32Array, ListArray, RecordBatch, StringArray,
-    StructArray,
+    ArrayRef, BooleanArray, Float32Array, Float64Array, Int32Array, ListArray, RecordBatch,
+    StringArray, StructArray,
 };
 use arrow_ipc::reader::FileReader;
 use arrow_schema::{DataType, Field, Fields, Schema};
@@ -224,6 +224,46 @@ pub fn struct_cases() -> Vec<Case> {
     cases
 }
 
+/// IEEE 754 special values, which the derived `PartialEq` on [`Value`] compares badly.
+///
+/// This is the deterministic counterpart to the `-0.0` / `NaN` values the proptest suite draws:
+/// it pins down that a binary `COPY` preserves the *sign of zero* (`-0.0` is not `0.0`) and that
+/// `NaN`, `inf` and `-inf` survive as themselves. Both rely on
+/// [`Value::semantically_equals`](super::value::Value::semantically_equals) rather than `==`.
+pub fn float_cases() -> Vec<Case> {
+    let f32_values = vec![
+        0.0f32,
+        -0.0f32,
+        f32::NAN,
+        f32::INFINITY,
+        f32::NEG_INFINITY,
+        1.0,
+        -1.0,
+    ];
+    let f64_values: Vec<f64> = vec![
+        0.0,
+        -0.0,
+        f64::NAN,
+        f64::INFINITY,
+        f64::NEG_INFINITY,
+        1.0,
+        -1.0,
+    ];
+    let schema = Arc::new(Schema::new(vec![
+        Field::new("f32", DataType::Float32, false),
+        Field::new("f64", DataType::Float64, false),
+    ]));
+    let batch = RecordBatch::try_new(
+        schema,
+        vec![
+            Arc::new(Float32Array::from(f32_values)) as ArrayRef,
+            Arc::new(Float64Array::from(f64_values)) as ArrayRef,
+        ],
+    )
+    .unwrap();
+    vec![Case::new("float_special_values", batch)]
+}
+
 /// Cases that override the default encoder selection, e.g. writing Arrow strings as `JSONB`.
 pub fn custom_encoder_cases() -> Vec<Case> {
     let mut builder = ListBuilder::new(StringBuilder::new()).with_field(Arc::new(Field::new(
@@ -265,6 +305,7 @@ pub fn custom_encoder_cases() -> Vec<Case> {
 pub fn all_cases() -> Vec<Case> {
     let mut cases = testdata_cases();
     cases.extend(struct_cases());
+    cases.extend(float_cases());
     cases.extend(custom_encoder_cases());
     cases
 }

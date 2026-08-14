@@ -1086,7 +1086,10 @@ fn describe_mismatch(
         }
         for (col, (expected_value, actual_value)) in expected_row.iter().zip(actual_row).enumerate()
         {
-            if expected_value != actual_value {
+            // `semantically_equals` rather than `!=`: identical for every non-float variant, and
+            // for floats it is both looser (NaN equals NaN) and stricter (`-0.0` does not equal
+            // `0.0`) than `PartialEq`. See `harness::value::Value::semantically_equals`.
+            if !expected_value.semantically_equals(actual_value) {
                 let name = case
                     .schema
                     .fields()

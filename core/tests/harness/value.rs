@@ -83,6 +83,42 @@ impl Value {
         // every operation, so compare on the normalized (mathematical) value.
         Value::Numeric(decimal.normalize())
     }
+
+    /// Value equality with the IEEE 754 quirks handled the way a roundtrip test wants them.
+    ///
+    /// Two deliberate differences from the derived [`PartialEq`]:
+    ///
+    /// * **`NaN` equals `NaN`.** Under `PartialEq` it does not, but "Postgres handed back a NaN
+    ///   where the Arrow array held a NaN" is exactly what the suites mean to assert.
+    /// * **`-0.0` does not equal `0.0`.** IEEE compares them equal, so a plain `==` would assert
+    ///   nothing about the sign of zero — yet Postgres *does* preserve it through a binary `COPY`,
+    ///   and silently dropping it would be a real fidelity bug.
+    ///
+    /// Both fall out of comparing the raw bits of non-NaN floats while collapsing every NaN (whose
+    /// payload and sign Postgres does not preserve) to one value. All other variants defer to
+    /// `PartialEq`; nested arrays and records recurse.
+    pub fn semantically_equals(&self, other: &Value) -> bool {
+        match (self, other) {
+            (Value::Float4(a), Value::Float4(b)) => {
+                if a.is_nan() || b.is_nan() {
+                    a.is_nan() && b.is_nan()
+                } else {
+                    a.to_bits() == b.to_bits()
+                }
+            }
+            (Value::Float8(a), Value::Float8(b)) => {
+                if a.is_nan() || b.is_nan() {
+                    a.is_nan() && b.is_nan()
+                } else {
+                    a.to_bits() == b.to_bits()
+                }
+            }
+            (Value::Array(a), Value::Array(b)) | (Value::Record(a), Value::Record(b)) => {
+                a.len() == b.len() && a.iter().zip(b).all(|(a, b)| a.semantically_equals(b))
+            }
+            _ => self == other,
+        }
+    }
 }
 
 // -------------------------------------------------------------------------------------------

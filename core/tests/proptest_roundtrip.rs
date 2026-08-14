@@ -734,27 +734,14 @@ fn case_strategy(name: &'static str, column_type: BoxedStrategy<DataType>) -> Bo
 // Comparison
 // ---------------------------------------------------------------------------------------------
 
-/// Value equality that treats `NaN` as equal to itself.
-///
-/// `NaN != NaN` under `PartialEq`, but "Postgres gave back a NaN where the Arrow array held a
-/// NaN" is exactly the behaviour we want to assert.
-fn values_equal(expected: &Value, actual: &Value) -> bool {
-    match (expected, actual) {
-        (Value::Float4(a), Value::Float4(b)) => a == b || (a.is_nan() && b.is_nan()),
-        (Value::Float8(a), Value::Float8(b)) => a == b || (a.is_nan() && b.is_nan()),
-        (Value::Array(a), Value::Array(b)) | (Value::Record(a), Value::Record(b)) => {
-            a.len() == b.len() && a.iter().zip(b).all(|(a, b)| values_equal(a, b))
-        }
-        _ => expected == actual,
-    }
-}
-
+/// Rows compare with [`Value::semantically_equals`], which treats `NaN` as equal to itself and
+/// `-0.0` as *different* from `0.0` (both strategies above draw `-0.0` explicitly, and Postgres
+/// preserves the sign of zero through a binary `COPY`).
 fn rows_equal(expected: &[Vec<Value>], actual: &[Vec<Value>]) -> bool {
     expected.len() == actual.len()
-        && expected
-            .iter()
-            .zip(actual)
-            .all(|(e, a)| e.len() == a.len() && e.iter().zip(a).all(|(e, a)| values_equal(e, a)))
+        && expected.iter().zip(actual).all(|(e, a)| {
+            e.len() == a.len() && e.iter().zip(a).all(|(e, a)| e.semantically_equals(a))
+        })
 }
 
 // ---------------------------------------------------------------------------------------------
