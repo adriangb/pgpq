@@ -274,17 +274,42 @@ jobs:
           # If they fail in main, we want to fail the alls-green check
           allowed-skips: macos,windows,musllinux
 
+  # Publishing an already-published version is a no-op (`twine upload
+  # --skip-existing` tolerates it), but it still costs a job on every push to
+  # main. Ask PyPI whether the version in the package's pyproject.toml is new
+  # (see #56). Deliberately *not* in the `alls-green` chain: this job only
+  # decides whether to release.
+  detect-release:
+    name: Detect release
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    if: github.ref == format('refs/heads/{0}', github.event.repository.default_branch)
+    permissions:
+      contents: read
+    outputs:
+      should_release: ${{ steps.detect.outputs.should_release }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - name: Check whether ${{ inputs.package_name }} is already on PyPI
+        id: detect
+        run: |
+          python3 scripts/check_published.py \
+            --registry pypi \
+            --package '${{ inputs.package_name }}' \
+            --manifest '${{ inputs.package_dir }}/pyproject.toml'
+
   release:
     name: Release
     runs-on: ubuntu-latest
     timeout-minutes: 15
-    if: github.ref == format('refs/heads/{0}', github.event.repository.default_branch)
+    if: github.ref == format('refs/heads/{0}', github.event.repository.default_branch) && needs.detect-release.outputs.should_release == 'true'
     needs:
       - lint
       - linux
       - macos
       - windows
       - musllinux
+      - detect-release
     steps:
       - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
         with:

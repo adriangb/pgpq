@@ -15,3 +15,9 @@ extend-exclude = ["*.ipynb"]
 # codebase-wide lint sweep, and add `I` so import sorting is still enforced now
 # that the (never actually wired up) `[tool.isort]` config is gone.
 select = ["E", "F", "I"]
+
+[lint.isort]
+# `target-version = "py310"` is the *packages'* floor, and it makes ruff classify
+# `tomllib` (stdlib since 3.11) as a third-party import. The helpers in `scripts/`
+# are dev tooling that runs under CI's `python3`, not under that floor.
+extra-standard-library = ["tomllib"]
