@@ -320,9 +320,17 @@ where
 
 /// The Postgres types an `Int8` column may be encoded as.
 ///
-/// Both are two bytes wide and both take the same `i16` payload, so only the declared column type
-/// changes. (`rust-postgres` encodes `i8` as `CHAR` by default, hence the choice.)
-const INT8_OUTPUTS: [PostgresType; 2] = [PostgresType::Char, PostgresType::Int2];
+/// `Char` used to be here on the theory that it is also two bytes wide and takes the same `i16`
+/// payload, so only the declared column type changes. It does not: `Char`'s DDL name is `CHAR`,
+/// which Postgres resolves to `bpchar` — a *text* type — so the server read the two byte payload
+/// as UTF-8 and rejected every value (`0x00` in the high byte for non-negative values, `0xff` for
+/// negative ones). `Char` also reports OID 18, Postgres' internal one byte `"char"`, which is a
+/// third type again and would reject a two byte payload as well.
+///
+/// Nothing could load an `Int8`-as-`Char` column, so the output is refused at build time rather
+/// than deferred to a confusing server-side error. See
+/// <https://github.com/adriangb/pgpq/issues/95>.
+const INT8_OUTPUTS: [PostgresType; 1] = [PostgresType::Int2];
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct Int8EncoderBuilder {
