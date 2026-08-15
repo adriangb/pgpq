@@ -228,6 +228,9 @@ class FixedSizeListEncoderBuilder:
         cls, field: pyarrow.Field, inner_encoder_builder: EncoderBuilder
     ) -> FixedSizeListEncoderBuilder: ...
 
+class StructEncoderBuilder:
+    def __init__(self, field: pyarrow.Field) -> None: ...
+
 EncoderBuilder = (
     BooleanEncoderBuilder
     | UInt8EncoderBuilder
@@ -263,4 +266,5 @@ EncoderBuilder = (
     | ListEncoderBuilder
     | LargeListEncoderBuilder
     | FixedSizeListEncoderBuilder
+    | StructEncoderBuilder
 )
