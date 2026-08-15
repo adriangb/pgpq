@@ -145,6 +145,16 @@ pub struct PostgresSchema {
     pub columns: Vec<Column>,
 }
 
+/// Quote one SQL identifier.
+///
+/// Every identifier in the generated DDL comes from caller data — the table name, the column
+/// names and (now that composite fields carry their Arrow names) the struct field names — so all
+/// of them are double quoted, with any embedded double quote doubled per the SQL rules. Without
+/// this a field named `a"b` would end the quoted identifier early.
+fn quote_ident(ident: &str) -> String {
+    format!("\"{}\"", ident.replace('"', "\"\""))
+}
+
 impl PostgresSchema {
     /// Generate DDL for creating the table and any required types.
     /// If `temp_table` is true, creates a TEMP TABLE, otherwise a regular TABLE.
@@ -159,25 +169,27 @@ impl PostgresSchema {
                 for field in fields.iter() {
                     collect_types(field, types, type_map); // Recursively collect nested types first
                 }
-                let type_name = format!("{}_t", col.name);
+                let type_name = quote_ident(&format!("{}_t", col.name));
                 type_map.insert(col as *const _, type_name.clone());
                 let field_ddls = fields
                     .iter()
-                    .enumerate()
-                    .map(|(i, field)| {
-                        let field_name = format!("f{}", i);
+                    .map(|field| {
+                        // The composite's fields keep the names they had in Arrow: a Postgres
+                        // composite has named fields, and positional `f0`, `f1`, … made the
+                        // created type awkward to actually use from SQL.
+                        let field_name = quote_ident(&field.name);
                         let field_type = match &field.data_type {
                             PostgresType::UserDefined { .. } => type_map
                                 .get(&(field.as_ref() as *const _))
                                 .cloned()
-                                .unwrap_or_else(|| "userdefined_t".to_string()),
+                                .unwrap_or_else(|| quote_ident("userdefined_t")),
                             PostgresType::List(inner) => match &inner.data_type {
                                 PostgresType::UserDefined { .. } => format!(
                                     "{}[]",
                                     type_map
                                         .get(&(inner.as_ref() as *const _))
                                         .cloned()
-                                        .unwrap_or_else(|| "userdefined_t".to_string())
+                                        .unwrap_or_else(|| quote_ident("userdefined_t"))
                                 ),
                                 _ => format!("{}[]", inner.data_type.name().unwrap()),
                             },
@@ -203,7 +215,7 @@ impl PostgresSchema {
         for (type_name, fields) in &types {
             let fields_ddl = fields
                 .iter()
-                .map(|(fname, ftype)| format!("\"{}\" {}", fname, ftype))
+                .map(|(fname, ftype)| format!("{} {}", fname, ftype))
                 .collect::<Vec<_>>()
                 .join(", ");
             ddl.push_str(&format!("CREATE TYPE {} AS ({});\n", type_name, fields_ddl));
@@ -218,29 +230,31 @@ impl PostgresSchema {
                     PostgresType::UserDefined { .. } => type_map
                         .get(&(col as *const _))
                         .cloned()
-                        .unwrap_or_else(|| "userdefined_t".to_string()),
+                        .unwrap_or_else(|| quote_ident("userdefined_t")),
                     PostgresType::List(inner) => match &inner.data_type {
                         PostgresType::UserDefined { .. } => format!(
                             "{}[]",
                             type_map
                                 .get(&(inner.as_ref() as *const _))
                                 .cloned()
-                                .unwrap_or_else(|| "userdefined_t".to_string())
+                                .unwrap_or_else(|| quote_ident("userdefined_t"))
                         ),
                         _ => format!("{}[]", inner.data_type.name().unwrap()),
                     },
                     _ => col.data_type.name().unwrap(),
                 };
                 let nullability = if col.nullable { "" } else { " NOT NULL" };
-                format!("\"{}\" {}{}", col.name, type_str, nullability)
+                format!("{} {}{}", quote_ident(&col.name), type_str, nullability)
             })
             .collect::<Vec<_>>()
             .join(", ");
 
         let table_type = if temp_table { "TEMP TABLE" } else { "TABLE" };
         ddl.push_str(&format!(
-            "CREATE {} \"{}\" ({});",
-            table_type, table_name, cols
+            "CREATE {} {} ({});",
+            table_type,
+            quote_ident(table_name),
+            cols
         ));
         ddl
     }
@@ -282,15 +296,41 @@ mod tests {
 
         let ddl = schema.ddl("test_table", true);
 
-        let expected_ddl = r#"CREATE TYPE data_t AS ("f0" TEXT, "f1" INT8);
-CREATE TEMP TABLE "test_table" ("id" INT4 NOT NULL, "data" data_t);"#;
+        let expected_ddl = r#"CREATE TYPE "data_t" AS ("field1" TEXT, "field2" INT8);
+CREATE TEMP TABLE "test_table" ("id" INT4 NOT NULL, "data" "data_t");"#;
 
         assert_eq!(ddl.trim(), expected_ddl.trim());
 
         // Test with temp_table = false
         let ddl_regular = schema.ddl("test_table", false);
-        let expected_ddl_regular = r#"CREATE TYPE data_t AS ("f0" TEXT, "f1" INT8);
-CREATE TABLE "test_table" ("id" INT4 NOT NULL, "data" data_t);"#;
+        let expected_ddl_regular = r#"CREATE TYPE "data_t" AS ("field1" TEXT, "field2" INT8);
+CREATE TABLE "test_table" ("id" INT4 NOT NULL, "data" "data_t");"#;
         assert_eq!(ddl_regular.trim(), expected_ddl_regular.trim());
+    }
+
+    /// Every identifier the DDL emits comes from caller data, so every one of them is quoted with
+    /// embedded double quotes doubled. This only started mattering for field names once they
+    /// stopped being the generated `f0`, `f1`, … .
+    #[test]
+    fn test_ddl_quotes_identifiers() {
+        let schema = PostgresSchema {
+            columns: vec![Column {
+                name: "od d\"name".to_string(),
+                data_type: PostgresType::UserDefined {
+                    fields: vec![Box::new(Column {
+                        name: "a\"b".to_string(),
+                        data_type: PostgresType::Text,
+                        nullable: true,
+                    })],
+                },
+                nullable: true,
+            }],
+        };
+
+        let ddl = schema.ddl("ta\"ble", false);
+
+        let expected = r#"CREATE TYPE "od d""name_t" AS ("a""b" TEXT);
+CREATE TABLE "ta""ble" ("od d""name" "od d""name_t");"#;
+        assert_eq!(ddl.trim(), expected.trim());
     }
 }
