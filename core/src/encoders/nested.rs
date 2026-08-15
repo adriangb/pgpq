@@ -16,6 +16,15 @@ use super::{downcast_checked, put, BuildEncoder, Encode, Encoder, EncoderBuilder
 use crate::error::ErrorKind;
 use crate::pg_schema::{Column, PostgresType};
 
+/// Bytes every field spends on its `i32` length prefix, null or not.
+const LENGTH_PREFIX: usize = 4;
+/// The five `i32`s that precede an array's elements: dimension count, null flag, element oid,
+/// dimension length and dimension lower bound.
+const ARRAY_HEADER: usize = 5 * 4;
+/// The `i32` field count that precedes a composite's fields, and the `u32` oid in front of each.
+const COMPOSITE_HEADER: usize = 4;
+const COMPOSITE_FIELD_HEADER: usize = 4;
+
 // ---------------------------------------------------------------------------------------------
 // Lists
 // ---------------------------------------------------------------------------------------------
@@ -119,13 +128,15 @@ impl<T: GenericListArrayValues> Encode for GenericListEncoder<'_, T> {
     }
 
     fn byte_size_hint(&self) -> Result<usize, ErrorKind> {
-        let mut total = 0;
+        // A null row is just the `-1` length prefix; a present one is that prefix plus the array
+        // header `encode` writes above (dimension count, null flag, element oid, dimension length
+        // and lower bound) plus the elements themselves.
+        let mut total = LENGTH_PREFIX * self.arr.len();
         for row in 0..self.arr.len() {
             if !self.arr.is_null(row) {
                 let val = self.arr.value(row);
                 let inner_encoder = self.inner_encoder_builder.try_new(&val)?;
-                let size = inner_encoder.byte_size_hint()?;
-                total += size;
+                total += ARRAY_HEADER + inner_encoder.byte_size_hint()?;
             }
         }
         Ok(total)
@@ -269,7 +280,11 @@ impl Encode for StructEncoder<'_> {
     }
 
     fn byte_size_hint(&self) -> Result<usize, ErrorKind> {
-        let mut total = 4 + 4; // 4 bytes for the length, 4 bytes for the number of fields
+        // The children's hints cover the whole column, but the length prefix, the field count and
+        // each field's oid are written once *per row*.
+        let per_row =
+            LENGTH_PREFIX + COMPOSITE_HEADER + COMPOSITE_FIELD_HEADER * self.field_encoders.len();
+        let mut total = per_row * self.arr.len();
         for encoder in &self.field_encoders {
             total += encoder.byte_size_hint()?;
         }
