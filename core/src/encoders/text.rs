@@ -9,12 +9,13 @@ use std::marker::PhantomData;
 use std::sync::Arc;
 
 use arrow_array::{
-    Array, GenericBinaryArray, GenericStringArray, OffsetSizeTrait, StringViewArray,
+    Array, FixedSizeBinaryArray, GenericBinaryArray, GenericStringArray, OffsetSizeTrait,
+    StringViewArray,
 };
 use arrow_schema::{DataType, Field};
 use bytes::{BufMut, BytesMut};
 
-use super::{downcast_checked, BuildEncoder, Encode, Encoder};
+use super::{BuildEncoder, Encode, Encoder, downcast_checked};
 use crate::error::ErrorKind;
 use crate::pg_schema::{Column, PostgresType};
 
@@ -22,13 +23,57 @@ use crate::pg_schema::{Column, PostgresType};
 // Binary
 // ---------------------------------------------------------------------------------------------
 
+/// Reading a `&[u8]` out of any of Arrow's binary layouts, and which Arrow type that layout is.
+///
+/// The wire encoding is the same for all of them — Postgres' `bytea` is just a length prefix and
+/// that many bytes — so this is all the generic encoder and builder below need to know. Note that
+/// `FixedSizeBinary`, unlike the two offset-based layouts, has no offsets buffer at all: every
+/// value is `byte_width` bytes at a fixed stride, which `value` hides.
+pub trait GenericBinArray: Array + 'static {
+    /// Name reported when a builder is handed a field it cannot encode. Kept equal to the public
+    /// builder alias so the error names the type the caller asked for.
+    const ENCODER_NAME: &'static str;
+    /// Whether a field of this Arrow type can be encoded by this layout.
+    fn accepts(data_type: &DataType) -> bool;
+    fn value(&self, row: usize) -> &[u8];
+}
+
+impl<T: OffsetSizeTrait> GenericBinArray for GenericBinaryArray<T> {
+    /// `Binary` for 32 bit offsets, `LargeBinary` for 64 bit ones.
+    const ENCODER_NAME: &'static str = if T::IS_LARGE {
+        "LargeBinaryEncoderBuilder"
+    } else {
+        "BinaryEncoderBuilder"
+    };
+    fn accepts(data_type: &DataType) -> bool {
+        if T::IS_LARGE {
+            matches!(data_type, DataType::LargeBinary)
+        } else {
+            matches!(data_type, DataType::Binary)
+        }
+    }
+    fn value(&self, row: usize) -> &[u8] {
+        self.value(row)
+    }
+}
+
+impl GenericBinArray for FixedSizeBinaryArray {
+    const ENCODER_NAME: &'static str = "FixedSizeBinaryEncoderBuilder";
+    fn accepts(data_type: &DataType) -> bool {
+        matches!(data_type, DataType::FixedSizeBinary(_))
+    }
+    fn value(&self, row: usize) -> &[u8] {
+        self.value(row)
+    }
+}
+
 #[derive(Debug)]
-pub struct GenericBinaryEncoder<'a, T: OffsetSizeTrait> {
-    arr: &'a GenericBinaryArray<T>,
+pub struct GenericBinaryEncoder<'a, T: GenericBinArray> {
+    arr: &'a T,
     field: String,
 }
 
-impl<T: OffsetSizeTrait> Encode for GenericBinaryEncoder<'_, T> {
+impl<T: GenericBinArray> Encode for GenericBinaryEncoder<'_, T> {
     fn encode(&self, row: usize, buf: &mut BytesMut) -> Result<(), ErrorKind> {
         if self.arr.is_null(row) {
             buf.put_i32(-1);
@@ -53,32 +98,41 @@ impl<T: OffsetSizeTrait> Encode for GenericBinaryEncoder<'_, T> {
     }
 }
 
-#[derive(Debug, Clone, PartialEq)]
-pub struct GenericBinaryEncoderBuilder<T: OffsetSizeTrait> {
+/// Builder for any [`GenericBinArray`].
+///
+/// `Debug`, `Clone` and `PartialEq` are written out rather than derived: a derive would put a
+/// `T: Debug + Clone + PartialEq` bound on the *array* type, which the builder never holds — the
+/// `PhantomData` is a `fn() -> T` precisely so that it constrains nothing.
+pub struct GenericBinaryEncoderBuilder<T: GenericBinArray> {
     field: Arc<Field>,
-    offset: PhantomData<T>,
+    array: PhantomData<fn() -> T>,
 }
 
-impl<T: OffsetSizeTrait> GenericBinaryEncoderBuilder<T> {
-    /// `Binary` for 32 bit offsets, `LargeBinary` for 64 bit ones.
-    const ENCODER_NAME: &'static str = if T::IS_LARGE {
-        "LargeBinaryEncoderBuilder"
-    } else {
-        "BinaryEncoderBuilder"
-    };
-
-    fn accepts(data_type: &DataType) -> bool {
-        if T::IS_LARGE {
-            matches!(data_type, DataType::LargeBinary)
-        } else {
-            matches!(data_type, DataType::Binary)
-        }
+impl<T: GenericBinArray> std::fmt::Debug for GenericBinaryEncoderBuilder<T> {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct(T::ENCODER_NAME)
+            .field("field", &self.field)
+            .finish()
     }
+}
 
+impl<T: GenericBinArray> Clone for GenericBinaryEncoderBuilder<T> {
+    fn clone(&self) -> Self {
+        Self::unchecked(self.field.clone())
+    }
+}
+
+impl<T: GenericBinArray> PartialEq for GenericBinaryEncoderBuilder<T> {
+    fn eq(&self, other: &Self) -> bool {
+        self.field == other.field
+    }
+}
+
+impl<T: GenericBinArray> GenericBinaryEncoderBuilder<T> {
     pub fn new(field: Arc<Field>) -> Result<Self, ErrorKind> {
-        if !Self::accepts(field.data_type()) {
+        if !T::accepts(field.data_type()) {
             return Err(ErrorKind::FieldTypeNotSupported {
-                encoder: Self::ENCODER_NAME.to_string(),
+                encoder: T::ENCODER_NAME.to_string(),
                 tp: field.data_type().clone(),
                 field: field.name().clone(),
             });
@@ -90,19 +144,19 @@ impl<T: OffsetSizeTrait> GenericBinaryEncoderBuilder<T> {
     pub(super) fn unchecked(field: Arc<Field>) -> Self {
         Self {
             field,
-            offset: PhantomData,
+            array: PhantomData,
         }
     }
 }
 
 impl<T> BuildEncoder for GenericBinaryEncoderBuilder<T>
 where
-    T: OffsetSizeTrait,
+    T: GenericBinArray,
     for<'a> GenericBinaryEncoder<'a, T>: Into<Encoder<'a>>,
 {
     fn try_new<'a, 'b: 'a>(&'b self, arr: &'a dyn Array) -> Result<Encoder<'a>, ErrorKind> {
         let field = self.field.name();
-        Ok(GenericBinaryEncoder {
+        Ok(GenericBinaryEncoder::<T> {
             arr: downcast_checked(arr, field)?,
             field: field.to_string(),
         }

@@ -12,14 +12,14 @@
 use std::error::Error;
 
 use arrow_array::{
-    Array, BinaryArray, BinaryViewArray, BooleanArray, Date32Array, Decimal128Array,
-    Decimal32Array, Decimal64Array, DurationMicrosecondArray, DurationMillisecondArray,
-    DurationSecondArray, Float16Array, Float32Array, Float64Array, Int16Array, Int32Array,
-    Int64Array, Int8Array, LargeBinaryArray, LargeListArray, LargeStringArray, ListArray,
-    StringArray, StringViewArray, StructArray, Time32MillisecondArray, Time32SecondArray,
-    Time64MicrosecondArray, TimestampMicrosecondArray, TimestampMillisecondArray,
-    TimestampNanosecondArray, TimestampSecondArray, UInt16Array, UInt32Array, UInt64Array,
-    UInt8Array,
+    Array, BinaryArray, BinaryViewArray, BooleanArray, Date32Array, Decimal32Array, Decimal64Array,
+    Decimal128Array, DurationMicrosecondArray, DurationMillisecondArray, DurationSecondArray,
+    FixedSizeBinaryArray, FixedSizeListArray, Float16Array, Float32Array, Float64Array, Int8Array,
+    Int16Array, Int32Array, Int64Array, LargeBinaryArray, LargeListArray, LargeStringArray,
+    ListArray, StringArray, StringViewArray, StructArray, Time32MillisecondArray,
+    Time32SecondArray, Time64MicrosecondArray, TimestampMicrosecondArray,
+    TimestampMillisecondArray, TimestampNanosecondArray, TimestampSecondArray, UInt8Array,
+    UInt16Array, UInt32Array, UInt64Array,
 };
 use arrow_schema::{DataType, TimeUnit};
 use chrono::{DateTime, Days, NaiveDate, NaiveDateTime, NaiveTime};
@@ -373,6 +373,11 @@ pub fn arrow_value(array: &dyn Array, index: usize) -> Value {
         DataType::BinaryView => {
             Value::Bytea(downcast::<BinaryViewArray>(array).value(index).to_vec())
         }
+        DataType::FixedSizeBinary(_) => Value::Bytea(
+            downcast::<FixedSizeBinaryArray>(array)
+                .value(index)
+                .to_vec(),
+        ),
         DataType::Utf8 => Value::Text(downcast::<StringArray>(array).value(index).to_string()),
         DataType::LargeUtf8 => {
             Value::Text(downcast::<LargeStringArray>(array).value(index).to_string())
@@ -386,6 +391,10 @@ pub fn arrow_value(array: &dyn Array, index: usize) -> Value {
         }
         DataType::LargeList(_) => {
             let values = downcast::<LargeListArray>(array).value(index);
+            Value::Array(arrow_column(values.as_ref()))
+        }
+        DataType::FixedSizeList(_, _) => {
+            let values = downcast::<FixedSizeListArray>(array).value(index);
             Value::Array(arrow_column(values.as_ref()))
         }
         DataType::Struct(_) => {

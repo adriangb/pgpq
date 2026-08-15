@@ -24,7 +24,8 @@ wheel).
 from __future__ import annotations
 
 import math
-from typing import Any, Iterator, List, Tuple
+from collections.abc import Iterator
+from typing import Any
 
 import pgpq.encoders
 import pgpq.schema
@@ -38,7 +39,7 @@ from pgpq._pgpq import Column
 from pgpq.schema import PostgresSchema
 from testing.postgresql import Postgresql
 
-Connection = psycopg.Connection[Tuple[Any, ...]]
+Connection = psycopg.Connection[tuple[Any, ...]]
 
 
 @pytest.fixture(scope="session")
@@ -56,7 +57,7 @@ def dbconn(postgres: Postgresql) -> Iterator[Connection]:
         yield conn
 
 
-def encode(table: pa.Table) -> Tuple[PostgresSchema, bytes]:
+def encode(table: pa.Table) -> tuple[PostgresSchema, bytes]:
     """Encode a table with the default (inferred) encoders."""
     encoder = ArrowToPostgresBinaryEncoder(table.schema)
     buffer = bytearray()
@@ -69,7 +70,7 @@ def encode(table: pa.Table) -> Tuple[PostgresSchema, bytes]:
 
 def copy_buffer_and_get_rows(
     schema: PostgresSchema, buffer: bytes, dbconn: Connection
-) -> List[Tuple[Any, ...]]:
+) -> list[tuple[Any, ...]]:
     ddl = schema.ddl("data")
     try:
         with dbconn.cursor() as cursor:
@@ -83,7 +84,7 @@ def copy_buffer_and_get_rows(
     return rows
 
 
-def roundtrip(table: pa.Table, dbconn: Connection) -> List[Tuple[Any, ...]]:
+def roundtrip(table: pa.Table, dbconn: Connection) -> list[tuple[Any, ...]]:
     schema, buffer = encode(table)
     return copy_buffer_and_get_rows(schema, buffer, dbconn)
 
@@ -208,6 +209,67 @@ def test_roundtrip_structs(dbconn: Connection) -> None:
     ]
 
 
+def test_roundtrip_fixed_size_types(dbconn: Connection) -> None:
+    """``FixedSizeBinary`` lands in a BYTEA and ``FixedSizeList`` in an array."""
+    table = pa.table(
+        {
+            "b": pa.array([b"abc", None], pa.binary(3)),
+            "l": pa.array(
+                [[1, 2], None],
+                pa.list_(pa.field("item", pa.int32(), nullable=True), 2),
+            ),
+        }
+    )
+
+    rows = roundtrip(table, dbconn)
+
+    assert rows == [(b"abc", [1, 2]), (None, None)]
+
+
+def test_roundtrip_struct_with_list_field(dbconn: Connection) -> None:
+    """A composite type with an array column (issue #90).
+
+    Postgres checks the OID pgpq writes for each composite field against the column's
+    declared type, so this only loads if the array type OID is the real one.
+    """
+    struct_type = pa.struct(
+        [
+            pa.field("num", pa.int32()),
+            pa.field("nums", pa.list_(pa.field("item", pa.int32(), nullable=True))),
+        ]
+    )
+    table = pa.table({"s": pa.array([{"num": 1, "nums": [1, 2]}, None], struct_type)})
+
+    rows = roundtrip(table, dbconn)
+
+    assert rows == [('(1,"{1,2}")',), (None,)]
+
+
+def test_struct_with_list_of_structs_raises_value_error() -> None:
+    """The one composite shape that has no answer: an array of a user defined type.
+
+    Its array type OID is assigned when the type is created, so pgpq cannot know it.
+    """
+    schema = pa.schema(
+        [
+            pa.field(
+                "s",
+                pa.struct(
+                    [
+                        pa.field(
+                            "structs",
+                            pa.list_(pa.struct([pa.field("num", pa.int32())])),
+                        )
+                    ]
+                ),
+            )
+        ]
+    )
+
+    with pytest.raises(ValueError):
+        ArrowToPostgresBinaryEncoder(schema)
+
+
 def test_roundtrip_custom_encoding_to_jsonb(dbconn: Connection) -> None:
     """A string column can be told to land in Postgres as JSONB instead of TEXT."""
     batch = pa.RecordBatch.from_arrays(
@@ -255,7 +317,7 @@ def test_roundtrip_custom_encoding_to_jsonb(dbconn: Connection) -> None:
 #: Column types and the values to fill them with. Deliberately primitive: decimals are
 #: excluded because the Rust suite documents open encoder bugs there, and ``\x00`` is
 #: excluded from text because Postgres rejects it in ``text`` regardless of pgpq.
-_COLUMN_TYPES: List[Tuple[pa.DataType, st.SearchStrategy[Any]]] = [
+_COLUMN_TYPES: list[tuple[pa.DataType, st.SearchStrategy[Any]]] = [
     (pa.int16(), st.integers(min_value=-(2**15), max_value=2**15 - 1)),
     (pa.int32(), st.integers(min_value=-(2**31), max_value=2**31 - 1)),
     (pa.int64(), st.integers(min_value=-(2**63), max_value=2**63 - 1)),
@@ -309,11 +371,11 @@ def test_roundtrip_arbitrary_primitive_tables(
 ) -> None:
     rows = roundtrip(table, dbconn)
 
-    expected = list(zip(*(column.to_pylist() for column in table.columns)))
+    expected = list(zip(*(column.to_pylist() for column in table.columns), strict=True))
     assert len(rows) == table.num_rows
-    for actual_row, expected_row in zip(rows, expected):
+    for actual_row, expected_row in zip(rows, expected, strict=True):
         assert len(actual_row) == len(expected_row)
-        for actual, expected_value in zip(actual_row, expected_row):
+        for actual, expected_value in zip(actual_row, expected_row, strict=True):
             assert _values_equal(expected_value, actual), (
                 f"{expected_value!r} != {actual!r} in {table.schema}"
             )
@@ -425,6 +487,30 @@ def test_infer_encoder() -> None:
             ),
         ),
     }
+
+
+def test_infer_encoder_fixed_size_types() -> None:
+    schema = pa.schema(
+        [
+            pa.field("b", pa.binary(3)),
+            pa.field("l", pa.list_(pa.field("item", pa.int32(), nullable=True), 2)),
+        ]
+    )
+
+    encoders = {
+        name: ArrowToPostgresBinaryEncoder.infer_encoder(schema.field(name))
+        for name in schema.names
+    }
+
+    assert encoders == {
+        "b": pgpq.encoders.FixedSizeBinaryEncoderBuilder(schema.field("b")),
+        "l": pgpq.encoders.FixedSizeListEncoderBuilder.new_with_inner(
+            schema.field("l"),
+            pgpq.encoders.Int32EncoderBuilder(schema.field("l").type.value_field),
+        ),
+    }
+    # `repr` of a list builder names its own class rather than always saying "List".
+    assert repr(encoders["l"]).startswith("FixedSizeListEncoderBuilder(")
 
 
 def test_column_properties() -> None:

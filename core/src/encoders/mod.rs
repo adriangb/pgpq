@@ -22,7 +22,10 @@ mod text;
 use std::any::type_name;
 use std::sync::Arc;
 
-use arrow_array::{Array, GenericStringArray, StringViewArray};
+use arrow_array::{
+    Array, FixedSizeBinaryArray, FixedSizeListArray, GenericBinaryArray, GenericListArray,
+    GenericStringArray, StringViewArray,
+};
 use arrow_schema::{DataType, Field, TimeUnit};
 use bytes::BytesMut;
 use enum_dispatch::enum_dispatch;
@@ -31,22 +34,23 @@ use crate::error::ErrorKind;
 use crate::pg_schema::Column;
 
 pub use nested::{
-    GenericListEncoder, GenericListEncoderBuilder, StructEncoder, StructEncoderBuilder,
+    GenericListArrayValues, GenericListEncoder, GenericListEncoderBuilder, StructEncoder,
+    StructEncoderBuilder,
 };
 pub use scalar::{
-    BooleanConversion, Date32Conversion, Decimal128Conversion, Decimal32Conversion,
-    Decimal64Conversion, DurationMicrosecondConversion, DurationMillisecondConversion,
+    BooleanConversion, Date32Conversion, Decimal32Conversion, Decimal64Conversion,
+    Decimal128Conversion, DurationMicrosecondConversion, DurationMillisecondConversion,
     DurationSecondConversion, FixedSizeConversion, FixedSizeEncoder, FixedSizeEncoderBuilder,
-    Float16Conversion, Float32Conversion, Float64Conversion, Int16Conversion, Int32Conversion,
-    Int64Conversion, Int8Conversion, Int8EncoderBuilder, NumericConversion, NumericEncoder,
+    Float16Conversion, Float32Conversion, Float64Conversion, Int8Conversion, Int8EncoderBuilder,
+    Int16Conversion, Int32Conversion, Int64Conversion, NumericConversion, NumericEncoder,
     NumericEncoderBuilder, Time32MillisecondConversion, Time32SecondConversion,
     Time64MicrosecondConversion, TimestampMicrosecondConversion, TimestampMillisecondConversion,
-    TimestampSecondConversion, UInt16Conversion, UInt32Conversion, UInt64Conversion,
-    UInt8Conversion, ValueArray,
+    TimestampSecondConversion, UInt8Conversion, UInt16Conversion, UInt32Conversion,
+    UInt64Conversion, ValueArray,
 };
 pub use text::{
-    GenericBinaryEncoder, GenericBinaryEncoderBuilder, GenericStrArray, GenericStrEncoder,
-    LargeStringConversion, StrConversion, StrEncoderBuilder, StringConversion,
+    GenericBinArray, GenericBinaryEncoder, GenericBinaryEncoderBuilder, GenericStrArray,
+    GenericStrEncoder, LargeStringConversion, StrConversion, StrEncoderBuilder, StringConversion,
     StringViewConversion,
 };
 
@@ -107,13 +111,15 @@ pub type Time64MicrosecondEncoder<'a> = FixedSizeEncoder<'a, Time64MicrosecondCo
 pub type DurationMicrosecondEncoder<'a> = FixedSizeEncoder<'a, DurationMicrosecondConversion>;
 pub type DurationMillisecondEncoder<'a> = FixedSizeEncoder<'a, DurationMillisecondConversion>;
 pub type DurationSecondEncoder<'a> = FixedSizeEncoder<'a, DurationSecondConversion>;
-pub type BinaryEncoder<'a> = GenericBinaryEncoder<'a, i32>;
-pub type LargeBinaryEncoder<'a> = GenericBinaryEncoder<'a, i64>;
+pub type BinaryEncoder<'a> = GenericBinaryEncoder<'a, GenericBinaryArray<i32>>;
+pub type LargeBinaryEncoder<'a> = GenericBinaryEncoder<'a, GenericBinaryArray<i64>>;
+pub type FixedSizeBinaryEncoder<'a> = GenericBinaryEncoder<'a, FixedSizeBinaryArray>;
 pub type StringEncoder<'a> = GenericStrEncoder<'a, GenericStringArray<i32>>;
 pub type LargeStringEncoder<'a> = GenericStrEncoder<'a, GenericStringArray<i64>>;
 pub type StringViewEncoder<'a> = GenericStrEncoder<'a, StringViewArray>;
-pub type ListEncoder<'a> = GenericListEncoder<'a, i32>;
-pub type LargeListEncoder<'a> = GenericListEncoder<'a, i64>;
+pub type ListEncoder<'a> = GenericListEncoder<'a, GenericListArray<i32>>;
+pub type LargeListEncoder<'a> = GenericListEncoder<'a, GenericListArray<i64>>;
+pub type FixedSizeListEncoder<'a> = GenericListEncoder<'a, FixedSizeListArray>;
 
 pub type BooleanEncoderBuilder = FixedSizeEncoderBuilder<BooleanConversion>;
 pub type UInt8EncoderBuilder = FixedSizeEncoderBuilder<UInt8Conversion>;
@@ -144,10 +150,12 @@ pub type DurationSecondEncoderBuilder = FixedSizeEncoderBuilder<DurationSecondCo
 pub type StringEncoderBuilder = StrEncoderBuilder<StringConversion>;
 pub type LargeStringEncoderBuilder = StrEncoderBuilder<LargeStringConversion>;
 pub type StringViewEncoderBuilder = StrEncoderBuilder<StringViewConversion>;
-pub type BinaryEncoderBuilder = GenericBinaryEncoderBuilder<i32>;
-pub type LargeBinaryEncoderBuilder = GenericBinaryEncoderBuilder<i64>;
-pub type ListEncoderBuilder = GenericListEncoderBuilder<i32>;
-pub type LargeListEncoderBuilder = GenericListEncoderBuilder<i64>;
+pub type BinaryEncoderBuilder = GenericBinaryEncoderBuilder<GenericBinaryArray<i32>>;
+pub type LargeBinaryEncoderBuilder = GenericBinaryEncoderBuilder<GenericBinaryArray<i64>>;
+pub type FixedSizeBinaryEncoderBuilder = GenericBinaryEncoderBuilder<FixedSizeBinaryArray>;
+pub type ListEncoderBuilder = GenericListEncoderBuilder<GenericListArray<i32>>;
+pub type LargeListEncoderBuilder = GenericListEncoderBuilder<GenericListArray<i64>>;
+pub type FixedSizeListEncoderBuilder = GenericListEncoderBuilder<FixedSizeListArray>;
 
 #[enum_dispatch(Encode)]
 #[derive(Debug)]
@@ -179,11 +187,13 @@ pub enum Encoder<'a> {
     DurationSecond(DurationSecondEncoder<'a>),
     Binary(BinaryEncoder<'a>),
     LargeBinary(LargeBinaryEncoder<'a>),
+    FixedSizeBinary(FixedSizeBinaryEncoder<'a>),
     String(StringEncoder<'a>),
     LargeString(LargeStringEncoder<'a>),
     StringView(StringViewEncoder<'a>),
     List(ListEncoder<'a>),
     LargeList(LargeListEncoder<'a>),
+    FixedSizeList(FixedSizeListEncoder<'a>),
     Struct(StructEncoder<'a>),
 }
 
@@ -220,8 +230,10 @@ pub enum EncoderBuilder {
     StringView(StringViewEncoderBuilder),
     Binary(BinaryEncoderBuilder),
     LargeBinary(LargeBinaryEncoderBuilder),
+    FixedSizeBinary(FixedSizeBinaryEncoderBuilder),
     List(ListEncoderBuilder),
     LargeList(LargeListEncoderBuilder),
+    FixedSizeList(FixedSizeListEncoderBuilder),
     Struct(StructEncoderBuilder),
 }
 
@@ -229,9 +241,7 @@ impl EncoderBuilder {
     /// Pick the default encoder for `field`.
     ///
     /// The Arrow type has already been matched here, so the builders are constructed without
-    /// re-checking it; that also keeps the two lenient mappings below (`FixedSizeBinary` and
-    /// `FixedSizeList`, which fall through to their large variants) working the way they always
-    /// have — the mismatch surfaces as a column type error when a batch is encoded.
+    /// re-checking it.
     pub fn try_new(field: Arc<Field>) -> Result<Self, ErrorKind> {
         let data_type = field.data_type();
         let res = match data_type {
@@ -259,7 +269,7 @@ impl EncoderBuilder {
                         field.name(),
                         data_type,
                         "Postgres does not support ns precision; convert to us",
-                    ))
+                    ));
                 }
                 TimeUnit::Microsecond => {
                     Self::TimestampMicrosecond(TimestampMicrosecondEncoderBuilder::unchecked(field))
@@ -287,7 +297,7 @@ impl EncoderBuilder {
                         field.name(),
                         data_type,
                         "Postgres does not support ns precision; convert to us",
-                    ))
+                    ));
                 }
                 TimeUnit::Microsecond => {
                     Self::Time64Microsecond(Time64MicrosecondEncoderBuilder::unchecked(field))
@@ -300,7 +310,7 @@ impl EncoderBuilder {
                         field.name(),
                         data_type,
                         "Postgres does not support ns precision; convert to us",
-                    ))
+                    ));
                 }
                 TimeUnit::Microsecond => {
                     Self::DurationMicrosecond(DurationMicrosecondEncoderBuilder::unchecked(field))
@@ -316,55 +326,225 @@ impl EncoderBuilder {
             DataType::LargeUtf8 => Self::LargeString(LargeStringEncoderBuilder::unchecked(field)),
             DataType::Utf8View => Self::StringView(StringViewEncoderBuilder::unchecked(field)),
             DataType::Binary => Self::Binary(BinaryEncoderBuilder::unchecked(field)),
-            DataType::LargeBinary | DataType::FixedSizeBinary(_) => {
-                Self::LargeBinary(LargeBinaryEncoderBuilder::unchecked(field))
+            DataType::LargeBinary => Self::LargeBinary(LargeBinaryEncoderBuilder::unchecked(field)),
+            DataType::FixedSizeBinary(_) => {
+                Self::FixedSizeBinary(FixedSizeBinaryEncoderBuilder::unchecked(field))
             }
             DataType::List(inner) => {
-                if matches!(
-                    inner.data_type(),
-                    DataType::List(_) | DataType::LargeList(_)
-                ) {
-                    return Err(ErrorKind::type_unsupported(
-                        field.name(),
-                        data_type,
-                        "nested lists are not supported",
-                    ));
-                }
-                let inner = Self::try_new(inner.clone())?;
+                let inner = Self::list_element(&field, inner)?;
                 Self::List(ListEncoderBuilder::unchecked(field, inner))
             }
-            DataType::LargeList(inner) | DataType::FixedSizeList(inner, _) => {
-                if matches!(
-                    inner.data_type(),
-                    DataType::List(_) | DataType::LargeList(_)
-                ) {
-                    return Err(ErrorKind::type_unsupported(
-                        field.name(),
-                        data_type,
-                        "nested lists are not supported",
-                    ));
-                }
-                let inner = Self::try_new(inner.clone())?;
+            DataType::LargeList(inner) => {
+                let inner = Self::list_element(&field, inner)?;
                 Self::LargeList(LargeListEncoderBuilder::unchecked(field, inner))
+            }
+            DataType::FixedSizeList(inner, _) => {
+                let inner = Self::list_element(&field, inner)?;
+                Self::FixedSizeList(FixedSizeListEncoderBuilder::unchecked(field, inner))
             }
             DataType::Struct(inner) => {
                 let field_encoder_builders = inner
                     .iter()
                     .map(|f| EncoderBuilder::try_new(f.clone()))
                     .collect::<Result<Vec<_>, _>>()?;
-                Self::Struct(StructEncoderBuilder::unchecked(
-                    field,
-                    field_encoder_builders,
-                ))
+                let builder = StructEncoderBuilder::unchecked(field, field_encoder_builders);
+                // A composite whose fields have no OID cannot be encoded at all, so say so here
+                // rather than once per batch.
+                builder.field_oids()?;
+                Self::Struct(builder)
             }
             _ => {
                 return Err(ErrorKind::type_unsupported(
                     field.name(),
                     data_type,
                     "unknown type",
-                ))
+                ));
             }
         };
         Ok(res)
+    }
+
+    /// The encoder for the element type of a list column.
+    ///
+    /// Postgres has no array-of-arrays type (`int4[][]` is the same one dimensional `int4[]`), so
+    /// a list of lists — in any of Arrow's three list layouts — is rejected here rather than
+    /// silently flattened.
+    fn list_element(field: &Field, inner: &Arc<Field>) -> Result<Self, ErrorKind> {
+        if matches!(
+            inner.data_type(),
+            DataType::List(_) | DataType::LargeList(_) | DataType::FixedSizeList(_, _)
+        ) {
+            return Err(ErrorKind::type_unsupported(
+                field.name(),
+                field.data_type(),
+                "nested lists are not supported",
+            ));
+        }
+        Self::try_new(inner.clone())
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use arrow_array::{FixedSizeBinaryArray, FixedSizeListArray, Int32Array};
+    use arrow_schema::Fields;
+
+    use super::*;
+    use crate::pg_schema::PostgresType;
+
+    fn field(name: &str, data_type: DataType) -> Arc<Field> {
+        Arc::new(Field::new(name, data_type, true))
+    }
+
+    fn int32_item() -> Arc<Field> {
+        field("item", DataType::Int32)
+    }
+
+    /// One row of an int32 array field, encoded on its own.
+    fn encode_one(builder: &EncoderBuilder, array: &dyn Array, row: usize) -> BytesMut {
+        let mut buf = BytesMut::new();
+        builder
+            .try_new(array)
+            .expect("building the encoder")
+            .encode(row, &mut buf)
+            .expect("encoding");
+        buf
+    }
+
+    // -----------------------------------------------------------------------------------------
+    // FixedSizeBinary
+    // -----------------------------------------------------------------------------------------
+
+    #[test]
+    fn fixed_size_binary_is_bytea() {
+        let field = field("b", DataType::FixedSizeBinary(3));
+        let builder = EncoderBuilder::try_new(field).unwrap();
+        assert!(matches!(builder, EncoderBuilder::FixedSizeBinary(_)));
+        assert_eq!(builder.schema().data_type, PostgresType::Bytea);
+
+        let array = FixedSizeBinaryArray::try_from_sparse_iter_with_size(
+            [Some(b"abc"), None].into_iter(),
+            3,
+        )
+        .unwrap();
+        // A `bytea` datum is a length prefix and that many bytes; a null is `-1`.
+        assert_eq!(&encode_one(&builder, &array, 0)[..], b"\0\0\0\x03abc");
+        assert_eq!(&encode_one(&builder, &array, 1)[..], b"\xff\xff\xff\xff");
+    }
+
+    #[test]
+    fn fixed_size_binary_builder_rejects_other_types() {
+        let err = FixedSizeBinaryEncoderBuilder::new(field("b", DataType::Binary)).unwrap_err();
+        assert!(
+            matches!(err, ErrorKind::FieldTypeNotSupported { ref encoder, .. }
+                     if encoder == "FixedSizeBinaryEncoderBuilder"),
+            "{err:?}"
+        );
+    }
+
+    // -----------------------------------------------------------------------------------------
+    // FixedSizeList
+    // -----------------------------------------------------------------------------------------
+
+    #[test]
+    fn fixed_size_list_is_an_array() {
+        let field = field("l", DataType::FixedSizeList(int32_item(), 2));
+        let builder = EncoderBuilder::try_new(field).unwrap();
+        assert!(matches!(builder, EncoderBuilder::FixedSizeList(_)));
+        assert!(matches!(builder.schema().data_type, PostgresType::List(_)));
+
+        let values = Arc::new(Int32Array::from(vec![1, 2])) as Arc<dyn Array>;
+        let array = FixedSizeListArray::new(int32_item(), 2, values, None);
+        // ndim, has-nulls flag, element OID (int4), length, lower bound, then the two elements.
+        assert_eq!(
+            &encode_one(&builder, &array, 0)[..],
+            b"\0\0\0\x24\
+              \0\0\0\x01\0\0\0\0\0\0\0\x17\0\0\0\x02\0\0\0\x01\
+              \0\0\0\x04\0\0\0\x01\0\0\0\x04\0\0\0\x02"
+        );
+    }
+
+    #[test]
+    fn fixed_size_list_builder_rejects_other_types() {
+        let err =
+            FixedSizeListEncoderBuilder::new(field("l", DataType::List(int32_item()))).unwrap_err();
+        assert!(matches!(err, ErrorKind::TypeNotSupported { .. }), "{err:?}");
+    }
+
+    #[test]
+    fn nested_lists_are_rejected_in_every_layout() {
+        let inner = DataType::List(int32_item());
+        for outer in [
+            DataType::List(field("item", inner.clone())),
+            DataType::LargeList(field("item", inner.clone())),
+            DataType::FixedSizeList(field("item", inner.clone()), 2),
+            DataType::FixedSizeList(field("item", DataType::FixedSizeList(int32_item(), 2)), 2),
+        ] {
+            let err = EncoderBuilder::try_new(field("l", outer.clone())).unwrap_err();
+            assert!(
+                matches!(err, ErrorKind::TypeNotSupported { ref msg, .. }
+                         if msg == "nested lists are not supported"),
+                "{outer:?}: {err:?}"
+            );
+        }
+    }
+
+    // -----------------------------------------------------------------------------------------
+    // Composite fields
+    // -----------------------------------------------------------------------------------------
+
+    fn struct_of(fields: Vec<Field>) -> Arc<Field> {
+        field("s", DataType::Struct(Fields::from(fields)))
+    }
+
+    #[test]
+    fn struct_with_a_list_field_uses_the_array_type_oid() {
+        let builder = EncoderBuilder::try_new(struct_of(vec![
+            Field::new("num", DataType::Int32, true),
+            Field::new("nums", DataType::List(int32_item()), true),
+            Field::new(
+                "texts",
+                DataType::LargeList(field("item", DataType::Utf8)),
+                true,
+            ),
+        ]))
+        .unwrap();
+        let EncoderBuilder::Struct(builder) = builder else {
+            panic!("expected a struct builder")
+        };
+        // int4, _int4, _text
+        assert_eq!(builder.field_oids().unwrap(), vec![23, 1007, 1009]);
+    }
+
+    #[test]
+    fn struct_with_a_list_of_structs_field_is_unsupported() {
+        let element = field(
+            "item",
+            DataType::Struct(Fields::from(vec![Field::new("num", DataType::Int32, true)])),
+        );
+        let err = EncoderBuilder::try_new(struct_of(vec![Field::new(
+            "structs",
+            DataType::List(element),
+            true,
+        )]))
+        .unwrap_err();
+        assert!(
+            matches!(err, ErrorKind::TypeNotSupported { ref msg, .. }
+                     if msg.contains("has no Postgres OID")),
+            "{err:?}"
+        );
+    }
+
+    #[test]
+    fn struct_with_a_nested_struct_field_is_still_supported() {
+        // Nested composites keep the placeholder OID they have always used; only the array case
+        // gained a real one.
+        let inner = Field::new(
+            "inner",
+            DataType::Struct(Fields::from(vec![Field::new("num", DataType::Int32, true)])),
+            true,
+        );
+        let builder = EncoderBuilder::try_new(struct_of(vec![inner])).unwrap();
+        assert!(matches!(builder, EncoderBuilder::Struct(_)));
     }
 }

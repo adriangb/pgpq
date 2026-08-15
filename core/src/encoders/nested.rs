@@ -6,11 +6,13 @@
 use std::marker::PhantomData;
 use std::sync::Arc;
 
-use arrow_array::{Array, GenericListArray, OffsetSizeTrait, StructArray};
+use arrow_array::{
+    Array, ArrayRef, FixedSizeListArray, GenericListArray, OffsetSizeTrait, StructArray,
+};
 use arrow_schema::{DataType, Field};
 use bytes::{BufMut, BytesMut};
 
-use super::{downcast_checked, BuildEncoder, Encode, Encoder, EncoderBuilder};
+use super::{BuildEncoder, Encode, Encoder, EncoderBuilder, downcast_checked};
 use crate::error::ErrorKind;
 use crate::pg_schema::{Column, PostgresType};
 
@@ -18,14 +20,61 @@ use crate::pg_schema::{Column, PostgresType};
 // Lists
 // ---------------------------------------------------------------------------------------------
 
+/// One Arrow list layout: how to read the values of a row, and which Arrow type it is.
+///
+/// All three of Arrow's list layouts become the same thing in Postgres — a one dimensional array —
+/// and the only thing that differs is how a row's slice of the child array is located: from an
+/// `i32` or `i64` offsets buffer, or (for `FixedSizeList`) from a constant stride, with no offsets
+/// buffer at all.
+pub trait GenericListArrayValues: Array + 'static {
+    /// Name reported when a builder is handed a field it cannot encode. Kept equal to the public
+    /// builder alias so the error names the type the caller asked for.
+    const ENCODER_NAME: &'static str;
+    /// The element field of `data_type`, if `data_type` is the list type this layout reads.
+    fn inner_field(data_type: &DataType) -> Option<&Arc<Field>>;
+    /// The values of row `row`, as an array of exactly that row's length.
+    fn value(&self, row: usize) -> ArrayRef;
+}
+
+impl<T: OffsetSizeTrait> GenericListArrayValues for GenericListArray<T> {
+    const ENCODER_NAME: &'static str = if T::IS_LARGE {
+        "LargeListEncoderBuilder"
+    } else {
+        "ListEncoderBuilder"
+    };
+    fn inner_field(data_type: &DataType) -> Option<&Arc<Field>> {
+        match (T::IS_LARGE, data_type) {
+            (false, DataType::List(inner)) => Some(inner),
+            (true, DataType::LargeList(inner)) => Some(inner),
+            _ => None,
+        }
+    }
+    fn value(&self, row: usize) -> ArrayRef {
+        self.value(row)
+    }
+}
+
+impl GenericListArrayValues for FixedSizeListArray {
+    const ENCODER_NAME: &'static str = "FixedSizeListEncoderBuilder";
+    fn inner_field(data_type: &DataType) -> Option<&Arc<Field>> {
+        match data_type {
+            DataType::FixedSizeList(inner, _) => Some(inner),
+            _ => None,
+        }
+    }
+    fn value(&self, row: usize) -> ArrayRef {
+        self.value(row)
+    }
+}
+
 #[derive(Debug)]
-pub struct GenericListEncoder<'a, T: OffsetSizeTrait> {
-    arr: &'a GenericListArray<T>,
+pub struct GenericListEncoder<'a, T: GenericListArrayValues> {
+    arr: &'a T,
     field: String,
     inner_encoder_builder: Arc<EncoderBuilder>,
 }
 
-impl<T: OffsetSizeTrait> Encode for GenericListEncoder<'_, T> {
+impl<T: GenericListArrayValues> Encode for GenericListEncoder<'_, T> {
     fn encode(&self, row: usize, buf: &mut BytesMut) -> Result<(), ErrorKind> {
         if self.arr.is_null(row) {
             buf.put_i32(-1);
@@ -33,11 +82,21 @@ impl<T: OffsetSizeTrait> Encode for GenericListEncoder<'_, T> {
             let val = self.arr.value(row);
             let inner_encoder = self.inner_encoder_builder.try_new(&val)?;
 
+            // Postgres checks the element OID against the column's element type, so it has to be
+            // the real one. It is only `None` for a hand built encoder whose element is itself an
+            // array; `EncoderBuilder::try_new` rejects those up front.
+            let inner_type = self.inner_encoder_builder.schema().data_type;
+            let inner_tp_oid = inner_type.oid().ok_or_else(|| ErrorKind::Encode {
+                reason: format!(
+                    "element type {inner_type:?} of array column {} has no Postgres OID",
+                    self.field
+                ),
+            })?;
+
             let base_idx = buf.len();
             buf.put_i32(0); // the total number of bytes this element takes up, insert later
             buf.put_i32(1); // num dimensions, we only support 1
             buf.put_i32((val.null_count() != 0) as i32); // nulls flag, true if any item is null
-            let inner_tp_oid = self.inner_encoder_builder.schema().data_type.oid().unwrap();
             buf.put_i32(inner_tp_oid as i32);
             // put the dimension length
             buf.put_i32(val.len() as i32);
@@ -72,25 +131,44 @@ impl<T: OffsetSizeTrait> Encode for GenericListEncoder<'_, T> {
     }
 }
 
-#[derive(Debug, Clone, PartialEq)]
-pub struct GenericListEncoderBuilder<T: OffsetSizeTrait> {
+/// Builder for any [`GenericListArrayValues`].
+///
+/// See [`super::GenericBinaryEncoderBuilder`] for why the three impls below are written out rather
+/// than derived.
+pub struct GenericListEncoderBuilder<T: GenericListArrayValues> {
     field: Arc<Field>,
     inner_encoder_builder: Arc<EncoderBuilder>,
-    offset: PhantomData<T>,
+    array: PhantomData<fn() -> T>,
 }
 
-impl<T: OffsetSizeTrait> GenericListEncoderBuilder<T> {
-    /// `List` for 32 bit offsets, `LargeList` for 64 bit ones.
-    fn inner_field(data_type: &DataType) -> Option<&Arc<Field>> {
-        match (T::IS_LARGE, data_type) {
-            (false, DataType::List(inner)) => Some(inner),
-            (true, DataType::LargeList(inner)) => Some(inner),
-            _ => None,
+impl<T: GenericListArrayValues> std::fmt::Debug for GenericListEncoderBuilder<T> {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct(T::ENCODER_NAME)
+            .field("field", &self.field)
+            .field("inner_encoder_builder", &self.inner_encoder_builder)
+            .finish()
+    }
+}
+
+impl<T: GenericListArrayValues> Clone for GenericListEncoderBuilder<T> {
+    fn clone(&self) -> Self {
+        Self {
+            field: self.field.clone(),
+            inner_encoder_builder: self.inner_encoder_builder.clone(),
+            array: PhantomData,
         }
     }
+}
 
+impl<T: GenericListArrayValues> PartialEq for GenericListEncoderBuilder<T> {
+    fn eq(&self, other: &Self) -> bool {
+        self.field == other.field && self.inner_encoder_builder == other.inner_encoder_builder
+    }
+}
+
+impl<T: GenericListArrayValues> GenericListEncoderBuilder<T> {
     pub fn new(field: Arc<Field>) -> Result<Self, ErrorKind> {
-        match Self::inner_field(field.data_type()) {
+        match T::inner_field(field.data_type()) {
             Some(inner) => {
                 let inner_encoder_builder = EncoderBuilder::try_new(inner.clone())?;
                 Ok(Self::unchecked(field, inner_encoder_builder))
@@ -115,7 +193,7 @@ impl<T: OffsetSizeTrait> GenericListEncoderBuilder<T> {
         Self {
             field,
             inner_encoder_builder: Arc::new(inner_encoder_builder),
-            offset: PhantomData,
+            array: PhantomData,
         }
     }
 
@@ -126,12 +204,12 @@ impl<T: OffsetSizeTrait> GenericListEncoderBuilder<T> {
 
 impl<T> BuildEncoder for GenericListEncoderBuilder<T>
 where
-    T: OffsetSizeTrait,
+    T: GenericListArrayValues,
     for<'a> GenericListEncoder<'a, T>: Into<Encoder<'a>>,
 {
     fn try_new<'a, 'b: 'a>(&'b self, arr: &'a dyn Array) -> Result<Encoder<'a>, ErrorKind> {
         let field = self.field.name().clone();
-        Ok(GenericListEncoder {
+        Ok(GenericListEncoder::<T> {
             arr: downcast_checked(arr, &field)?,
             field,
             inner_encoder_builder: self.inner_encoder_builder.clone(),
@@ -211,7 +289,10 @@ impl StructEncoderBuilder {
                 .iter()
                 .map(|f| EncoderBuilder::try_new(f.clone()))
                 .collect::<Result<Vec<_>, _>>()?;
-            Ok(Self::unchecked(field, field_encoder_builders))
+            let builder = Self::unchecked(field, field_encoder_builders);
+            // Fail at schema time rather than once per batch.
+            builder.field_oids()?;
+            Ok(builder)
         } else {
             Err(ErrorKind::FieldTypeNotSupported {
                 encoder: "StructEncoder".to_string(),
@@ -232,6 +313,33 @@ impl StructEncoderBuilder {
         }
     }
 
+    /// The OID Postgres expects for each field of the composite type.
+    ///
+    /// Postgres' `record_recv` compares the OID written for every field against the composite's
+    /// declared column type, so these have to be real: an array field needs the array type's OID
+    /// (`_int4` = 1007 for `int4[]`), not the element's. Types whose OID is only known to the
+    /// server — an array of composites, or an array of arrays — have no answer here, and are
+    /// reported as unsupported rather than encoded with something Postgres would reject.
+    pub(super) fn field_oids(&self) -> Result<Vec<u32>, ErrorKind> {
+        self.field_encoder_builders
+            .iter()
+            .map(|builder| {
+                let column = builder.schema();
+                column.data_type.oid().ok_or_else(|| {
+                    ErrorKind::type_unsupported(
+                        self.field.name(),
+                        self.field.data_type(),
+                        &format!(
+                            "field {} maps to {:?}, which has no Postgres OID; \
+                             a composite type cannot contain an array of composites or of arrays",
+                            column.name, column.data_type
+                        ),
+                    )
+                })
+            })
+            .collect()
+    }
+
     pub fn inner_encoder_builder(&self) -> Vec<EncoderBuilder> {
         // Return a clone of the inner encoder builders
         self.field_encoder_builders.to_vec()
@@ -243,14 +351,11 @@ impl BuildEncoder for StructEncoderBuilder {
         let arr: &'a StructArray = downcast_checked(arr, self.field.name())?;
 
         // Build encoders for each field at build time and collect OIDs
-        let mut field_encoders = Vec::new();
-        let mut field_oids = Vec::new();
+        let field_oids = self.field_oids()?;
+        let mut field_encoders = Vec::with_capacity(self.field_encoder_builders.len());
 
         for (field, encoder_builder) in arr.columns().iter().zip(&self.field_encoder_builders) {
-            let encoder = encoder_builder.try_new(field)?;
-            let oid = encoder_builder.schema().data_type.oid().unwrap();
-            field_encoders.push(encoder);
-            field_oids.push(oid);
+            field_encoders.push(encoder_builder.try_new(field)?);
         }
 
         Ok(Encoder::Struct(StructEncoder {

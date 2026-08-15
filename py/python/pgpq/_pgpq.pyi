@@ -1,4 +1,4 @@
-from typing import Mapping, Union
+from collections.abc import Mapping
 
 import pyarrow
 
@@ -66,24 +66,24 @@ class PostgresSchema:
     def columns(self) -> list[Column]: ...
     def ddl(self, table_name: str, temp_table=False) -> str: ...
 
-PostgresType = Union[
-    Bool,
-    Bytea,
-    Int2,
-    Int4,
-    Int8,
-    Float4,
-    Float8,
-    Numeric,
-    Char,
-    Text,
-    Jsonb,
-    Date,
-    Time,
-    Timestamp,
-    Interval,
-    List,
-]
+PostgresType = (
+    Bool
+    | Bytea
+    | Int2
+    | Int4
+    | Int8
+    | Float4
+    | Float8
+    | Numeric
+    | Char
+    | Text
+    | Jsonb
+    | Date
+    | Time
+    | Timestamp
+    | Interval
+    | List
+)
 
 class ArrowToPostgresBinaryEncoder:
     def __init__(self, __schema: pyarrow.Schema) -> None: ...
@@ -204,6 +204,9 @@ class BinaryEncoderBuilder:
 class LargeBinaryEncoderBuilder:
     def __init__(self, field: pyarrow.Field) -> None: ...
 
+class FixedSizeBinaryEncoderBuilder:
+    def __init__(self, field: pyarrow.Field) -> None: ...
+
 class ListEncoderBuilder:
     def __init__(self, field: pyarrow.Field) -> None: ...
     @classmethod
@@ -217,6 +220,13 @@ class LargeListEncoderBuilder:
     def new_with_inner(
         cls, field: pyarrow.Field, inner_encoder_builder: EncoderBuilder
     ) -> LargeListEncoderBuilder: ...
+
+class FixedSizeListEncoderBuilder:
+    def __init__(self, field: pyarrow.Field) -> None: ...
+    @classmethod
+    def new_with_inner(
+        cls, field: pyarrow.Field, inner_encoder_builder: EncoderBuilder
+    ) -> FixedSizeListEncoderBuilder: ...
 
 EncoderBuilder = (
     BooleanEncoderBuilder
@@ -249,6 +259,8 @@ EncoderBuilder = (
     | StringViewEncoderBuilder
     | BinaryEncoderBuilder
     | LargeBinaryEncoderBuilder
+    | FixedSizeBinaryEncoderBuilder
     | ListEncoderBuilder
     | LargeListEncoderBuilder
+    | FixedSizeListEncoderBuilder
 )

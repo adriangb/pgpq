@@ -2,7 +2,7 @@ from dataclasses import dataclass
 from decimal import Decimal
 from math import floor
 from pathlib import Path
-from typing import Any, List
+from typing import Any
 
 import pyarrow as pa
 
@@ -14,7 +14,7 @@ DIR.mkdir(exist_ok=True)
 class Col:
     name: str
     type: pa.DataType
-    data: List[Any]
+    data: list[Any]
     nullable: bool = False
 
 
@@ -36,6 +36,7 @@ string = "some data! "
 large_string = "some large string"
 binary = string.encode()
 large_binary = large_string.encode()
+fixed_size_binary_width = 3
 
 primitive_cols: list[tuple[pa.field, list[Any]]] = [
     (pa.field("bool", pa.bool_()), [True, False]),
@@ -113,6 +114,10 @@ primitive_cols: list[tuple[pa.field, list[Any]]] = [
     (pa.field("duration_s", pa.duration("s")), [0, 1, duration_s]),
     (pa.field("binary", pa.binary()), [b"", binary]),
     (pa.field("large_binary", pa.large_binary()), [b"", binary, large_binary]),
+    (
+        pa.field("fixed_size_binary", pa.binary(fixed_size_binary_width)),
+        [b"\x00\x00\x00", b"abc", b"\xff\xfe\xfd"],
+    ),
     (pa.field("string", pa.string()), ["", string]),
     (pa.field("large_string", pa.large_string()), ["", string, large_string]),
     (pa.field("string_view", pa.string_view()), ["", string, large_string]),
@@ -158,20 +163,42 @@ large_nullable_list_cols = [
     if f.name in LARGE_LIST_ELEMENTS
 ]
 
+# A `FixedSizeList` shares its whole element encoding path with `List`, which is
+# already swept over every primitive above; what is new is the fixed stride (there is
+# no offsets buffer) and the list level validity. A representative slice of element
+# types is therefore enough here, and keeps the number of committed snapshots down.
+fixed_size_list_element_types = {
+    "bool",
+    "int32",
+    "int64",
+    "float64",
+    "decimal128",
+    "timestamp_us_notz",
+    "string",
+    "binary",
+    "fixed_size_binary",
+}
+
+fixed_size_list_elements = [
+    (f, data)
+    for f, data in [*primitive_cols, *nullable_primitives]
+    if f.name.removesuffix("_nullable") in fixed_size_list_element_types
+]
+
 fixed_size_list_cols = [
     (
-        pa.field(f"list_fixed_size_{f.name}", pa.list_(f, 5), nullable=False),
+        pa.field(f"fixed_size_list_{f.name}", pa.list_(f, 5), nullable=False),
         [(data * 10)[:5]],
     )
-    for f, data in [*primitive_cols, *nullable_primitives]
+    for f, data in fixed_size_list_elements
 ]
 
 fixed_size_nullable_list_cols = [
     (
-        pa.field(f"list_fixed_size_nullable_{f.name}", pa.list_(f, 5), nullable=True),
+        pa.field(f"fixed_size_list_nullable_{f.name}", pa.list_(f, 5), nullable=True),
         [(data * 10)[:5], None],
     )
-    for f, data in [*primitive_cols, *nullable_primitives]
+    for f, data in fixed_size_list_elements
 ]
 
 struct_with_two_primitive_cols = [
@@ -199,6 +226,28 @@ nested_struct = [
     )
 ]
 
+# A composite type whose fields include an array. Postgres validates the per-field OID
+# on binary COPY-in, so this pins the array type OID (`_int4` = 1007) it has to write.
+struct_with_list = [
+    (
+        pa.field(
+            "struct_with_list",
+            pa.struct(
+                [
+                    pa.field("a", pa.int32()),
+                    pa.field(
+                        "b", pa.list_(pa.field("item", pa.int32(), nullable=True))
+                    ),
+                    pa.field(
+                        "c", pa.list_(pa.field("item", pa.string(), nullable=True))
+                    ),
+                ]
+            ),
+        ),
+        [{"a": 1, "b": [1, 2, 3], "c": ["x", None]}, {"a": 2, "b": [], "c": None}],
+    )
+]
+
 all_cols = [
     *primitive_cols,
     *nullable_primitives,
@@ -206,18 +255,23 @@ all_cols = [
     *nullable_list_cols,
     *large_list_cols,
     *large_nullable_list_cols,
+    *fixed_size_list_cols,
+    *fixed_size_nullable_list_cols,
     *struct_with_two_primitive_cols,
     *nested_struct,
+    *struct_with_list,
 ]
 
 tables = {f.name: pa.table([data], schema=pa.schema([f])) for f, data in all_cols}
 
 for name, table in tables.items():
     schema = table.schema
-    with pa.OSFile(str(DIR / f"{name}.arrow"), "wb") as sink:
-        with pa.ipc.new_file(sink, schema=schema) as writer:
-            for batch in table.to_batches():
-                writer.write(batch)
+    with (
+        pa.OSFile(str(DIR / f"{name}.arrow"), "wb") as sink,
+        pa.ipc.new_file(sink, schema=schema) as writer,
+    ):
+        for batch in table.to_batches():
+            writer.write(batch)
 
 
 template = """\
@@ -228,5 +282,5 @@ fn test_{case_name}() {{
 """
 
 
-for name, table in tables.items():
+for name in tables:
     print(template.format(case_name=name))

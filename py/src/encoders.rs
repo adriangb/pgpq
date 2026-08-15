@@ -5,7 +5,7 @@ use arrow_schema::Field;
 use pyo3::class::basic::CompareOp;
 use pyo3::exceptions::PyRuntimeError;
 use pyo3::types::PyType;
-use pyo3::{exceptions::PyValueError, prelude::*, IntoPyObject};
+use pyo3::{IntoPyObject, exceptions::PyValueError, prelude::*};
 
 use pgpq::encoders::BuildEncoder;
 
@@ -440,6 +440,14 @@ impl_passthrough_encoder_builder!(LargeBinaryEncoderBuilder);
 
 #[pyclass(module = "pgpq._pgpq", from_py_object)]
 #[derive(Debug, Clone)]
+pub struct FixedSizeBinaryEncoderBuilder {
+    field: Py<PyAny>,
+    inner: pgpq::encoders::EncoderBuilder,
+}
+impl_passthrough_encoder_builder!(FixedSizeBinaryEncoderBuilder);
+
+#[pyclass(module = "pgpq._pgpq", from_py_object)]
+#[derive(Debug, Clone)]
 pub struct StructEncoderBuilder {
     field: Py<PyAny>,
     inner: pgpq::encoders::EncoderBuilder,
@@ -519,14 +527,14 @@ macro_rules! impl_list {
         impl crate::utils::PythonRepr for $struct {
             fn py_repr(&self, py: Python) -> String {
                 let inner_encoder_builder = match &self.inner {
-                    pgpq::encoders::EncoderBuilder::List(inner) => {
+                    $encoder_builder_enum_variant(inner) => {
                         EncoderBuilder::from(inner.inner_encoder_builder())
                     }
                     _ => unreachable!(),
                 };
                 format!(
                     "{}({}, {})",
-                    "ListEncoderBuilder",
+                    stringify!($struct),
                     &self
                         .field
                         .bind(py)
@@ -564,6 +572,18 @@ impl_list!(
     pgpq::encoders::LargeListEncoderBuilder::new_with_inner
 );
 
+#[pyclass(module = "pgpq._pgpq", from_py_object)]
+#[derive(Debug, Clone)]
+pub struct FixedSizeListEncoderBuilder {
+    field: Py<PyAny>,
+    inner: pgpq::encoders::EncoderBuilder,
+}
+impl_list!(
+    FixedSizeListEncoderBuilder,
+    pgpq::encoders::EncoderBuilder::FixedSizeList,
+    pgpq::encoders::FixedSizeListEncoderBuilder::new_with_inner
+);
+
 #[derive(FromPyObject, Debug, Clone)]
 pub enum EncoderBuilder {
     Boolean(BooleanEncoderBuilder),
@@ -596,8 +616,10 @@ pub enum EncoderBuilder {
     StringView(StringViewEncoderBuilder),
     Binary(BinaryEncoderBuilder),
     LargeBinary(LargeBinaryEncoderBuilder),
+    FixedSizeBinary(FixedSizeBinaryEncoderBuilder),
     List(ListEncoderBuilder),
     LargeList(LargeListEncoderBuilder),
+    FixedSizeList(FixedSizeListEncoderBuilder),
     Struct(StructEncoderBuilder),
 }
 
@@ -634,8 +656,10 @@ impl crate::utils::PythonRepr for EncoderBuilder {
             EncoderBuilder::StringView(inner) => inner.py_repr(py),
             EncoderBuilder::Binary(inner) => inner.py_repr(py),
             EncoderBuilder::LargeBinary(inner) => inner.py_repr(py),
+            EncoderBuilder::FixedSizeBinary(inner) => inner.py_repr(py),
             EncoderBuilder::List(inner) => inner.py_repr(py),
             EncoderBuilder::LargeList(inner) => inner.py_repr(py),
+            EncoderBuilder::FixedSizeList(inner) => inner.py_repr(py),
             EncoderBuilder::Struct(inner) => inner.py_repr(py),
         }
     }
@@ -653,7 +677,7 @@ impl EncoderBuilder {
                         .repr()
                         .map(|s| s.to_string())
                         .unwrap_or_else(|_| "<repr error>".to_string())
-                )))
+                )));
             }
         };
         let pg_output_type: crate::pg_schema::PostgresType = inner.schema().data_type.into();
@@ -840,12 +864,24 @@ impl EncoderBuilder {
                     inner,
                 })
             }
+            pgpq::encoders::EncoderBuilder::FixedSizeBinary(_) => {
+                EncoderBuilder::FixedSizeBinary(FixedSizeBinaryEncoderBuilder {
+                    field: py_field.clone().unbind(),
+                    inner,
+                })
+            }
             pgpq::encoders::EncoderBuilder::List(_) => EncoderBuilder::List(ListEncoderBuilder {
                 field: py_field.clone().unbind(),
                 inner,
             }),
             pgpq::encoders::EncoderBuilder::LargeList(_) => {
                 EncoderBuilder::LargeList(LargeListEncoderBuilder {
+                    field: py_field.clone().unbind(),
+                    inner,
+                })
+            }
+            pgpq::encoders::EncoderBuilder::FixedSizeList(_) => {
+                EncoderBuilder::FixedSizeList(FixedSizeListEncoderBuilder {
                     field: py_field.clone().unbind(),
                     inner,
                 })
@@ -1172,6 +1208,16 @@ impl From<pgpq::encoders::EncoderBuilder> for EncoderBuilder {
                     inner: value,
                 })
             }
+            pgpq::encoders::EncoderBuilder::FixedSizeBinary(inner) => {
+                let field = inner.field();
+                EncoderBuilder::FixedSizeBinary(FixedSizeBinaryEncoderBuilder {
+                    field: field
+                        .to_pyarrow(py)
+                        .expect("Field to_pyarrow should not fail")
+                        .unbind(),
+                    inner: value,
+                })
+            }
             pgpq::encoders::EncoderBuilder::List(inner) => {
                 let field = inner.field();
                 EncoderBuilder::List(ListEncoderBuilder {
@@ -1185,6 +1231,16 @@ impl From<pgpq::encoders::EncoderBuilder> for EncoderBuilder {
             pgpq::encoders::EncoderBuilder::LargeList(inner) => {
                 let field = inner.field();
                 EncoderBuilder::LargeList(LargeListEncoderBuilder {
+                    field: field
+                        .to_pyarrow(py)
+                        .expect("Field to_pyarrow should not fail")
+                        .unbind(),
+                    inner: value,
+                })
+            }
+            pgpq::encoders::EncoderBuilder::FixedSizeList(inner) => {
+                let field = inner.field();
+                EncoderBuilder::FixedSizeList(FixedSizeListEncoderBuilder {
                     field: field
                         .to_pyarrow(py)
                         .expect("Field to_pyarrow should not fail")
@@ -1330,11 +1386,19 @@ impl<'py> IntoPyObject<'py> for EncoderBuilder {
                 .into_pyobject(py)
                 .map(|b| b.into_any())
                 .expect("pyclass into_pyobject")),
+            EncoderBuilder::FixedSizeBinary(inner) => Ok(inner
+                .into_pyobject(py)
+                .map(|b| b.into_any())
+                .expect("pyclass into_pyobject")),
             EncoderBuilder::List(inner) => Ok(inner
                 .into_pyobject(py)
                 .map(|b| b.into_any())
                 .expect("pyclass into_pyobject")),
             EncoderBuilder::LargeList(inner) => Ok(inner
+                .into_pyobject(py)
+                .map(|b| b.into_any())
+                .expect("pyclass into_pyobject")),
+            EncoderBuilder::FixedSizeList(inner) => Ok(inner
                 .into_pyobject(py)
                 .map(|b| b.into_any())
                 .expect("pyclass into_pyobject")),
@@ -1379,8 +1443,10 @@ impl From<EncoderBuilder> for pgpq::encoders::EncoderBuilder {
             EncoderBuilder::StringView(inner) => inner.inner,
             EncoderBuilder::Binary(inner) => inner.inner,
             EncoderBuilder::LargeBinary(inner) => inner.inner,
+            EncoderBuilder::FixedSizeBinary(inner) => inner.inner,
             EncoderBuilder::List(inner) => inner.inner,
             EncoderBuilder::LargeList(inner) => inner.inner,
+            EncoderBuilder::FixedSizeList(inner) => inner.inner,
             EncoderBuilder::Struct(inner) => inner.inner,
         }
     }

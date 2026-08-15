@@ -31,15 +31,16 @@ use std::sync::Arc;
 
 use arrow::buffer::{NullBuffer, OffsetBuffer};
 use arrow_array::types::{
-    ArrowPrimitiveType, Date32Type, Decimal128Type, Decimal32Type, Decimal64Type,
+    ArrowPrimitiveType, Date32Type, Decimal32Type, Decimal64Type, Decimal128Type,
     DurationMicrosecondType, DurationMillisecondType, DurationSecondType, Float16Type, Float32Type,
-    Float64Type, Int16Type, Int32Type, Int64Type, Int8Type, Time32MillisecondType,
+    Float64Type, Int8Type, Int16Type, Int32Type, Int64Type, Time32MillisecondType,
     Time32SecondType, Time64MicrosecondType, TimestampMicrosecondType, TimestampMillisecondType,
-    TimestampSecondType, UInt16Type, UInt32Type, UInt64Type, UInt8Type,
+    TimestampSecondType, UInt8Type, UInt16Type, UInt32Type, UInt64Type,
 };
 use arrow_array::{
-    Array, ArrayRef, BinaryArray, BooleanArray, LargeBinaryArray, LargeListArray, LargeStringArray,
-    ListArray, PrimitiveArray, RecordBatch, StringArray, StringViewArray, StructArray,
+    Array, ArrayRef, BinaryArray, BooleanArray, FixedSizeBinaryArray, FixedSizeListArray,
+    LargeBinaryArray, LargeListArray, LargeStringArray, ListArray, PrimitiveArray, RecordBatch,
+    StringArray, StringViewArray, StructArray,
 };
 use arrow_schema::{DataType, Field, Fields, Schema, TimeUnit};
 use proptest::prelude::*;
@@ -484,8 +485,10 @@ fn array_of(data_type: DataType, len: usize) -> BoxedStrategy<ArrayRef> {
         DataType::Utf8View => opt_vec(strings(), len)
             .prop_map(|values| Arc::new(StringViewArray::from_iter(values)) as ArrayRef)
             .boxed(),
+        DataType::FixedSizeBinary(width) => fixed_size_binary_array(width, len),
         DataType::List(field) => list_array(field, len, false),
         DataType::LargeList(field) => list_array(field, len, true),
+        DataType::FixedSizeList(field, size) => fixed_size_list_array(field, size, len),
         DataType::Struct(fields) => struct_array(fields, len),
         other => unreachable!("no array strategy for {other:?}"),
     }
@@ -533,6 +536,35 @@ fn list_array(field: Arc<Field>, len: usize, large: bool) -> BoxedStrategy<Array
                     nulls,
                 )) as ArrayRef
             }
+        })
+        .boxed()
+}
+
+/// `len` rows of `width` byte values, with no offsets buffer.
+fn fixed_size_binary_array(width: i32, len: usize) -> BoxedStrategy<ArrayRef> {
+    let size = width as usize;
+    opt_vec(prop::collection::vec(any::<u8>(), size..=size).boxed(), len)
+        .prop_map(move |values| {
+            Arc::new(
+                FixedSizeBinaryArray::try_from_sparse_iter_with_size(values.into_iter(), width)
+                    .expect("generated an invalid fixed size binary array"),
+            ) as ArrayRef
+        })
+        .boxed()
+}
+
+/// `len` lists of exactly `size` elements. Unlike a `List`, a null row still occupies its slots in
+/// the child array, so the child is always `len * size` long.
+fn fixed_size_list_array(field: Arc<Field>, size: i32, len: usize) -> BoxedStrategy<ArrayRef> {
+    let inner = field.data_type().clone();
+    (array_of(inner, len * size as usize), validity(len))
+        .prop_map(move |(values, valid)| {
+            Arc::new(FixedSizeListArray::new(
+                field.clone(),
+                size,
+                values,
+                null_buffer(&valid),
+            )) as ArrayRef
         })
         .boxed()
 }
@@ -687,23 +719,38 @@ fn list_type() -> BoxedStrategy<DataType> {
         .boxed()
 }
 
-/// A flat struct of scalars.
+/// A struct of scalars and, sometimes, arrays.
 ///
-/// NOTE: struct fields are deliberately restricted to scalars. `StructEncoderBuilder::try_new`
-/// panics for a struct with a list field because `PostgresType::List` has no OID; that is a known
-/// gap tracked in `tests/harness/cases.rs`, not something this suite is meant to rediscover on
-/// every run.
+/// A list field is what makes the composite need a real array type OID for that field (issue #90),
+/// so it is drawn here rather than left out. Fields are otherwise scalars: a composite cannot
+/// contain an array *of* composites, which is a typed error rather than something to roundtrip.
 fn struct_type() -> BoxedStrategy<DataType> {
-    prop::collection::vec(scalar_type(), 1..=MAX_STRUCT_FIELDS)
-        .prop_map(|inner| {
-            let fields: Vec<Field> = inner
-                .into_iter()
-                .enumerate()
-                .map(|(i, dt)| Field::new(format!("f{i}"), dt, true))
-                .collect();
-            DataType::Struct(Fields::from(fields))
-        })
-        .boxed()
+    prop::collection::vec(
+        prop_oneof![4 => scalar_type(), 1 => list_type()],
+        1..=MAX_STRUCT_FIELDS,
+    )
+    .prop_map(|inner| {
+        let fields: Vec<Field> = inner
+            .into_iter()
+            .enumerate()
+            .map(|(i, dt)| Field::new(format!("f{i}"), dt, true))
+            .collect();
+        DataType::Struct(Fields::from(fields))
+    })
+    .boxed()
+}
+
+/// The two fixed width layouts: `FixedSizeBinary` (a `bytea`) and `FixedSizeList` (an array).
+fn fixed_size_type() -> BoxedStrategy<DataType> {
+    prop_oneof![
+        (1i32..=8).prop_map(DataType::FixedSizeBinary),
+        // A zero sized `FixedSizeList` cannot express its own row count (Arrow derives the length
+        // from `values.len() / size`), so the smallest generated list has one element.
+        (scalar_type(), 1i32..=MAX_LIST_LEN as i32).prop_map(|(inner, size)| {
+            DataType::FixedSizeList(Arc::new(Field::new("item", inner, true)), size)
+        }),
+    ]
+    .boxed()
 }
 
 // ---------------------------------------------------------------------------------------------
@@ -841,6 +888,7 @@ fn proptest_roundtrip() {
         ("text_and_binary", text_binary_type()),
         ("lists", list_type()),
         ("structs", struct_type()),
+        ("fixed_size", fixed_size_type()),
         (
             "mixed",
             prop_oneof![4 => scalar_type(), 2 => list_type(), 1 => struct_type()].boxed(),

@@ -13,7 +13,7 @@ use std::sync::Arc;
 use arrow::buffer::{NullBuffer, OffsetBuffer};
 use arrow_array::builder::{ListBuilder, StringBuilder};
 use arrow_array::{
-    ArrayRef, BooleanArray, Float32Array, Float64Array, Int32Array, Int8Array, ListArray,
+    ArrayRef, BooleanArray, Float32Array, Float64Array, Int8Array, Int32Array, ListArray,
     RecordBatch, StringArray, StructArray,
 };
 use arrow_ipc::reader::FileReader;
@@ -23,7 +23,7 @@ use pgpq::encoders::{
 };
 use pgpq::pg_schema::PostgresType;
 
-use super::value::{expected_rows, Value};
+use super::value::{Value, expected_rows};
 
 /// One roundtrip case: some Arrow data, optionally custom encoders, and the values Postgres is
 /// expected to hand back.
@@ -199,9 +199,30 @@ pub fn struct_cases() -> Vec<Case> {
         ));
     }
 
-    // NOTE: a struct with a *list* field is not covered because `StructEncoderBuilder` requires
-    // every field type to have an OID and `PostgresType::List` has none, so building the encoder
-    // panics. See the note in `core/src/encoders.rs` (`StructEncoderBuilder::try_new`).
+    // A struct with a *list* field, i.e. a composite type with an array column. Postgres checks
+    // the OID pgpq writes for each composite field against the column's declared type, so this
+    // covers `PostgresType::List(_)::oid()` resolving to the real array type OID (`_int4` = 1007).
+    {
+        let item = Arc::new(Field::new("item", DataType::Int32, true));
+        let fields = Fields::from(vec![
+            Field::new("num", DataType::Int32, true),
+            Field::new("nums", DataType::List(item.clone()), true),
+        ]);
+        // Rows: [1, [1, 2]], [2, []], [3, NULL], with a null element in the first list.
+        let values = Arc::new(Int32Array::from(vec![Some(1), None])) as ArrayRef;
+        let offsets = OffsetBuffer::new(vec![0, 2, 2, 2].into());
+        let list_nulls = NullBuffer::from(vec![true, true, false]);
+        let lists = Arc::new(ListArray::new(item, offsets, values, Some(list_nulls))) as ArrayRef;
+        let columns: Vec<ArrayRef> = vec![Arc::new(Int32Array::from(vec![1, 2, 3])), lists];
+        let array = Arc::new(StructArray::new(fields.clone(), columns, None)) as ArrayRef;
+        cases.push(Case::new(
+            "struct_with_list_field",
+            single_column_batch(
+                Field::new("my_struct", DataType::Struct(fields), false),
+                array,
+            ),
+        ));
+    }
 
     // An array of structs (`composite_type[]`), with more than one struct per row.
     {
@@ -298,9 +319,11 @@ pub fn custom_encoder_cases() -> Vec<Case> {
         vec![Value::Array(vec![Value::Text("123".into())])],
     ];
 
-    let mut cases = vec![Case::new("json_list", batch)
-        .with_encoders(encoders)
-        .with_expected(expected)];
+    let mut cases = vec![
+        Case::new("json_list", batch)
+            .with_encoders(encoders)
+            .with_expected(expected),
+    ];
     cases.push(json_string_case(PostgresType::Jsonb));
     cases.push(json_string_case(PostgresType::Json));
     cases

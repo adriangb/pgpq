@@ -26,10 +26,10 @@ use arrow_array::types::{
     TimestampMillisecondType, TimestampSecondType,
 };
 use arrow_array::{
-    Array, ArrayRef, BinaryArray, BooleanArray, Float32Array, Float64Array, Int16Array, Int32Array,
-    Int64Array, Int8Array, LargeBinaryArray, LargeListArray, LargeStringArray, ListArray,
-    PrimitiveArray, RecordBatch, StringArray, StringViewArray, StructArray, UInt16Array,
-    UInt32Array, UInt64Array, UInt8Array,
+    Array, ArrayRef, BinaryArray, BooleanArray, FixedSizeBinaryArray, FixedSizeListArray,
+    Float32Array, Float64Array, Int16Array, Int32Array, Int64Array, Int8Array, LargeBinaryArray,
+    LargeListArray, LargeStringArray, ListArray, PrimitiveArray, RecordBatch, StringArray,
+    StringViewArray, StructArray, UInt16Array, UInt32Array, UInt64Array, UInt8Array,
 };
 use arrow_buffer::{NullBuffer, OffsetBuffer};
 use arrow_schema::{DataType, Field, Fields, Schema, TimeUnit};
@@ -82,6 +82,8 @@ enum Scalar {
     Utf8View,
     Binary,
     LargeBinary,
+    /// Width drawn separately, like `Decimal128`'s precision.
+    FixedSizeBinary,
 }
 
 #[derive(Debug, Clone, Arbitrary)]
@@ -89,14 +91,17 @@ enum Column {
     Scalar(Scalar),
     List(Scalar),
     LargeList(Scalar),
+    /// Element count drawn separately.
+    FixedSizeList(Scalar),
     /// Flat struct of scalars.
-    ///
-    /// KNOWN BUG (see `core/tests/proptest_roundtrip.rs`): a struct with a *list* field makes
-    /// `StructEncoderBuilder::try_new` panic because `PostgresType::List` has no OID. Struct
-    /// fields are restricted to scalars so the fuzzer explores everything else instead of
-    /// rediscovering that one gap on every run.
     Struct(Vec<Scalar>),
+    /// A struct whose last field is an array: a composite with an array column, which is where
+    /// the per-field OID has to be the array type's rather than the element's.
+    StructWithList(Vec<Scalar>, Scalar),
 }
+
+/// Widths for `FixedSizeBinary`, in bytes.
+const MAX_FIXED_BINARY_WIDTH: i32 = 16;
 
 /// Arrow's bounds for a `Decimal128`: up to 38 significant digits and a scale anywhere in
 /// `-precision..=precision`. The whole space is fuzzed — the overflow and underflow that used to
@@ -150,6 +155,9 @@ fn scalar_type(scalar: Scalar, u: &mut Unstructured<'_>) -> arbitrary::Result<Da
         Scalar::Utf8View => DataType::Utf8View,
         Scalar::Binary => DataType::Binary,
         Scalar::LargeBinary => DataType::LargeBinary,
+        Scalar::FixedSizeBinary => {
+            DataType::FixedSizeBinary(u.int_in_range(1..=MAX_FIXED_BINARY_WIDTH)?)
+        }
     })
 }
 
@@ -159,6 +167,10 @@ fn timezone(u: &mut Unstructured<'_>) -> arbitrary::Result<Option<Arc<str>>> {
     } else {
         None
     })
+}
+
+fn list_field(scalar: Scalar, u: &mut Unstructured<'_>) -> arbitrary::Result<Arc<Field>> {
+    Ok(Arc::new(Field::new("item", scalar_type(scalar, u)?, true)))
 }
 
 fn nulls(len: usize, u: &mut Unstructured<'_>) -> arbitrary::Result<Option<NullBuffer>> {
@@ -288,6 +300,26 @@ fn scalar_array(
         DataType::Utf8View => Arc::new(StringViewArray::from_iter(opt_vec::<String>(len, u)?)),
         DataType::Binary => Arc::new(BinaryArray::from_iter(opt_vec::<Vec<u8>>(len, u)?)),
         DataType::LargeBinary => Arc::new(LargeBinaryArray::from_iter(opt_vec::<Vec<u8>>(len, u)?)),
+        DataType::FixedSizeBinary(width) => {
+            let size = *width as usize;
+            let mut values: Vec<Option<Vec<u8>>> = Vec::with_capacity(len);
+            for _ in 0..len {
+                values.push(if u.arbitrary::<bool>()? {
+                    Some(u.bytes(size)?.to_vec())
+                } else {
+                    None
+                });
+            }
+            // `bytes` returns fewer bytes than asked for once the entropy runs out; a short value
+            // would be an invalid array rather than an interesting input.
+            if values.iter().flatten().any(|v| v.len() != size) {
+                return Err(arbitrary::Error::NotEnoughData);
+            }
+            Arc::new(
+                FixedSizeBinaryArray::try_from_sparse_iter_with_size(values.into_iter(), *width)
+                    .map_err(|_| arbitrary::Error::IncorrectFormat)?,
+            )
+        }
         other => unreachable!("unhandled scalar type {other:?}"),
     };
     Ok(array)
@@ -337,6 +369,16 @@ fn array_of(
                 ))
             })
         }
+        DataType::FixedSizeList(field, size) => {
+            let values = array_of(field.data_type(), len * *size as usize, u)?;
+            let nulls = nulls(len, u)?;
+            Ok(Arc::new(FixedSizeListArray::new(
+                field.clone(),
+                *size,
+                values,
+                nulls,
+            )))
+        }
         DataType::Struct(fields) => {
             let mut children = Vec::with_capacity(fields.len());
             for field in fields.iter() {
@@ -352,23 +394,42 @@ fn array_of(
 fn column_type(column: &Column, u: &mut Unstructured<'_>) -> arbitrary::Result<DataType> {
     Ok(match column {
         Column::Scalar(scalar) => scalar_type(*scalar, u)?,
-        Column::List(scalar) => {
-            DataType::List(Arc::new(Field::new("item", scalar_type(*scalar, u)?, true)))
+        Column::List(scalar) => DataType::List(list_field(*scalar, u)?),
+        Column::LargeList(scalar) => DataType::LargeList(list_field(*scalar, u)?),
+        Column::FixedSizeList(scalar) => {
+            // Arrow derives a `FixedSizeList`'s row count from `values.len() / size`, so a zero
+            // sized one cannot express its own length.
+            DataType::FixedSizeList(list_field(*scalar, u)?, u.int_in_range(1..=MAX_LIST_LEN)? as i32)
         }
-        Column::LargeList(scalar) => {
-            DataType::LargeList(Arc::new(Field::new("item", scalar_type(*scalar, u)?, true)))
-        }
-        Column::Struct(scalars) => {
-            let mut fields = Vec::new();
-            for (i, scalar) in scalars.iter().take(MAX_STRUCT_FIELDS).enumerate() {
-                fields.push(Field::new(format!("f{i}"), scalar_type(*scalar, u)?, true));
-            }
-            if fields.is_empty() {
-                fields.push(Field::new("f0", DataType::Int32, true));
-            }
-            DataType::Struct(Fields::from(fields))
+        Column::Struct(scalars) => DataType::Struct(struct_fields(scalars, None, u)?),
+        Column::StructWithList(scalars, element) => {
+            DataType::Struct(struct_fields(scalars, Some(*element), u)?)
         }
     })
+}
+
+/// Scalar fields `f0..`, optionally followed by an array field.
+fn struct_fields(
+    scalars: &[Scalar],
+    list_element: Option<Scalar>,
+    u: &mut Unstructured<'_>,
+) -> arbitrary::Result<Fields> {
+    let mut fields = Vec::new();
+    for (i, scalar) in scalars.iter().take(MAX_STRUCT_FIELDS).enumerate() {
+        fields.push(Field::new(format!("f{i}"), scalar_type(*scalar, u)?, true));
+    }
+    if let Some(element) = list_element {
+        let name = format!("f{}", fields.len());
+        fields.push(Field::new(
+            name,
+            DataType::List(list_field(element, u)?),
+            true,
+        ));
+    }
+    if fields.is_empty() {
+        fields.push(Field::new("f0", DataType::Int32, true));
+    }
+    Ok(Fields::from(fields))
 }
 
 fn run(u: &mut Unstructured<'_>) -> arbitrary::Result<()> {

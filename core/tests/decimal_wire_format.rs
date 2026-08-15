@@ -11,13 +11,13 @@
 use std::sync::Arc;
 use std::time::Duration;
 
-use arrow_array::{Array, Decimal128Array, Decimal32Array, Decimal64Array, RecordBatch};
+use arrow_array::{Array, Decimal32Array, Decimal64Array, Decimal128Array, RecordBatch};
 use arrow_schema::{Field, Schema};
 use bytes::BytesMut;
 use pgpq::ArrowToPostgresBinaryEncoder;
 use postgres::{Client, NoTls};
-use postgresql_embedded::blocking::PostgreSQL;
 use postgresql_embedded::Settings;
+use postgresql_embedded::blocking::PostgreSQL;
 
 /// 38 nines: the largest magnitude a `Decimal128(38, _)` can hold.
 const MAX_PRECISION_38: i128 = 99_999_999_999_999_999_999_999_999_999_999_999_999;

@@ -12,6 +12,10 @@
 !/ruff.toml
 !/Makefile
 !/README.md
+!/DEVELOPMENT.md
+# This file is an allowlist (`/*` above ignores everything at the root), so a
+# new top-level directory is invisible to git until it is un-ignored here.
+!/scripts
 !/.github
 !/LICENSE.txt
 !/.gitattributes

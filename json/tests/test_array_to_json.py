@@ -1,5 +1,5 @@
 import json
-from typing import Any, Dict, List
+from typing import Any
 
 import pyarrow as pa
 import pytest
@@ -31,7 +31,7 @@ list_array = pa.ListArray.from_arrays(offsets=[0, 2, 4, 6, 8], values=[1, 2, 3, 
     ],
     ids=["int", "string", "struct", "list"],
 )
-def test_to_array(array: pa.Array, expected: List[Any]) -> None:
+def test_to_array(array: pa.Array, expected: list[Any]) -> None:
     expected = [json.dumps(v, separators=(",", ":")) for v in expected]
     actual = array_to_utf8_json_array(array).to_pylist()
     assert actual == expected
@@ -45,7 +45,7 @@ def test_to_array(array: pa.Array, expected: List[Any]) -> None:
         ({}, pa.large_string()),
     ],
 )
-def test_large(kwargs: Dict[str, Any], expected: pa.DataType) -> None:
+def test_large(kwargs: dict[str, Any], expected: pa.DataType) -> None:
     array = pa.array([1, 2, 3])
     out = array_to_utf8_json_array(array, **kwargs)
     assert out.type == expected

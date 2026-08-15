@@ -2,7 +2,7 @@ use arrow::datatypes::Schema;
 use arrow::record_batch::RecordBatchReader;
 use arrow_array::RecordBatch;
 use bytes::BytesMut;
-use criterion::{criterion_group, criterion_main, Criterion};
+use criterion::{Criterion, criterion_group, criterion_main};
 use parquet::arrow::arrow_reader::ParquetRecordBatchReaderBuilder;
 use pgpq::ArrowToPostgresBinaryEncoder;
 use std::fs::File;

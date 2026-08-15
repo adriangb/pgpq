@@ -8,6 +8,7 @@ Convert PyArrow RecordBatches to Postgres' native binary format.
 
 ```python
 """Example for README.md"""
+
 from tempfile import mkdtemp
 import psycopg
 import pyarrow.dataset as ds
@@ -62,6 +63,7 @@ with psycopg.connect("postgres://postgres:postgres@localhost:5432/postgres") as 
 
 ```python
 """Showcase defining encoders for fields."""
+
 import pgpq
 import psycopg
 import pyarrow as pa
@@ -71,7 +73,9 @@ from pgpq import schema
 
 data = [
     pa.array([1, 2, 3, 4]),
-    pa.array(['{"age": 33, "name": "alice"}', '{"age": 24, "name": "bob"}', "{}", "null"]),
+    pa.array(
+        ['{"age": 33, "name": "alice"}', '{"age": 24, "name": "bob"}', "{}", "null"]
+    ),
 ]
 arrow_schema = pa.schema([("id", pa.int64()), ("properties", pa.string())])
 record_batch = pa.RecordBatch.from_arrays(data, schema=arrow_schema)
@@ -93,7 +97,9 @@ field_encoders = {
         pa.field("properties", pa.string()), schema.Jsonb()
     ),
 }
-encoder = pgpq.ArrowToPostgresBinaryEncoder.new_with_encoders(record_batch.schema, field_encoders)
+encoder = pgpq.ArrowToPostgresBinaryEncoder.new_with_encoders(
+    record_batch.schema, field_encoders
+)
 pg_schema_with_jsonb_properties = encoder.schema()
 
 assert [
@@ -128,7 +134,9 @@ field_encoders = {
         pa.field("properties", pa.string()), schema.Jsonb()
     ),
 }
-encoder = pgpq.ArrowToPostgresBinaryEncoder.new_with_encoders(record_batch.schema, field_encoders)
+encoder = pgpq.ArrowToPostgresBinaryEncoder.new_with_encoders(
+    record_batch.schema, field_encoders
+)
 pg_schema_inferred_id_and_jsonb_properties = encoder.schema()
 
 assert [
@@ -138,7 +146,6 @@ assert [
 
 with psycopg.connect("postgres://postgres:postgres@localhost:5432/postgres") as conn:
     with conn.cursor() as cursor:
-
         with cursor.copy("COPY id_properties FROM STDIN WITH (FORMAT BINARY)") as copy:
             copy.write(encoder.write_header())
             copy.write(encoder.write_batch(record_batch))
