@@ -257,7 +257,10 @@ impl<C: NumericConversion> Encode for NumericEncoder<'_, C> {
     }
 
     fn byte_size_hint(&self) -> Result<usize, ErrorKind> {
-        Ok(self.arr.len() * (8 + 2 * C::max_digit_groups(self.arr)))
+        // `encode_decimal_*` writes the four byte field length in front of the eight byte NUMERIC
+        // header and the digit groups, so a whole field is `12 + 2 * groups`. Charging every row
+        // for one keeps this exact-or-over: a null row only costs its length prefix.
+        Ok(self.arr.len() * (12 + 2 * C::max_digit_groups(self.arr)))
     }
 }
 

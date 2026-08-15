@@ -490,15 +490,23 @@ mod tests {
                 .with_precision_and_scale(precision, scale)
                 .unwrap();
             let encoder = Decimal64Encoder::new(&arr);
+            let hint = encoder.byte_size_hint().unwrap();
             assert_eq!(
-                encoder.byte_size_hint().unwrap(),
-                arr.len() * (8 + 2 * numeric_group_count_hint(precision)),
+                hint,
+                // 4 byte field length + 8 byte NUMERIC header + the digit groups.
+                arr.len() * (12 + 2 * numeric_group_count_hint(precision)),
                 "({precision}, {scale})"
             );
             let mut buf = BytesMut::new();
             for row in 0..arr.len() {
                 encoder.encode(row, &mut buf).unwrap();
             }
+            // The hint has to cover what was written, or `write_batch` under-reserves.
+            assert!(
+                buf.len() <= hint,
+                "wrote {} bytes against a hint of {hint} for ({precision}, {scale})",
+                buf.len()
+            );
             // Every digit group the values actually needed fits in the hinted group count.
             let mut rest = &buf[..];
             while !rest.is_empty() {
