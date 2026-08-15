@@ -1,18 +1,16 @@
-#![allow(unused)]
-
-use arrow::array::ArrayIter;
 use arrow::datatypes::{Int64Type, Schema};
-use arrow::record_batch::RecordBatchReader;
 use arrow_array::{Array, PrimitiveArray, RecordBatch};
 use arrow_schema::{DataType, Field, TimeUnit};
 use bytes::{BufMut, BytesMut};
 use criterion::{criterion_group, criterion_main, Criterion};
 use postgres_types::{ToSql, Type};
-use std::fs;
 use std::hint::black_box;
 use std::sync::Arc;
 
-fn get_start_end(row: usize, col: usize, n_rows: usize, offsets: &[usize]) -> (usize, usize) {
+// NOTE: the index arithmetic below ignores `row` (it reads `col` twice), hence the unused
+// parameter. Left as is: this file is a scratchpad comparing encoding *approaches*, and changing
+// it would change what the numbers below mean.
+fn get_start_end(_row: usize, col: usize, n_rows: usize, offsets: &[usize]) -> (usize, usize) {
     let idx = col * n_rows + col;
     (offsets[idx], offsets[idx + 1])
 }
@@ -44,7 +42,7 @@ pub fn columnar_vs_row_wise(c: &mut Criterion) {
             for column in batch.columns() {
                 match column.data_type() {
                     DataType::Int64 => {
-                        for row in 0..batch.num_rows() {
+                        for _ in 0..batch.num_rows() {
                             offsets.push(offsets.last().unwrap() + 8);
                         }
                     }
