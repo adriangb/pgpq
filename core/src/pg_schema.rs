@@ -68,7 +68,7 @@ impl PostgresType {
             PostgresType::Int4 => Some(23),
             PostgresType::Char => Some(18),
             PostgresType::Text => Some(25),
-            PostgresType::Json => Some(3802),
+            PostgresType::Json => Some(114),
             PostgresType::Jsonb => Some(3802),
             PostgresType::Float4 => Some(700),
             PostgresType::Float8 => Some(701),

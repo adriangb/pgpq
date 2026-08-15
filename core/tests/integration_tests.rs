@@ -1530,6 +1530,49 @@ fn encode_nested_struct(schema: &Schema, batches: &[RecordBatch], oid: u32) -> B
     buf
 }
 
+/// Every scalar OID pgpq writes must be the OID Postgres actually has for that type.
+///
+/// These OIDs go out on the wire in composite field headers and array element headers, where
+/// `record_recv`/`array_recv` compare them against the column's real type and reject a mismatch.
+/// `Json` claimed jsonb's 3802 (#96) with nothing to catch it: a scalar column's OID is never
+/// written, so the error only surfaced once a JSON column was nested inside an array or composite.
+#[test]
+fn scalar_oids_match_pg_type() {
+    // (pgpq type, the `pg_type.typname` it maps to)
+    let expected: Vec<(PostgresType, &str)> = vec![
+        (PostgresType::Bool, "bool"),
+        (PostgresType::Bytea, "bytea"),
+        (PostgresType::Char, "char"),
+        (PostgresType::Int2, "int2"),
+        (PostgresType::Int4, "int4"),
+        (PostgresType::Int8, "int8"),
+        (PostgresType::Text, "text"),
+        (PostgresType::Float4, "float4"),
+        (PostgresType::Float8, "float8"),
+        (PostgresType::Numeric, "numeric"),
+        (PostgresType::Date, "date"),
+        (PostgresType::Time, "time"),
+        (PostgresType::Timestamp, "timestamp"),
+        (PostgresType::Interval, "interval"),
+        (PostgresType::Json, "json"),
+        (PostgresType::Jsonb, "jsonb"),
+    ];
+
+    let mut db = TestDb::start().expect("failed to start embedded postgres");
+    let client = db.client();
+    for (tp, typname) in expected {
+        let oid: u32 = client
+            .query_one(
+                "select oid from pg_type \
+                 where typname = $1 and typnamespace = 'pg_catalog'::regnamespace",
+                &[&typname],
+            )
+            .unwrap_or_else(|e| panic!("looking up {typname}: {e}"))
+            .get(0);
+        assert_eq!(tp.oid(), Some(oid), "oid for {tp:?} ({typname})");
+    }
+}
+
 #[test]
 fn array_oids_match_pg_type() {
     // (pgpq type, the `pg_type.typname` of the element type it maps to)
