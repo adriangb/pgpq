@@ -130,7 +130,7 @@ def test_roundtrip_float_special_values(dbconn: Connection) -> None:
     rows = roundtrip(table, dbconn)
 
     assert len(rows) == len(values)
-    for row, expected in zip(rows, values):
+    for row, expected in zip(rows, values, strict=True):
         for actual in row:
             assert _values_equal(expected, actual), f"{expected!r} != {actual!r}"
     # Spelled out so the assertion above cannot pass vacuously.
