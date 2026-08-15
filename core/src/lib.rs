@@ -167,14 +167,17 @@ impl ArrowToPostgresBinaryEncoder {
             .map(|(col, builder)| builder.try_new(col))
             .collect::<Result<Vec<_>, _>>()?;
 
-        let mut required_size: usize = 0;
+        // Every row is prefixed with the same column count; render it once.
+        let row_header = (n_cols as i16).to_be_bytes();
+
+        let mut required_size: usize = n_rows * row_header.len();
         for encoder in &encoders {
             required_size += encoder.byte_size_hint()?
         }
         buf.reserve(required_size);
 
         for row in 0..n_rows {
-            buf.put_i16(n_cols as i16);
+            encoders::put(buf, row_header);
             for encoder in &encoders {
                 encoder.encode(row, buf)?
             }

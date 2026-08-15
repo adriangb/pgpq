@@ -21,12 +21,12 @@ use arrow_array::{
     UInt16Array, UInt32Array, UInt64Array,
 };
 use arrow_schema::{DataType, Field, TimeUnit};
-use bytes::{BufMut, BytesMut};
+use bytes::BytesMut;
 
 use super::numeric::{
     encode_decimal_32, encode_decimal_64, encode_decimal_128, numeric_group_count_hint,
 };
-use super::{BuildEncoder, Encode, Encoder, downcast_checked};
+use super::{BuildEncoder, Encode, Encoder, downcast_checked, put};
 use crate::error::ErrorKind;
 use crate::pg_schema::{Column, PostgresType, TypeSize};
 
@@ -66,54 +66,90 @@ const fn type_size_fixed(size: TypeSize) -> usize {
 // Fixed size scalars
 // ---------------------------------------------------------------------------------------------
 
+/// A null field: the length prefix `-1` and nothing else.
+const NULL_FIELD: [u8; 4] = (-1i32).to_be_bytes();
+
+/// Assemble one wire field: the four byte length prefix followed by `payload`.
+///
+/// `N` is the size of the *whole* field, so it is always `P + 4` — the two cannot be spelled with
+/// one parameter until `generic_const_exprs` is stable, so the relation is asserted at
+/// monomorphisation time instead and a wrong `N` in an impl below is a compile error.
+#[inline(always)]
+const fn wire_field<const P: usize, const N: usize>(payload: [u8; P]) -> [u8; N] {
+    const {
+        assert!(
+            N == P + 4,
+            "a fixed size field is its payload plus a four byte length prefix"
+        )
+    };
+    let mut out = [0u8; N];
+    let len = (P as i32).to_be_bytes();
+    let mut i = 0;
+    while i < 4 {
+        out[i] = len[i];
+        i += 1;
+    }
+    while i < N {
+        out[i] = payload[i - 4];
+        i += 1;
+    }
+    out
+}
+
 /// How one Arrow type maps onto one fixed-width Postgres type.
 ///
 /// The wire encoding of every such column is the same — an `i32` byte count followed by that many
 /// bytes, or `-1` for a null — so a conversion only has to say *which* array it reads, *which*
-/// Postgres type the column is declared as (which also fixes the byte count, see
-/// [`FixedSizeEncoder::new`]) and how to serialise a single value.
-pub trait FixedSizeConversion: std::fmt::Debug + Clone + PartialEq + 'static {
+/// Postgres type the column is declared as and how to serialise a single value.
+///
+/// `N` is the encoded size of one non-null field, length prefix included; it is what lets
+/// [`FixedSizeEncoder`] hand a whole field to [`put`] in one call rather than writing the prefix
+/// and the payload separately. Splitting those two writes back apart costs ~50% on the taxi
+/// benchmark, which is why the conversion returns an array instead of taking the buffer.
+pub trait FixedSizeConversion<const N: usize>:
+    std::fmt::Debug + Clone + PartialEq + 'static
+{
     /// The Arrow array this conversion reads.
     type Array: ValueArray;
     /// Name reported when a builder is handed a field it cannot encode. Kept equal to the public
     /// builder alias so the error reads the way it did before these types were generic.
     const ENCODER_NAME: &'static str;
-    /// The Postgres type the column is declared as. Its [`PostgresType::size`] is the field's
-    /// byte count, which is why this trait needs no separate size.
+    /// The Postgres type the column is declared as. Its [`PostgresType::size`] is `N - 4`, which
+    /// [`FixedSizeEncoder::new`] asserts.
     const POSTGRES_TYPE: PostgresType;
     /// Whether a field of this Arrow type can be encoded by this conversion.
     fn accepts(data_type: &DataType) -> bool;
-    /// Write one non-null value, *without* the length prefix.
-    fn write(
-        value: <Self::Array as ValueArray>::Value,
-        buf: &mut BytesMut,
-    ) -> Result<(), ErrorKind>;
+    /// Serialise one non-null value as a complete field — use [`wire_field`] to put the length
+    /// prefix in front of the payload.
+    fn field(value: <Self::Array as ValueArray>::Value) -> Result<[u8; N], ErrorKind>;
 }
 
 /// Encoder for any [`FixedSizeConversion`].
 #[derive(Debug)]
-pub struct FixedSizeEncoder<'a, C: FixedSizeConversion> {
+pub struct FixedSizeEncoder<'a, const N: usize, C: FixedSizeConversion<N>> {
     arr: &'a C::Array,
-    /// `C::POSTGRES_TYPE.size()`, resolved once per batch rather than once per row.
-    field_size: usize,
 }
 
-impl<'a, C: FixedSizeConversion> FixedSizeEncoder<'a, C> {
+impl<'a, const N: usize, C: FixedSizeConversion<N>> FixedSizeEncoder<'a, N, C> {
     pub(super) fn new(arr: &'a C::Array) -> Self {
-        Self {
-            arr,
-            field_size: type_size_fixed(C::POSTGRES_TYPE.size()),
-        }
+        // Not a `const` assertion only because materialising `C::POSTGRES_TYPE` in a const block
+        // would have to drop it, and `PostgresType` is not `Copy`. This runs once per column per
+        // batch in debug builds, so every test exercises it.
+        debug_assert_eq!(
+            N,
+            4 + type_size_fixed(C::POSTGRES_TYPE.size()),
+            "the encoded field size and the declared Postgres type disagree"
+        );
+        Self { arr }
     }
 }
 
-impl<C: FixedSizeConversion> Encode for FixedSizeEncoder<'_, C> {
+impl<const N: usize, C: FixedSizeConversion<N>> Encode for FixedSizeEncoder<'_, N, C> {
     fn encode(&self, row: usize, buf: &mut BytesMut) -> Result<(), ErrorKind> {
         if self.arr.is_null(row) {
-            buf.put_i32(-1);
+            put(buf, NULL_FIELD);
         } else {
-            buf.put_i32(self.field_size as i32);
-            C::write(self.arr.value_at(row), buf)?;
+            put(buf, C::field(self.arr.value_at(row))?);
         }
         Ok(())
     }
@@ -121,18 +157,18 @@ impl<C: FixedSizeConversion> Encode for FixedSizeEncoder<'_, C> {
     fn byte_size_hint(&self) -> Result<usize, ErrorKind> {
         let item_count = self.arr.len();
         let null_count = self.arr.null_count();
-        Ok((item_count - null_count) * self.field_size + item_count)
+        Ok((item_count - null_count) * N + null_count * NULL_FIELD.len())
     }
 }
 
 /// Builder for any [`FixedSizeConversion`].
 #[derive(Debug, Clone, PartialEq)]
-pub struct FixedSizeEncoderBuilder<C: FixedSizeConversion> {
+pub struct FixedSizeEncoderBuilder<const N: usize, C: FixedSizeConversion<N>> {
     field: Arc<Field>,
     conversion: PhantomData<C>,
 }
 
-impl<C: FixedSizeConversion> FixedSizeEncoderBuilder<C> {
+impl<const N: usize, C: FixedSizeConversion<N>> FixedSizeEncoderBuilder<N, C> {
     pub fn new(field: Arc<Field>) -> Result<Self, ErrorKind> {
         if !C::accepts(field.data_type()) {
             return Err(ErrorKind::FieldTypeNotSupported {
@@ -153,15 +189,15 @@ impl<C: FixedSizeConversion> FixedSizeEncoderBuilder<C> {
     }
 }
 
-impl<C> BuildEncoder for FixedSizeEncoderBuilder<C>
+impl<const N: usize, C> BuildEncoder for FixedSizeEncoderBuilder<N, C>
 where
-    C: FixedSizeConversion,
+    C: FixedSizeConversion<N>,
     // Satisfied by the `From` impls `enum_dispatch` derives for every `Encoder` variant; the
     // bound is what lets one generic builder produce the right variant without a per-type match.
-    for<'a> FixedSizeEncoder<'a, C>: Into<Encoder<'a>>,
+    for<'a> FixedSizeEncoder<'a, N, C>: Into<Encoder<'a>>,
 {
     fn try_new<'a, 'b: 'a>(&'b self, arr: &'a dyn Array) -> Result<Encoder<'a>, ErrorKind> {
-        Ok(FixedSizeEncoder::<C>::new(downcast_checked(arr, self.field.name())?).into())
+        Ok(FixedSizeEncoder::<N, C>::new(downcast_checked(arr, self.field.name())?).into())
     }
 
     fn schema(&self) -> Column {
@@ -213,7 +249,7 @@ impl<'a, C: NumericConversion> NumericEncoder<'a, C> {
 impl<C: NumericConversion> Encode for NumericEncoder<'_, C> {
     fn encode(&self, row: usize, buf: &mut BytesMut) -> Result<(), ErrorKind> {
         if self.arr.is_null(row) {
-            buf.put_i32(-1);
+            put(buf, (-1i32).to_be_bytes());
         } else {
             C::write(self.arr, row, buf);
         }
@@ -221,7 +257,10 @@ impl<C: NumericConversion> Encode for NumericEncoder<'_, C> {
     }
 
     fn byte_size_hint(&self) -> Result<usize, ErrorKind> {
-        Ok(self.arr.len() * (8 + 2 * C::max_digit_groups(self.arr)))
+        // `encode_decimal_*` writes the four byte field length in front of the eight byte NUMERIC
+        // header and the digit groups, so a whole field is `12 + 2 * groups`. Charging every row
+        // for one keeps this exact-or-over: a null row only costs its length prefix.
+        Ok(self.arr.len() * (12 + 2 * C::max_digit_groups(self.arr)))
     }
 }
 
@@ -324,7 +363,7 @@ impl Int8EncoderBuilder {
 
 impl BuildEncoder for Int8EncoderBuilder {
     fn try_new<'a, 'b: 'a>(&'b self, arr: &'a dyn Array) -> Result<Encoder<'a>, ErrorKind> {
-        Ok(Encoder::Int8(FixedSizeEncoder::<Int8Conversion>::new(
+        Ok(Encoder::Int8(FixedSizeEncoder::<6, Int8Conversion>::new(
             downcast_checked(arr, self.field.name())?,
         )))
     }
@@ -344,20 +383,22 @@ impl BuildEncoder for Int8EncoderBuilder {
 
 // ---------------------------------------------------------------------------------------------
 // The conversion table
+//
+// The `N` on every impl is the encoded size of one field: the Postgres type's width plus the four
+// byte length prefix. `FixedSizeEncoder::new` refuses to compile if the two disagree.
 // ---------------------------------------------------------------------------------------------
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct BooleanConversion;
-impl FixedSizeConversion for BooleanConversion {
+impl FixedSizeConversion<5> for BooleanConversion {
     type Array = BooleanArray;
     const ENCODER_NAME: &'static str = "BooleanEncoderBuilder";
     const POSTGRES_TYPE: PostgresType = PostgresType::Bool;
     fn accepts(data_type: &DataType) -> bool {
         matches!(data_type, DataType::Boolean)
     }
-    fn write(value: bool, buf: &mut BytesMut) -> Result<(), ErrorKind> {
-        buf.put_u8(u8::from(value));
-        Ok(())
+    fn field(value: bool) -> Result<[u8; 5], ErrorKind> {
+        Ok(wire_field([u8::from(value)]))
     }
 }
 
@@ -365,106 +406,99 @@ impl FixedSizeConversion for BooleanConversion {
 /// signed type that can hold it. `UInt64` has no such type and becomes a `NUMERIC`.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct UInt8Conversion;
-impl FixedSizeConversion for UInt8Conversion {
+impl FixedSizeConversion<6> for UInt8Conversion {
     type Array = UInt8Array;
     const ENCODER_NAME: &'static str = "UInt8EncoderBuilder";
     const POSTGRES_TYPE: PostgresType = PostgresType::Int2;
     fn accepts(data_type: &DataType) -> bool {
         matches!(data_type, DataType::UInt8)
     }
-    fn write(value: u8, buf: &mut BytesMut) -> Result<(), ErrorKind> {
-        buf.put_i16(i16::from(value));
-        Ok(())
+    fn field(value: u8) -> Result<[u8; 6], ErrorKind> {
+        Ok(wire_field(i16::from(value).to_be_bytes()))
     }
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct UInt16Conversion;
-impl FixedSizeConversion for UInt16Conversion {
+impl FixedSizeConversion<8> for UInt16Conversion {
     type Array = UInt16Array;
     const ENCODER_NAME: &'static str = "UInt16EncoderBuilder";
     const POSTGRES_TYPE: PostgresType = PostgresType::Int4;
     fn accepts(data_type: &DataType) -> bool {
         matches!(data_type, DataType::UInt16)
     }
-    fn write(value: u16, buf: &mut BytesMut) -> Result<(), ErrorKind> {
-        buf.put_i32(i32::from(value));
-        Ok(())
+    fn field(value: u16) -> Result<[u8; 8], ErrorKind> {
+        Ok(wire_field(i32::from(value).to_be_bytes()))
     }
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct UInt32Conversion;
-impl FixedSizeConversion for UInt32Conversion {
+impl FixedSizeConversion<12> for UInt32Conversion {
     type Array = UInt32Array;
     const ENCODER_NAME: &'static str = "UInt32EncoderBuilder";
     const POSTGRES_TYPE: PostgresType = PostgresType::Int8;
     fn accepts(data_type: &DataType) -> bool {
         matches!(data_type, DataType::UInt32)
     }
-    fn write(value: u32, buf: &mut BytesMut) -> Result<(), ErrorKind> {
-        buf.put_i64(i64::from(value));
-        Ok(())
+    fn field(value: u32) -> Result<[u8; 12], ErrorKind> {
+        Ok(wire_field(i64::from(value).to_be_bytes()))
     }
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct Int8Conversion;
-impl FixedSizeConversion for Int8Conversion {
+impl FixedSizeConversion<6> for Int8Conversion {
     type Array = Int8Array;
     const ENCODER_NAME: &'static str = "Int8EncoderBuilder";
     const POSTGRES_TYPE: PostgresType = PostgresType::Int2;
     fn accepts(data_type: &DataType) -> bool {
         matches!(data_type, DataType::Int8)
     }
-    fn write(value: i8, buf: &mut BytesMut) -> Result<(), ErrorKind> {
-        buf.put_i16(i16::from(value));
-        Ok(())
+    fn field(value: i8) -> Result<[u8; 6], ErrorKind> {
+        Ok(wire_field(i16::from(value).to_be_bytes()))
     }
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct Int16Conversion;
-impl FixedSizeConversion for Int16Conversion {
+impl FixedSizeConversion<6> for Int16Conversion {
     type Array = Int16Array;
     const ENCODER_NAME: &'static str = "Int16EncoderBuilder";
     const POSTGRES_TYPE: PostgresType = PostgresType::Int2;
     fn accepts(data_type: &DataType) -> bool {
         matches!(data_type, DataType::Int16)
     }
-    fn write(value: i16, buf: &mut BytesMut) -> Result<(), ErrorKind> {
-        buf.put_i16(value);
-        Ok(())
+    fn field(value: i16) -> Result<[u8; 6], ErrorKind> {
+        Ok(wire_field(value.to_be_bytes()))
     }
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct Int32Conversion;
-impl FixedSizeConversion for Int32Conversion {
+impl FixedSizeConversion<8> for Int32Conversion {
     type Array = Int32Array;
     const ENCODER_NAME: &'static str = "Int32EncoderBuilder";
     const POSTGRES_TYPE: PostgresType = PostgresType::Int4;
     fn accepts(data_type: &DataType) -> bool {
         matches!(data_type, DataType::Int32)
     }
-    fn write(value: i32, buf: &mut BytesMut) -> Result<(), ErrorKind> {
-        buf.put_i32(value);
-        Ok(())
+    fn field(value: i32) -> Result<[u8; 8], ErrorKind> {
+        Ok(wire_field(value.to_be_bytes()))
     }
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct Int64Conversion;
-impl FixedSizeConversion for Int64Conversion {
+impl FixedSizeConversion<12> for Int64Conversion {
     type Array = Int64Array;
     const ENCODER_NAME: &'static str = "Int64EncoderBuilder";
     const POSTGRES_TYPE: PostgresType = PostgresType::Int8;
     fn accepts(data_type: &DataType) -> bool {
         matches!(data_type, DataType::Int64)
     }
-    fn write(value: i64, buf: &mut BytesMut) -> Result<(), ErrorKind> {
-        buf.put_i64(value);
-        Ok(())
+    fn field(value: i64) -> Result<[u8; 12], ErrorKind> {
+        Ok(wire_field(value.to_be_bytes()))
     }
 }
 
@@ -472,49 +506,43 @@ impl FixedSizeConversion for Int64Conversion {
 /// exactly.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct Float16Conversion;
-impl FixedSizeConversion for Float16Conversion {
+impl FixedSizeConversion<8> for Float16Conversion {
     type Array = Float16Array;
     const ENCODER_NAME: &'static str = "Float16EncoderBuilder";
     const POSTGRES_TYPE: PostgresType = PostgresType::Float4;
     fn accepts(data_type: &DataType) -> bool {
         matches!(data_type, DataType::Float16)
     }
-    fn write(
-        value: <Float16Array as ValueArray>::Value,
-        buf: &mut BytesMut,
-    ) -> Result<(), ErrorKind> {
-        buf.put_f32(f32::from(value));
-        Ok(())
+    fn field(value: <Float16Array as ValueArray>::Value) -> Result<[u8; 8], ErrorKind> {
+        Ok(wire_field(f32::from(value).to_be_bytes()))
     }
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct Float32Conversion;
-impl FixedSizeConversion for Float32Conversion {
+impl FixedSizeConversion<8> for Float32Conversion {
     type Array = Float32Array;
     const ENCODER_NAME: &'static str = "Float32EncoderBuilder";
     const POSTGRES_TYPE: PostgresType = PostgresType::Float4;
     fn accepts(data_type: &DataType) -> bool {
         matches!(data_type, DataType::Float32)
     }
-    fn write(value: f32, buf: &mut BytesMut) -> Result<(), ErrorKind> {
-        buf.put_f32(value);
-        Ok(())
+    fn field(value: f32) -> Result<[u8; 8], ErrorKind> {
+        Ok(wire_field(value.to_be_bytes()))
     }
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct Float64Conversion;
-impl FixedSizeConversion for Float64Conversion {
+impl FixedSizeConversion<12> for Float64Conversion {
     type Array = Float64Array;
     const ENCODER_NAME: &'static str = "Float64EncoderBuilder";
     const POSTGRES_TYPE: PostgresType = PostgresType::Float8;
     fn accepts(data_type: &DataType) -> bool {
         matches!(data_type, DataType::Float64)
     }
-    fn write(value: f64, buf: &mut BytesMut) -> Result<(), ErrorKind> {
-        buf.put_f64(value);
-        Ok(())
+    fn field(value: f64) -> Result<[u8; 12], ErrorKind> {
+        Ok(wire_field(value.to_be_bytes()))
     }
 }
 
@@ -527,54 +555,52 @@ const PG_BASE_TIMESTAMP_OFFSET_S: i64 = 946_684_800;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct TimestampMicrosecondConversion;
-impl FixedSizeConversion for TimestampMicrosecondConversion {
+impl FixedSizeConversion<12> for TimestampMicrosecondConversion {
     type Array = TimestampMicrosecondArray;
     const ENCODER_NAME: &'static str = "TimestampMicrosecondEncoderBuilder";
     const POSTGRES_TYPE: PostgresType = PostgresType::Timestamp;
     fn accepts(data_type: &DataType) -> bool {
         matches!(data_type, DataType::Timestamp(TimeUnit::Microsecond, _))
     }
-    fn write(value: i64, buf: &mut BytesMut) -> Result<(), ErrorKind> {
+    fn field(value: i64) -> Result<[u8; 12], ErrorKind> {
         // Rebase from microseconds since 1970-01-01 to microseconds since 2000-01-01.
         let value = value.checked_sub(PG_BASE_TIMESTAMP_OFFSET_US).ok_or_else(|| ErrorKind::Encode {
             reason: "Underflow converting microseconds since 1970-01-01 (Arrow) to microseconds since 2000-01-01 (Postgres)".to_string(),
         })?;
-        buf.put_i64(value);
-        Ok(())
+        Ok(wire_field(value.to_be_bytes()))
     }
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct TimestampMillisecondConversion;
-impl FixedSizeConversion for TimestampMillisecondConversion {
+impl FixedSizeConversion<12> for TimestampMillisecondConversion {
     type Array = TimestampMillisecondArray;
     const ENCODER_NAME: &'static str = "TimestampMillisecondEncoderBuilder";
     const POSTGRES_TYPE: PostgresType = PostgresType::Timestamp;
     fn accepts(data_type: &DataType) -> bool {
         matches!(data_type, DataType::Timestamp(TimeUnit::Millisecond, _))
     }
-    fn write(value: i64, buf: &mut BytesMut) -> Result<(), ErrorKind> {
+    fn field(value: i64) -> Result<[u8; 12], ErrorKind> {
         let value = value.checked_sub(PG_BASE_TIMESTAMP_OFFSET_MS).ok_or_else(|| ErrorKind::Encode {
             reason: "Underflow converting milliseconds since 1970-01-01 (Arrow) to microseconds since 2000-01-01 (Postgres)".to_string(),
         })?;
         let value = value.checked_mul(1_000).ok_or_else(|| ErrorKind::Encode {
             reason: "Overflow converting milliseconds to microseconds".to_string(),
         })?;
-        buf.put_i64(value);
-        Ok(())
+        Ok(wire_field(value.to_be_bytes()))
     }
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct TimestampSecondConversion;
-impl FixedSizeConversion for TimestampSecondConversion {
+impl FixedSizeConversion<12> for TimestampSecondConversion {
     type Array = TimestampSecondArray;
     const ENCODER_NAME: &'static str = "TimestampSecondEncoderBuilder";
     const POSTGRES_TYPE: PostgresType = PostgresType::Timestamp;
     fn accepts(data_type: &DataType) -> bool {
         matches!(data_type, DataType::Timestamp(TimeUnit::Second, _))
     }
-    fn write(value: i64, buf: &mut BytesMut) -> Result<(), ErrorKind> {
+    fn field(value: i64) -> Result<[u8; 12], ErrorKind> {
         let value = value.checked_sub(PG_BASE_TIMESTAMP_OFFSET_S).ok_or_else(|| ErrorKind::Encode {
             reason: "Underflow converting seconds since 1970-01-01 (Arrow) to microseconds since 2000-01-01 (Postgres)".to_string(),
         })?;
@@ -583,8 +609,7 @@ impl FixedSizeConversion for TimestampSecondConversion {
             .ok_or_else(|| ErrorKind::Encode {
                 reason: "Overflow converting seconds to microseconds".to_string(),
             })?;
-        buf.put_i64(value);
-        Ok(())
+        Ok(wire_field(value.to_be_bytes()))
     }
 }
 
@@ -593,74 +618,70 @@ const PG_BASE_DATE_OFFSET: i32 = 10_957;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct Date32Conversion;
-impl FixedSizeConversion for Date32Conversion {
+impl FixedSizeConversion<8> for Date32Conversion {
     type Array = Date32Array;
     const ENCODER_NAME: &'static str = "Date32EncoderBuilder";
     const POSTGRES_TYPE: PostgresType = PostgresType::Date;
     fn accepts(data_type: &DataType) -> bool {
         matches!(data_type, DataType::Date32)
     }
-    fn write(value: i32, buf: &mut BytesMut) -> Result<(), ErrorKind> {
+    fn field(value: i32) -> Result<[u8; 8], ErrorKind> {
         let value = value.checked_sub(PG_BASE_DATE_OFFSET).ok_or_else(|| ErrorKind::Encode {
             reason: "Underflow converting days since 1970-01-01 (Arrow) to days since 2000-01-01 (Postgres)".to_string(),
         })?;
-        buf.put_i32(value);
-        Ok(())
+        Ok(wire_field(value.to_be_bytes()))
     }
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct Time32MillisecondConversion;
-impl FixedSizeConversion for Time32MillisecondConversion {
+impl FixedSizeConversion<12> for Time32MillisecondConversion {
     type Array = Time32MillisecondArray;
     const ENCODER_NAME: &'static str = "Time32MillisecondEncoderBuilder";
     const POSTGRES_TYPE: PostgresType = PostgresType::Time;
     fn accepts(data_type: &DataType) -> bool {
         matches!(data_type, DataType::Time32(TimeUnit::Millisecond))
     }
-    fn write(value: i32, buf: &mut BytesMut) -> Result<(), ErrorKind> {
+    fn field(value: i32) -> Result<[u8; 12], ErrorKind> {
         let value = (value as i64)
             .checked_mul(NUM_US_PER_MS)
             .ok_or_else(|| ErrorKind::Encode {
                 reason: "Overflow converting milliseconds to microseconds".to_string(),
             })?;
-        buf.put_i64(value);
-        Ok(())
+        Ok(wire_field(value.to_be_bytes()))
     }
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct Time32SecondConversion;
-impl FixedSizeConversion for Time32SecondConversion {
+impl FixedSizeConversion<12> for Time32SecondConversion {
     type Array = Time32SecondArray;
     const ENCODER_NAME: &'static str = "Time32SecondEncoderBuilder";
     const POSTGRES_TYPE: PostgresType = PostgresType::Time;
     fn accepts(data_type: &DataType) -> bool {
         matches!(data_type, DataType::Time32(TimeUnit::Second))
     }
-    fn write(value: i32, buf: &mut BytesMut) -> Result<(), ErrorKind> {
+    fn field(value: i32) -> Result<[u8; 12], ErrorKind> {
         let value = (value as i64)
             .checked_mul(NUM_US_PER_S)
             .ok_or_else(|| ErrorKind::Encode {
                 reason: "Overflow converting seconds to microseconds".to_string(),
             })?;
-        buf.put_i64(value);
-        Ok(())
+        Ok(wire_field(value.to_be_bytes()))
     }
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct Time64MicrosecondConversion;
-impl FixedSizeConversion for Time64MicrosecondConversion {
+impl FixedSizeConversion<12> for Time64MicrosecondConversion {
     type Array = Time64MicrosecondArray;
     const ENCODER_NAME: &'static str = "Time64MicrosecondEncoderBuilder";
     const POSTGRES_TYPE: PostgresType = PostgresType::Time;
     fn accepts(data_type: &DataType) -> bool {
         matches!(data_type, DataType::Time64(TimeUnit::Microsecond))
     }
-    fn write(value: i64, buf: &mut BytesMut) -> Result<(), ErrorKind> {
-        buf.put_i64(value);
-        Ok(())
+    fn field(value: i64) -> Result<[u8; 12], ErrorKind> {
+        Ok(wire_field(value.to_be_bytes()))
     }
 }
 
@@ -668,68 +689,70 @@ const NUM_US_PER_MS: i64 = 1_000;
 const NUM_US_PER_S: i64 = 1_000_000;
 
 /// Postgres' `interval`: microseconds, then days, then months. pgpq only ever emits the
-/// microsecond component, so an Arrow duration never turns into a calendar-aware interval.
+/// microsecond component, so an Arrow duration never turns into a calendar-aware interval and the
+/// trailing eight bytes are always zero.
 #[inline]
-fn write_duration(duration_us: i64, buf: &mut BytesMut) {
-    buf.put_i64(duration_us);
-    buf.put_i32(0); // days
-    buf.put_i32(0); // months
+fn duration_payload(duration_us: i64) -> [u8; 16] {
+    let mut interval = [0u8; 16];
+    interval[..8].copy_from_slice(&duration_us.to_be_bytes());
+    interval
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct DurationMicrosecondConversion;
-impl FixedSizeConversion for DurationMicrosecondConversion {
+impl FixedSizeConversion<20> for DurationMicrosecondConversion {
     type Array = DurationMicrosecondArray;
     const ENCODER_NAME: &'static str = "DurationMicrosecondEncoderBuilder";
     const POSTGRES_TYPE: PostgresType = PostgresType::Interval;
     fn accepts(data_type: &DataType) -> bool {
         matches!(data_type, DataType::Duration(TimeUnit::Microsecond))
     }
-    fn write(value: i64, buf: &mut BytesMut) -> Result<(), ErrorKind> {
-        write_duration(value, buf);
-        Ok(())
+    fn field(value: i64) -> Result<[u8; 20], ErrorKind> {
+        Ok(wire_field(duration_payload(value)))
     }
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct DurationMillisecondConversion;
-impl FixedSizeConversion for DurationMillisecondConversion {
+impl FixedSizeConversion<20> for DurationMillisecondConversion {
     type Array = DurationMillisecondArray;
     const ENCODER_NAME: &'static str = "DurationMillisecondEncoderBuilder";
     const POSTGRES_TYPE: PostgresType = PostgresType::Interval;
     fn accepts(data_type: &DataType) -> bool {
         matches!(data_type, DataType::Duration(TimeUnit::Millisecond))
     }
-    fn write(value: i64, buf: &mut BytesMut) -> Result<(), ErrorKind> {
+    fn field(value: i64) -> Result<[u8; 20], ErrorKind> {
         let value = value
             .mul_checked(NUM_US_PER_MS)
             .map_err(|_| ErrorKind::Encode {
                 reason: "Overflow encoding millisecond duration as microseconds".to_string(),
             })?;
-        write_duration(value, buf);
-        Ok(())
+        Ok(wire_field(duration_payload(value)))
     }
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct DurationSecondConversion;
-impl FixedSizeConversion for DurationSecondConversion {
+impl FixedSizeConversion<20> for DurationSecondConversion {
     type Array = DurationSecondArray;
     const ENCODER_NAME: &'static str = "DurationSecondEncoderBuilder";
     const POSTGRES_TYPE: PostgresType = PostgresType::Interval;
     fn accepts(data_type: &DataType) -> bool {
         matches!(data_type, DataType::Duration(TimeUnit::Second))
     }
-    fn write(value: i64, buf: &mut BytesMut) -> Result<(), ErrorKind> {
+    fn field(value: i64) -> Result<[u8; 20], ErrorKind> {
         let value = value
             .mul_checked(NUM_US_PER_S)
             .map_err(|_| ErrorKind::Encode {
                 reason: "Overflow encoding seconds duration as microseconds".to_string(),
             })?;
-        write_duration(value, buf);
-        Ok(())
+        Ok(wire_field(duration_payload(value)))
     }
 }
+
+// ---------------------------------------------------------------------------------------------
+// The NUMERIC conversions
+// ---------------------------------------------------------------------------------------------
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct Decimal32Conversion;
