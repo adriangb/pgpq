@@ -8,6 +8,8 @@ from pgpq._pgpq import (
     DurationMicrosecondEncoderBuilder,
     DurationMillisecondEncoderBuilder,
     DurationSecondEncoderBuilder,
+    FixedSizeBinaryEncoderBuilder,
+    FixedSizeListEncoderBuilder,
     Float16EncoderBuilder,
     Float32EncoderBuilder,
     Float64EncoderBuilder,
@@ -64,6 +66,8 @@ __all__ = (
     "StringViewEncoderBuilder",
     "BinaryEncoderBuilder",
     "LargeBinaryEncoderBuilder",
+    "FixedSizeBinaryEncoderBuilder",
     "ListEncoderBuilder",
     "LargeListEncoderBuilder",
+    "FixedSizeListEncoderBuilder",
 )

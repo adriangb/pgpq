@@ -204,6 +204,9 @@ class BinaryEncoderBuilder:
 class LargeBinaryEncoderBuilder:
     def __init__(self, field: pyarrow.Field) -> None: ...
 
+class FixedSizeBinaryEncoderBuilder:
+    def __init__(self, field: pyarrow.Field) -> None: ...
+
 class ListEncoderBuilder:
     def __init__(self, field: pyarrow.Field) -> None: ...
     @classmethod
@@ -217,6 +220,13 @@ class LargeListEncoderBuilder:
     def new_with_inner(
         cls, field: pyarrow.Field, inner_encoder_builder: EncoderBuilder
     ) -> LargeListEncoderBuilder: ...
+
+class FixedSizeListEncoderBuilder:
+    def __init__(self, field: pyarrow.Field) -> None: ...
+    @classmethod
+    def new_with_inner(
+        cls, field: pyarrow.Field, inner_encoder_builder: EncoderBuilder
+    ) -> FixedSizeListEncoderBuilder: ...
 
 EncoderBuilder = (
     BooleanEncoderBuilder
@@ -249,6 +259,8 @@ EncoderBuilder = (
     | StringViewEncoderBuilder
     | BinaryEncoderBuilder
     | LargeBinaryEncoderBuilder
+    | FixedSizeBinaryEncoderBuilder
     | ListEncoderBuilder
     | LargeListEncoderBuilder
+    | FixedSizeListEncoderBuilder
 )

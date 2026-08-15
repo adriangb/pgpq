@@ -67,8 +67,41 @@ impl PostgresType {
             PostgresType::Time => Some(1083),
             PostgresType::Timestamp => Some(1114),
             PostgresType::Interval => Some(1186),
-            PostgresType::List(_) => None,
+            PostgresType::List(inner) => inner.data_type.array_oid(),
             PostgresType::UserDefined { .. } => Some(16385), // arbitrary dummy oid
+        }
+    }
+    /// The OID of the Postgres array type whose *element* type is `self` (`_int4` for `int4`, …).
+    ///
+    /// Postgres validates these: `record_recv` rejects a composite field whose declared OID names
+    /// a different type than the column, and `array_recv` does the same for an array's element
+    /// OID. (It only lets an OID through when the OID is unknown to the receiving server, which is
+    /// why the dummy OID used for composites has been getting away with it.)
+    ///
+    /// Only built-in types have a stable, well-known array OID. A composite type's array type is
+    /// created together with the type itself and its OID is therefore only known to the server, so
+    /// nested cases — an array of composites, or an array of arrays, neither of which Postgres has
+    /// a distinct type for anyway — return `None` and the caller reports the type as unsupported.
+    pub fn array_oid(&self) -> Option<u32> {
+        match &self {
+            PostgresType::Bool => Some(1000),      // _bool
+            PostgresType::Bytea => Some(1001),     // _bytea
+            PostgresType::Char => Some(1002),      // _char
+            PostgresType::Int2 => Some(1005),      // _int2
+            PostgresType::Int4 => Some(1007),      // _int4
+            PostgresType::Text => Some(1009),      // _text
+            PostgresType::Int8 => Some(1016),      // _int8
+            PostgresType::Float4 => Some(1021),    // _float4
+            PostgresType::Float8 => Some(1022),    // _float8
+            PostgresType::Timestamp => Some(1115), // _timestamp
+            PostgresType::Date => Some(1182),      // _date
+            PostgresType::Time => Some(1183),      // _time
+            PostgresType::Interval => Some(1187),  // _interval
+            PostgresType::Numeric => Some(1231),   // _numeric
+            PostgresType::Json => Some(199),       // _json
+            PostgresType::Jsonb => Some(3807),     // _jsonb
+            PostgresType::List(_) => None,
+            PostgresType::UserDefined { .. } => None,
         }
     }
     pub fn name(&self) -> Option<String> {

@@ -7,6 +7,7 @@ use std::path::PathBuf;
 
 use bytes::BytesMut;
 use console::Style;
+use pgpq::pg_schema::{Column, PostgresType};
 use pgpq::ArrowToPostgresBinaryEncoder;
 use similar::{ChangeTag, TextDiff};
 
@@ -190,6 +191,11 @@ fn test_large_binary() {
 }
 
 #[test]
+fn test_fixed_size_binary() {
+    run_test_case("fixed_size_binary")
+}
+
+#[test]
 fn test_string() {
     run_test_case("string")
 }
@@ -347,6 +353,11 @@ fn test_binary_nullable() {
 #[test]
 fn test_large_binary_nullable() {
     run_test_case("large_binary_nullable")
+}
+
+#[test]
+fn test_fixed_size_binary_nullable() {
+    run_test_case("fixed_size_binary_nullable")
 }
 
 #[test]
@@ -510,6 +521,11 @@ fn test_list_large_binary() {
 }
 
 #[test]
+fn test_list_fixed_size_binary() {
+    run_test_case("list_fixed_size_binary")
+}
+
+#[test]
 fn test_list_string() {
     run_test_case("list_string")
 }
@@ -667,6 +683,11 @@ fn test_list_binary_nullable() {
 #[test]
 fn test_list_large_binary_nullable() {
     run_test_case("list_large_binary_nullable")
+}
+
+#[test]
+fn test_list_fixed_size_binary_nullable() {
+    run_test_case("list_fixed_size_binary_nullable")
 }
 
 #[test]
@@ -830,6 +851,11 @@ fn test_list_nullable_large_binary() {
 }
 
 #[test]
+fn test_list_nullable_fixed_size_binary() {
+    run_test_case("list_nullable_fixed_size_binary")
+}
+
+#[test]
 fn test_list_nullable_string() {
     run_test_case("list_nullable_string")
 }
@@ -990,6 +1016,11 @@ fn test_list_nullable_large_binary_nullable() {
 }
 
 #[test]
+fn test_list_nullable_fixed_size_binary_nullable() {
+    run_test_case("list_nullable_fixed_size_binary_nullable")
+}
+
+#[test]
 fn test_list_nullable_string_nullable() {
     run_test_case("list_nullable_string_nullable")
 }
@@ -1005,6 +1036,186 @@ fn test_list_nullable_string_view_nullable() {
 }
 
 #[test]
+fn test_fixed_size_list_bool() {
+    run_test_case("fixed_size_list_bool")
+}
+
+#[test]
+fn test_fixed_size_list_int32() {
+    run_test_case("fixed_size_list_int32")
+}
+
+#[test]
+fn test_fixed_size_list_int64() {
+    run_test_case("fixed_size_list_int64")
+}
+
+#[test]
+fn test_fixed_size_list_float64() {
+    run_test_case("fixed_size_list_float64")
+}
+
+#[test]
+fn test_fixed_size_list_decimal128() {
+    run_test_case("fixed_size_list_decimal128")
+}
+
+#[test]
+fn test_fixed_size_list_timestamp_us_notz() {
+    run_test_case("fixed_size_list_timestamp_us_notz")
+}
+
+#[test]
+fn test_fixed_size_list_binary() {
+    run_test_case("fixed_size_list_binary")
+}
+
+#[test]
+fn test_fixed_size_list_fixed_size_binary() {
+    run_test_case("fixed_size_list_fixed_size_binary")
+}
+
+#[test]
+fn test_fixed_size_list_string() {
+    run_test_case("fixed_size_list_string")
+}
+
+#[test]
+fn test_fixed_size_list_bool_nullable() {
+    run_test_case("fixed_size_list_bool_nullable")
+}
+
+#[test]
+fn test_fixed_size_list_int32_nullable() {
+    run_test_case("fixed_size_list_int32_nullable")
+}
+
+#[test]
+fn test_fixed_size_list_int64_nullable() {
+    run_test_case("fixed_size_list_int64_nullable")
+}
+
+#[test]
+fn test_fixed_size_list_float64_nullable() {
+    run_test_case("fixed_size_list_float64_nullable")
+}
+
+#[test]
+fn test_fixed_size_list_decimal128_nullable() {
+    run_test_case("fixed_size_list_decimal128_nullable")
+}
+
+#[test]
+fn test_fixed_size_list_timestamp_us_notz_nullable() {
+    run_test_case("fixed_size_list_timestamp_us_notz_nullable")
+}
+
+#[test]
+fn test_fixed_size_list_binary_nullable() {
+    run_test_case("fixed_size_list_binary_nullable")
+}
+
+#[test]
+fn test_fixed_size_list_fixed_size_binary_nullable() {
+    run_test_case("fixed_size_list_fixed_size_binary_nullable")
+}
+
+#[test]
+fn test_fixed_size_list_string_nullable() {
+    run_test_case("fixed_size_list_string_nullable")
+}
+
+#[test]
+fn test_fixed_size_list_nullable_bool() {
+    run_test_case("fixed_size_list_nullable_bool")
+}
+
+#[test]
+fn test_fixed_size_list_nullable_int32() {
+    run_test_case("fixed_size_list_nullable_int32")
+}
+
+#[test]
+fn test_fixed_size_list_nullable_int64() {
+    run_test_case("fixed_size_list_nullable_int64")
+}
+
+#[test]
+fn test_fixed_size_list_nullable_float64() {
+    run_test_case("fixed_size_list_nullable_float64")
+}
+
+#[test]
+fn test_fixed_size_list_nullable_decimal128() {
+    run_test_case("fixed_size_list_nullable_decimal128")
+}
+
+#[test]
+fn test_fixed_size_list_nullable_timestamp_us_notz() {
+    run_test_case("fixed_size_list_nullable_timestamp_us_notz")
+}
+
+#[test]
+fn test_fixed_size_list_nullable_binary() {
+    run_test_case("fixed_size_list_nullable_binary")
+}
+
+#[test]
+fn test_fixed_size_list_nullable_fixed_size_binary() {
+    run_test_case("fixed_size_list_nullable_fixed_size_binary")
+}
+
+#[test]
+fn test_fixed_size_list_nullable_string() {
+    run_test_case("fixed_size_list_nullable_string")
+}
+
+#[test]
+fn test_fixed_size_list_nullable_bool_nullable() {
+    run_test_case("fixed_size_list_nullable_bool_nullable")
+}
+
+#[test]
+fn test_fixed_size_list_nullable_int32_nullable() {
+    run_test_case("fixed_size_list_nullable_int32_nullable")
+}
+
+#[test]
+fn test_fixed_size_list_nullable_int64_nullable() {
+    run_test_case("fixed_size_list_nullable_int64_nullable")
+}
+
+#[test]
+fn test_fixed_size_list_nullable_float64_nullable() {
+    run_test_case("fixed_size_list_nullable_float64_nullable")
+}
+
+#[test]
+fn test_fixed_size_list_nullable_decimal128_nullable() {
+    run_test_case("fixed_size_list_nullable_decimal128_nullable")
+}
+
+#[test]
+fn test_fixed_size_list_nullable_timestamp_us_notz_nullable() {
+    run_test_case("fixed_size_list_nullable_timestamp_us_notz_nullable")
+}
+
+#[test]
+fn test_fixed_size_list_nullable_binary_nullable() {
+    run_test_case("fixed_size_list_nullable_binary_nullable")
+}
+
+#[test]
+fn test_fixed_size_list_nullable_fixed_size_binary_nullable() {
+    run_test_case("fixed_size_list_nullable_fixed_size_binary_nullable")
+}
+
+#[test]
+fn test_fixed_size_list_nullable_string_nullable() {
+    run_test_case("fixed_size_list_nullable_string_nullable")
+}
+
+#[test]
 fn test_struct_with_two_primitive_cols() {
     run_test_case("struct_with_two_primitive_cols")
 }
@@ -1012,6 +1223,11 @@ fn test_struct_with_two_primitive_cols() {
 #[test]
 fn test_nested_struct() {
     run_test_case("nested_struct")
+}
+
+#[test]
+fn test_struct_with_list() {
+    run_test_case("struct_with_list")
 }
 
 /// Roundtrip every case through embedded Postgres and compare the *typed* values Postgres hands
@@ -1101,6 +1317,66 @@ fn describe_mismatch(
         }
     }
     None
+}
+
+/// Pin every array type OID in [`PostgresType::array_oid`] against `pg_type`.
+///
+/// These OIDs are hard coded because Postgres guarantees them for built-in types, and they are
+/// load bearing: `record_recv` rejects a composite field whose declared OID names a type other
+/// than the column's, so a struct with an array field only loads if the array OID is exactly
+/// right. This checks the table rather than trusting it.
+#[test]
+fn array_oids_match_pg_type() {
+    // (pgpq type, the `pg_type.typname` of the element type it maps to)
+    let expected: Vec<(PostgresType, &str)> = vec![
+        (PostgresType::Bool, "bool"),
+        (PostgresType::Bytea, "bytea"),
+        (PostgresType::Char, "char"),
+        (PostgresType::Int2, "int2"),
+        (PostgresType::Int4, "int4"),
+        (PostgresType::Int8, "int8"),
+        (PostgresType::Text, "text"),
+        (PostgresType::Float4, "float4"),
+        (PostgresType::Float8, "float8"),
+        (PostgresType::Numeric, "numeric"),
+        (PostgresType::Date, "date"),
+        (PostgresType::Time, "time"),
+        (PostgresType::Timestamp, "timestamp"),
+        (PostgresType::Interval, "interval"),
+        (PostgresType::Json, "json"),
+        (PostgresType::Jsonb, "jsonb"),
+    ];
+
+    let mut db = TestDb::start().expect("failed to start embedded postgres");
+    let client = db.client();
+    for (tp, typname) in expected {
+        let typarray: u32 = client
+            .query_one(
+                "select typarray from pg_type \
+                 where typname = $1 and typnamespace = 'pg_catalog'::regnamespace",
+                &[&typname],
+            )
+            .unwrap_or_else(|e| panic!("looking up {typname}: {e}"))
+            .get(0);
+        assert_eq!(
+            tp.array_oid(),
+            Some(typarray),
+            "array oid for {tp:?} (_{typname})"
+        );
+    }
+
+    // Nested cases have no stable OID: Postgres creates the array type together with the
+    // composite, and has no array-of-arrays type at all.
+    let int4 = Box::new(Column {
+        name: "item".to_string(),
+        data_type: PostgresType::Int4,
+        nullable: true,
+    });
+    assert_eq!(PostgresType::List(int4.clone()).array_oid(), None);
+    assert_eq!(
+        PostgresType::UserDefined { fields: vec![int4] }.array_oid(),
+        None
+    );
 }
 
 /// Confirm that the binary snapshots are loaded to Postgres correctly.
