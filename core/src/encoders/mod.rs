@@ -424,6 +424,26 @@ mod tests {
         field("item", DataType::Int32)
     }
 
+    /// `Int8` may not be written as `Char`: the payload is a two byte `i16` while `CHAR`
+    /// resolves to the text type `bpchar`, so Postgres rejected every value. The output is
+    /// refused at build time now rather than failing mid-COPY (#95).
+    #[test]
+    fn int8_rejects_the_char_output_type() {
+        let f = field("code", DataType::Int8);
+
+        let err = scalar::Int8EncoderBuilder::new_with_output(f.clone(), PostgresType::Char)
+            .expect_err("Int8 -> Char must be refused");
+        let rendered = format!("{err:?}");
+        assert!(
+            rendered.contains("Char"),
+            "the error should name the rejected output: {rendered}"
+        );
+
+        // The default output is still accepted.
+        scalar::Int8EncoderBuilder::new_with_output(f, PostgresType::Int2)
+            .expect("Int8 -> Int2 must still build");
+    }
+
     /// One row of an int32 array field, encoded on its own.
     fn encode_one(builder: &EncoderBuilder, array: &dyn Array, row: usize) -> BytesMut {
         let mut buf = BytesMut::new();
