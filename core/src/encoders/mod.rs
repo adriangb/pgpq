@@ -54,6 +54,28 @@ pub use text::{
     StringViewConversion,
 };
 
+/// Append one fixed-size, already big-endian field to `buf`.
+///
+/// Every fixed-width write in this module goes through here, and both halves of the signature are
+/// load-bearing — together they are worth ~30% of the encoding time on the NYC taxi benchmark:
+///
+/// * **`extend_from_slice`, not [`bytes::BufMut::put_i32`] and friends.** Every `put_*` bottoms
+///   out in `<BytesMut as BufMut>::put_slice`, which carries no `#[inline]`, so from another crate
+///   it stays an out-of-line call whose `copy_nonoverlapping` has a *runtime* length: a call into
+///   `memcpy` to move four bytes. Profiling put ~60% of samples in `put_slice` plus the `memmove`
+///   it called. The inherent `extend_from_slice` *is* `#[inline]`, so with `N` a constant the
+///   length folds away and the copy becomes a store. This is why nothing below uses `BufMut`.
+/// * **`#[inline(never)]`.** `extend_from_slice` expands to a capacity check, a store, a length
+///   bump *and* a cold call to `BytesMut::reserve_inner`. Letting that expand at the ~40 call
+///   sites measured 45% *slower* than one out-of-line copy per width (`inline(always)`: +18% over
+///   the `put_i32` baseline, no attribute at all: +25%, this: -28%) — the cold call forces every
+///   `encode` into a large stack frame and spills the hot values around it. One tiny monomorphic
+///   function per width keeps the copy size constant without that cost.
+#[inline(never)]
+pub(crate) fn put<const N: usize>(buf: &mut BytesMut, bytes: [u8; N]) {
+    buf.extend_from_slice(&bytes);
+}
+
 #[inline]
 fn downcast_checked<'a, T: 'static>(arr: &'a dyn Array, field: &str) -> Result<&'a T, ErrorKind> {
     match arr.as_any().downcast_ref::<T>() {
@@ -86,31 +108,31 @@ pub trait BuildEncoder: std::fmt::Debug + PartialEq {
 // plus a conversion impl plus an enum variant; the encoding logic itself is shared.
 // ---------------------------------------------------------------------------------------------
 
-pub type BooleanEncoder<'a> = FixedSizeEncoder<'a, BooleanConversion>;
-pub type UInt8Encoder<'a> = FixedSizeEncoder<'a, UInt8Conversion>;
-pub type UInt16Encoder<'a> = FixedSizeEncoder<'a, UInt16Conversion>;
-pub type UInt32Encoder<'a> = FixedSizeEncoder<'a, UInt32Conversion>;
+pub type BooleanEncoder<'a> = FixedSizeEncoder<'a, 5, BooleanConversion>;
+pub type UInt8Encoder<'a> = FixedSizeEncoder<'a, 6, UInt8Conversion>;
+pub type UInt16Encoder<'a> = FixedSizeEncoder<'a, 8, UInt16Conversion>;
+pub type UInt32Encoder<'a> = FixedSizeEncoder<'a, 12, UInt32Conversion>;
 pub type UInt64Encoder<'a> = NumericEncoder<'a, UInt64Conversion>;
-pub type Int8Encoder<'a> = FixedSizeEncoder<'a, Int8Conversion>;
-pub type Int16Encoder<'a> = FixedSizeEncoder<'a, Int16Conversion>;
-pub type Int32Encoder<'a> = FixedSizeEncoder<'a, Int32Conversion>;
-pub type Int64Encoder<'a> = FixedSizeEncoder<'a, Int64Conversion>;
-pub type Float16Encoder<'a> = FixedSizeEncoder<'a, Float16Conversion>;
-pub type Float32Encoder<'a> = FixedSizeEncoder<'a, Float32Conversion>;
-pub type Float64Encoder<'a> = FixedSizeEncoder<'a, Float64Conversion>;
+pub type Int8Encoder<'a> = FixedSizeEncoder<'a, 6, Int8Conversion>;
+pub type Int16Encoder<'a> = FixedSizeEncoder<'a, 6, Int16Conversion>;
+pub type Int32Encoder<'a> = FixedSizeEncoder<'a, 8, Int32Conversion>;
+pub type Int64Encoder<'a> = FixedSizeEncoder<'a, 12, Int64Conversion>;
+pub type Float16Encoder<'a> = FixedSizeEncoder<'a, 8, Float16Conversion>;
+pub type Float32Encoder<'a> = FixedSizeEncoder<'a, 8, Float32Conversion>;
+pub type Float64Encoder<'a> = FixedSizeEncoder<'a, 12, Float64Conversion>;
 pub type Decimal32Encoder<'a> = NumericEncoder<'a, Decimal32Conversion>;
 pub type Decimal64Encoder<'a> = NumericEncoder<'a, Decimal64Conversion>;
 pub type Decimal128Encoder<'a> = NumericEncoder<'a, Decimal128Conversion>;
-pub type TimestampMicrosecondEncoder<'a> = FixedSizeEncoder<'a, TimestampMicrosecondConversion>;
-pub type TimestampMillisecondEncoder<'a> = FixedSizeEncoder<'a, TimestampMillisecondConversion>;
-pub type TimestampSecondEncoder<'a> = FixedSizeEncoder<'a, TimestampSecondConversion>;
-pub type Date32Encoder<'a> = FixedSizeEncoder<'a, Date32Conversion>;
-pub type Time32MillisecondEncoder<'a> = FixedSizeEncoder<'a, Time32MillisecondConversion>;
-pub type Time32SecondEncoder<'a> = FixedSizeEncoder<'a, Time32SecondConversion>;
-pub type Time64MicrosecondEncoder<'a> = FixedSizeEncoder<'a, Time64MicrosecondConversion>;
-pub type DurationMicrosecondEncoder<'a> = FixedSizeEncoder<'a, DurationMicrosecondConversion>;
-pub type DurationMillisecondEncoder<'a> = FixedSizeEncoder<'a, DurationMillisecondConversion>;
-pub type DurationSecondEncoder<'a> = FixedSizeEncoder<'a, DurationSecondConversion>;
+pub type TimestampMicrosecondEncoder<'a> = FixedSizeEncoder<'a, 12, TimestampMicrosecondConversion>;
+pub type TimestampMillisecondEncoder<'a> = FixedSizeEncoder<'a, 12, TimestampMillisecondConversion>;
+pub type TimestampSecondEncoder<'a> = FixedSizeEncoder<'a, 12, TimestampSecondConversion>;
+pub type Date32Encoder<'a> = FixedSizeEncoder<'a, 8, Date32Conversion>;
+pub type Time32MillisecondEncoder<'a> = FixedSizeEncoder<'a, 12, Time32MillisecondConversion>;
+pub type Time32SecondEncoder<'a> = FixedSizeEncoder<'a, 12, Time32SecondConversion>;
+pub type Time64MicrosecondEncoder<'a> = FixedSizeEncoder<'a, 12, Time64MicrosecondConversion>;
+pub type DurationMicrosecondEncoder<'a> = FixedSizeEncoder<'a, 20, DurationMicrosecondConversion>;
+pub type DurationMillisecondEncoder<'a> = FixedSizeEncoder<'a, 20, DurationMillisecondConversion>;
+pub type DurationSecondEncoder<'a> = FixedSizeEncoder<'a, 20, DurationSecondConversion>;
 pub type BinaryEncoder<'a> = GenericBinaryEncoder<'a, GenericBinaryArray<i32>>;
 pub type LargeBinaryEncoder<'a> = GenericBinaryEncoder<'a, GenericBinaryArray<i64>>;
 pub type FixedSizeBinaryEncoder<'a> = GenericBinaryEncoder<'a, FixedSizeBinaryArray>;
@@ -121,32 +143,34 @@ pub type ListEncoder<'a> = GenericListEncoder<'a, GenericListArray<i32>>;
 pub type LargeListEncoder<'a> = GenericListEncoder<'a, GenericListArray<i64>>;
 pub type FixedSizeListEncoder<'a> = GenericListEncoder<'a, FixedSizeListArray>;
 
-pub type BooleanEncoderBuilder = FixedSizeEncoderBuilder<BooleanConversion>;
-pub type UInt8EncoderBuilder = FixedSizeEncoderBuilder<UInt8Conversion>;
-pub type UInt16EncoderBuilder = FixedSizeEncoderBuilder<UInt16Conversion>;
-pub type UInt32EncoderBuilder = FixedSizeEncoderBuilder<UInt32Conversion>;
+pub type BooleanEncoderBuilder = FixedSizeEncoderBuilder<5, BooleanConversion>;
+pub type UInt8EncoderBuilder = FixedSizeEncoderBuilder<6, UInt8Conversion>;
+pub type UInt16EncoderBuilder = FixedSizeEncoderBuilder<8, UInt16Conversion>;
+pub type UInt32EncoderBuilder = FixedSizeEncoderBuilder<12, UInt32Conversion>;
 pub type UInt64EncoderBuilder = NumericEncoderBuilder<UInt64Conversion>;
-pub type Int16EncoderBuilder = FixedSizeEncoderBuilder<Int16Conversion>;
-pub type Int32EncoderBuilder = FixedSizeEncoderBuilder<Int32Conversion>;
-pub type Int64EncoderBuilder = FixedSizeEncoderBuilder<Int64Conversion>;
-pub type Float16EncoderBuilder = FixedSizeEncoderBuilder<Float16Conversion>;
-pub type Float32EncoderBuilder = FixedSizeEncoderBuilder<Float32Conversion>;
-pub type Float64EncoderBuilder = FixedSizeEncoderBuilder<Float64Conversion>;
+pub type Int16EncoderBuilder = FixedSizeEncoderBuilder<6, Int16Conversion>;
+pub type Int32EncoderBuilder = FixedSizeEncoderBuilder<8, Int32Conversion>;
+pub type Int64EncoderBuilder = FixedSizeEncoderBuilder<12, Int64Conversion>;
+pub type Float16EncoderBuilder = FixedSizeEncoderBuilder<8, Float16Conversion>;
+pub type Float32EncoderBuilder = FixedSizeEncoderBuilder<8, Float32Conversion>;
+pub type Float64EncoderBuilder = FixedSizeEncoderBuilder<12, Float64Conversion>;
 pub type Decimal32EncoderBuilder = NumericEncoderBuilder<Decimal32Conversion>;
 pub type Decimal64EncoderBuilder = NumericEncoderBuilder<Decimal64Conversion>;
 pub type Decimal128EncoderBuilder = NumericEncoderBuilder<Decimal128Conversion>;
 pub type TimestampMicrosecondEncoderBuilder =
-    FixedSizeEncoderBuilder<TimestampMicrosecondConversion>;
+    FixedSizeEncoderBuilder<12, TimestampMicrosecondConversion>;
 pub type TimestampMillisecondEncoderBuilder =
-    FixedSizeEncoderBuilder<TimestampMillisecondConversion>;
-pub type TimestampSecondEncoderBuilder = FixedSizeEncoderBuilder<TimestampSecondConversion>;
-pub type Date32EncoderBuilder = FixedSizeEncoderBuilder<Date32Conversion>;
-pub type Time32MillisecondEncoderBuilder = FixedSizeEncoderBuilder<Time32MillisecondConversion>;
-pub type Time32SecondEncoderBuilder = FixedSizeEncoderBuilder<Time32SecondConversion>;
-pub type Time64MicrosecondEncoderBuilder = FixedSizeEncoderBuilder<Time64MicrosecondConversion>;
-pub type DurationMicrosecondEncoderBuilder = FixedSizeEncoderBuilder<DurationMicrosecondConversion>;
-pub type DurationMillisecondEncoderBuilder = FixedSizeEncoderBuilder<DurationMillisecondConversion>;
-pub type DurationSecondEncoderBuilder = FixedSizeEncoderBuilder<DurationSecondConversion>;
+    FixedSizeEncoderBuilder<12, TimestampMillisecondConversion>;
+pub type TimestampSecondEncoderBuilder = FixedSizeEncoderBuilder<12, TimestampSecondConversion>;
+pub type Date32EncoderBuilder = FixedSizeEncoderBuilder<8, Date32Conversion>;
+pub type Time32MillisecondEncoderBuilder = FixedSizeEncoderBuilder<12, Time32MillisecondConversion>;
+pub type Time32SecondEncoderBuilder = FixedSizeEncoderBuilder<12, Time32SecondConversion>;
+pub type Time64MicrosecondEncoderBuilder = FixedSizeEncoderBuilder<12, Time64MicrosecondConversion>;
+pub type DurationMicrosecondEncoderBuilder =
+    FixedSizeEncoderBuilder<20, DurationMicrosecondConversion>;
+pub type DurationMillisecondEncoderBuilder =
+    FixedSizeEncoderBuilder<20, DurationMillisecondConversion>;
+pub type DurationSecondEncoderBuilder = FixedSizeEncoderBuilder<20, DurationSecondConversion>;
 pub type StringEncoderBuilder = StrEncoderBuilder<StringConversion>;
 pub type LargeStringEncoderBuilder = StrEncoderBuilder<LargeStringConversion>;
 pub type StringViewEncoderBuilder = StrEncoderBuilder<StringViewConversion>;

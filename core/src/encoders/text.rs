@@ -13,11 +13,26 @@ use arrow_array::{
     StringViewArray,
 };
 use arrow_schema::{DataType, Field};
-use bytes::{BufMut, BytesMut};
+use bytes::BytesMut;
 
-use super::{BuildEncoder, Encode, Encoder, downcast_checked};
+use super::{BuildEncoder, Encode, Encoder, downcast_checked, put};
 use crate::error::ErrorKind;
 use crate::pg_schema::{Column, PostgresType};
+
+/// Bytes every field spends on its `i32` length prefix, null or not.
+const LENGTH_PREFIX: usize = 4;
+
+/// Total number of value bytes an offset buffer spans.
+///
+/// `value_offsets` has one more entry than the array has rows and is relative to the array's own
+/// slice, so the difference between the ends is the byte count — including the (empty) ranges of
+/// null rows, which is what the encoder writes too.
+fn offset_span<T: OffsetSizeTrait>(offsets: &[T]) -> usize {
+    match (offsets.first(), offsets.last()) {
+        (Some(first), Some(last)) => last.as_usize() - first.as_usize(),
+        _ => 0,
+    }
+}
 
 // ---------------------------------------------------------------------------------------------
 // Binary
@@ -36,6 +51,9 @@ pub trait GenericBinArray: Array + 'static {
     /// Whether a field of this Arrow type can be encoded by this layout.
     fn accepts(data_type: &DataType) -> bool;
     fn value(&self, row: usize) -> &[u8];
+    /// Total number of bytes the array's values occupy, for [`Encode::byte_size_hint`]. Every
+    /// layout knows this without looking at the values themselves.
+    fn total_value_bytes(&self) -> usize;
 }
 
 impl<T: OffsetSizeTrait> GenericBinArray for GenericBinaryArray<T> {
@@ -55,6 +73,9 @@ impl<T: OffsetSizeTrait> GenericBinArray for GenericBinaryArray<T> {
     fn value(&self, row: usize) -> &[u8] {
         self.value(row)
     }
+    fn total_value_bytes(&self) -> usize {
+        offset_span(self.value_offsets())
+    }
 }
 
 impl GenericBinArray for FixedSizeBinaryArray {
@@ -64,6 +85,10 @@ impl GenericBinArray for FixedSizeBinaryArray {
     }
     fn value(&self, row: usize) -> &[u8] {
         self.value(row)
+    }
+    fn total_value_bytes(&self) -> usize {
+        // No offsets buffer: every row is `byte_width` bytes, nulls included.
+        self.len() * self.value_length() as usize
     }
 }
 
@@ -76,12 +101,12 @@ pub struct GenericBinaryEncoder<'a, T: GenericBinArray> {
 impl<T: GenericBinArray> Encode for GenericBinaryEncoder<'_, T> {
     fn encode(&self, row: usize, buf: &mut BytesMut) -> Result<(), ErrorKind> {
         if self.arr.is_null(row) {
-            buf.put_i32(-1);
+            put(buf, (-1i32).to_be_bytes());
         } else {
             let v = self.arr.value(row);
             let len = v.len();
             match i32::try_from(len) {
-                Ok(l) => buf.put_i32(l),
+                Ok(l) => put(buf, (l).to_be_bytes()),
                 Err(_) => return Err(ErrorKind::field_too_large(&self.field, len)),
             }
             buf.extend_from_slice(v);
@@ -90,11 +115,10 @@ impl<T: GenericBinArray> Encode for GenericBinaryEncoder<'_, T> {
     }
 
     fn byte_size_hint(&self) -> Result<usize, ErrorKind> {
-        let mut total = 0;
-        for row in 0..self.arr.len() {
-            total += self.arr.value(row).len();
-        }
-        Ok(total)
+        // The layout already knows its total, so this is O(1) rather than a pass over every value;
+        // and every field costs its four byte length prefix on top of its bytes, which the hint
+        // used to leave out entirely.
+        Ok(self.arr.total_value_bytes() + LENGTH_PREFIX * self.arr.len())
     }
 }
 
@@ -183,17 +207,30 @@ where
 /// Reading a `&str` out of any of Arrow's string layouts.
 pub trait GenericStrArray: Array + 'static {
     fn value(&self, row: usize) -> &str;
+    /// Total number of bytes the array's values occupy, for [`Encode::byte_size_hint`]. Each
+    /// layout knows this without looking at the values themselves.
+    fn total_value_bytes(&self) -> usize;
 }
 
 impl<T: OffsetSizeTrait> GenericStrArray for GenericStringArray<T> {
     fn value(&self, row: usize) -> &str {
         self.value(row)
     }
+
+    fn total_value_bytes(&self) -> usize {
+        offset_span(self.value_offsets())
+    }
 }
 
 impl GenericStrArray for StringViewArray {
     fn value(&self, row: usize) -> &str {
         self.value(row)
+    }
+
+    fn total_value_bytes(&self) -> usize {
+        // A view's low 32 bits are the value's length, so this needs neither the data buffers nor
+        // the values.
+        self.views().iter().map(|view| *view as u32 as usize).sum()
     }
 }
 
@@ -275,7 +312,7 @@ pub struct GenericStrEncoder<'a, T: GenericStrArray> {
 impl<T: GenericStrArray> Encode for GenericStrEncoder<'_, T> {
     fn encode(&self, row: usize, buf: &mut BytesMut) -> Result<(), ErrorKind> {
         if self.arr.is_null(row) {
-            buf.put_i32(-1);
+            put(buf, (-1i32).to_be_bytes());
         } else {
             let v = self.arr.value(row).as_bytes();
             let mut len = v.len();
@@ -283,11 +320,11 @@ impl<T: GenericStrArray> Encode for GenericStrEncoder<'_, T> {
                 len += 1;
             }
             match i32::try_from(len) {
-                Ok(l) => buf.put_i32(l),
+                Ok(l) => put(buf, (l).to_be_bytes()),
                 Err(_) => return Err(ErrorKind::field_too_large(&self.field, len)),
             }
             if matches!(self.output, StringOutputType::Jsonb) {
-                buf.put_u8(1) // JSONB format version
+                put(buf, [1]) // JSONB format version
             }
             buf.extend_from_slice(v);
         }
@@ -295,14 +332,10 @@ impl<T: GenericStrArray> Encode for GenericStrEncoder<'_, T> {
     }
 
     fn byte_size_hint(&self) -> Result<usize, ErrorKind> {
-        let mut total = 0;
-        for row in 0..self.arr.len() {
-            total += self.arr.value(row).len();
-        }
-        if matches!(self.output, StringOutputType::Jsonb) {
-            total += self.arr.len() // For JSONB format version
-        }
-        Ok(total)
+        // Per row: the four byte length prefix (which the hint used to leave out entirely) plus,
+        // for `jsonb`, the format version byte.
+        let per_row = LENGTH_PREFIX + usize::from(matches!(self.output, StringOutputType::Jsonb));
+        Ok(self.arr.total_value_bytes() + per_row * self.arr.len())
     }
 }
 
