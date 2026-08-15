@@ -23,7 +23,17 @@ pub enum PostgresType {
     Timestamp,
     Interval,
     List(Box<Column>),
-    UserDefined { fields: Vec<Box<Column>> }, // User-defined type, e.g. a struct
+    /// A user-defined type, e.g. a Postgres composite built from an Arrow struct.
+    ///
+    /// `oid` is the type's OID *in the database being loaded*. Composite OIDs are allocated by
+    /// the server when the type is created, so pgpq cannot know them; a caller that needs one
+    /// supplies it (see `ArrowToPostgresBinaryEncoder::with_composite_oids`). It is `None` until
+    /// then, and only actually required when the composite is nested inside another composite —
+    /// that is the one place its OID goes on the wire.
+    UserDefined {
+        fields: Vec<Box<Column>>,
+        oid: Option<u32>,
+    },
 }
 
 impl PostgresType {
@@ -68,7 +78,15 @@ impl PostgresType {
             PostgresType::Timestamp => Some(1114),
             PostgresType::Interval => Some(1186),
             PostgresType::List(inner) => inner.data_type.array_oid(),
-            PostgresType::UserDefined { .. } => Some(16385), // arbitrary dummy oid
+            // Whatever the caller supplied, and nothing otherwise.
+            //
+            // This used to be a hard-coded 16385. Postgres only tolerated that because it
+            // assumes an OID it does not recognise belongs to a sender-side type — and 16385 is
+            // the *first* OID a cluster hands out for user objects, so on any database that has
+            // ever created one, `record_recv` found a real (and different) type there and
+            // rejected the COPY. Fresh test clusters never had one, which is why it survived.
+            // See <https://github.com/adriangb/pgpq/issues/96>.
+            PostgresType::UserDefined { oid, .. } => *oid,
         }
     }
     /// The OID of the Postgres array type whose *element* type is `self` (`_int4` for `int4`, …).
@@ -165,7 +183,7 @@ impl PostgresSchema {
             types: &mut Vec<(String, Vec<(String, String)>)>,
             type_map: &mut std::collections::HashMap<*const Column, String>,
         ) {
-            if let PostgresType::UserDefined { fields } = &col.data_type {
+            if let PostgresType::UserDefined { fields, .. } = &col.data_type {
                 for field in fields.iter() {
                     collect_types(field, types, type_map); // Recursively collect nested types first
                 }
@@ -288,6 +306,7 @@ mod tests {
                                 nullable: false,
                             }),
                         ],
+                        oid: None,
                     },
                     nullable: true,
                 },
@@ -322,6 +341,7 @@ CREATE TABLE "test_table" ("id" INT4 NOT NULL, "data" "data_t");"#;
                         data_type: PostgresType::Text,
                         nullable: true,
                     })],
+                    oid: None,
                 },
                 nullable: true,
             }],

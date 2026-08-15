@@ -147,13 +147,17 @@ pub struct List {
 #[derive(Debug, Clone, PartialEq)]
 pub struct UserDefined {
     pub fields: Vec<Column>,
+    /// The type's OID in the target database, when the caller knows it. See
+    /// `ArrowToPostgresBinaryEncoder.with_composite_oids`.
+    pub oid: Option<u32>,
 }
 
 #[pymethods]
 impl UserDefined {
     #[new]
-    fn new(fields: Vec<Column>) -> Self {
-        Self { fields }
+    #[pyo3(signature = (fields, oid=None))]
+    fn new(fields: Vec<Column>, oid: Option<u32>) -> Self {
+        Self { fields, oid }
     }
     fn __repr__(&self, py: Python) -> String {
         self.py_repr(py)
@@ -188,6 +192,7 @@ impl From<UserDefined> for pgpq::pg_schema::PostgresType {
     fn from(val: UserDefined) -> Self {
         pgpq::pg_schema::PostgresType::UserDefined {
             fields: val.fields.into_iter().map(|c| Box::new(c.into())).collect(),
+            oid: val.oid,
         }
     }
 }
@@ -318,9 +323,10 @@ impl From<pgpq::pg_schema::PostgresType> for PostgresType {
             pgpq::pg_schema::PostgresType::List(inner) => {
                 PostgresType::List(List::new((*inner).into()))
             }
-            pgpq::pg_schema::PostgresType::UserDefined { fields } => {
+            pgpq::pg_schema::PostgresType::UserDefined { fields, oid } => {
                 PostgresType::UserDefined(UserDefined {
                     fields: fields.into_iter().map(|b| (*b).clone().into()).collect(),
+                    oid,
                 })
             }
         }

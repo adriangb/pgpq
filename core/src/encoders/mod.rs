@@ -372,9 +372,10 @@ impl EncoderBuilder {
                     .map(|f| EncoderBuilder::try_new(f.clone()))
                     .collect::<Result<Vec<_>, _>>()?;
                 let builder = StructEncoderBuilder::unchecked(field, field_encoder_builders);
-                // A composite whose fields have no OID cannot be encoded at all, so say so here
-                // rather than once per batch.
-                builder.field_oids()?;
+                // A composite whose fields can never carry an OID cannot be encoded at all, so
+                // say so here rather than once per batch. A *nested composite* is not that case:
+                // its OID is supplied after the tree exists, and encoding without one fails then.
+                builder.check_field_types_encodable()?;
                 Self::Struct(builder)
             }
             _ => {
@@ -410,7 +411,7 @@ impl EncoderBuilder {
 
 #[cfg(test)]
 mod tests {
-    use arrow_array::{FixedSizeBinaryArray, FixedSizeListArray, Int32Array};
+    use arrow_array::{FixedSizeBinaryArray, FixedSizeListArray, Int32Array, StructArray};
     use arrow_schema::Fields;
 
     use super::*;
@@ -580,15 +581,45 @@ mod tests {
     }
 
     #[test]
-    fn struct_with_a_nested_struct_field_is_still_supported() {
-        // Nested composites keep the placeholder OID they have always used; only the array case
-        // gained a real one.
+    fn struct_with_a_nested_struct_field_needs_its_oid() {
         let inner = Field::new(
             "inner",
             DataType::Struct(Fields::from(vec![Field::new("num", DataType::Int32, true)])),
             true,
         );
-        let builder = EncoderBuilder::try_new(struct_of(vec![inner])).unwrap();
-        assert!(matches!(builder, EncoderBuilder::Struct(_)));
+        let outer = struct_of(vec![inner]);
+
+        // Building the tree is fine: the OID is supplied afterwards.
+        let builder = EncoderBuilder::try_new(outer.clone()).unwrap();
+        let EncoderBuilder::Struct(outer_builder) = builder else {
+            panic!("expected a struct builder")
+        };
+
+        // Encoding without one is not: the inner composite's OID goes into the outer composite's
+        // field header, and pgpq has no way to guess it (#96).
+        let arr = StructArray::new_null(
+            match outer.data_type() {
+                DataType::Struct(fields) => fields.clone(),
+                other => panic!("expected a struct type, got {other:?}"),
+            },
+            1,
+        );
+        let err = outer_builder.try_new(&arr).unwrap_err();
+        assert!(
+            matches!(err, ErrorKind::TypeNotSupported { ref msg, .. }
+                     if msg.contains("OID in the target database is unknown")),
+            "{err:?}"
+        );
+
+        // With the OID supplied, it encodes.
+        let EncoderBuilder::Struct(mut fixed) = EncoderBuilder::try_new(outer).unwrap() else {
+            panic!("expected a struct builder")
+        };
+        for field_builder in fixed.field_encoder_builders_mut() {
+            if let EncoderBuilder::Struct(inner_builder) = field_builder {
+                inner_builder.set_oid(16_385);
+            }
+        }
+        fixed.try_new(&arr).expect("encodes once the OID is known");
     }
 }

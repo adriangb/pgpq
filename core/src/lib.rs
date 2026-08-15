@@ -1,4 +1,4 @@
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 
 use arrow_array::RecordBatch;
 use arrow_schema::Fields;
@@ -36,6 +36,42 @@ impl std::fmt::Display for EncoderState {
             EncoderState::Finished => "finished",
         };
         f.write_str(name)
+    }
+}
+
+/// Set composite OIDs from `oids` on `builder` and everything nested inside it, recording which
+/// keys were used.
+///
+/// Only composites are walked: a Postgres array of composites has no OID of its own, so
+/// `EncoderBuilder::try_new` rejects that shape outright and a list can never hold one.
+fn apply_composite_oids(
+    builder: &mut EncoderBuilder,
+    oids: &HashMap<String, u32>,
+    applied: &mut HashSet<String>,
+) {
+    match builder {
+        EncoderBuilder::Struct(struct_builder) => {
+            let name = struct_builder.type_name();
+            if let Some(oid) = oids.get(&name) {
+                applied.insert(name);
+                struct_builder.set_oid(*oid);
+            }
+            for inner in struct_builder.field_encoder_builders_mut() {
+                apply_composite_oids(inner, oids, applied);
+            }
+        }
+        // An array of composites writes its element type's OID into the array header, so the
+        // element needs one too.
+        EncoderBuilder::List(list) => {
+            apply_composite_oids(list.inner_encoder_builder_mut(), oids, applied)
+        }
+        EncoderBuilder::LargeList(list) => {
+            apply_composite_oids(list.inner_encoder_builder_mut(), oids, applied)
+        }
+        EncoderBuilder::FixedSizeList(list) => {
+            apply_composite_oids(list.inner_encoder_builder_mut(), oids, applied)
+        }
+        _ => {}
     }
 }
 
@@ -109,6 +145,71 @@ impl ArrowToPostgresBinaryEncoder {
             state: EncoderState::Created,
             encoder_builders: maybe_encoder_builders?,
         })
+    }
+
+    /// The composite type names this encoder needs OIDs for, outermost first.
+    ///
+    /// These are the names [`PostgresSchema::ddl`] creates, so the usual flow is: run the DDL,
+    /// look these names up in `pg_type`, and hand the result to [`Self::with_composite_oids`].
+    ///
+    /// Every composite is listed, including top-level struct columns that do not strictly need an
+    /// OID — supplying one for those is harmless, and leaving them out of the list would make it
+    /// a poor answer to "which types did my DDL create?".
+    pub fn composite_type_names(&self) -> Vec<String> {
+        fn walk(builder: &EncoderBuilder, out: &mut Vec<String>) {
+            match builder {
+                EncoderBuilder::Struct(s) => {
+                    out.push(s.type_name());
+                    for inner in s.field_builders() {
+                        walk(inner, out);
+                    }
+                }
+                EncoderBuilder::List(l) => walk(l.inner_builder(), out),
+                EncoderBuilder::LargeList(l) => walk(l.inner_builder(), out),
+                EncoderBuilder::FixedSizeList(l) => walk(l.inner_builder(), out),
+                _ => {}
+            }
+        }
+
+        let mut out = Vec::new();
+        for builder in &self.encoder_builders {
+            walk(builder, &mut out);
+        }
+        out
+    }
+
+    /// Supply the OIDs of the composite types this encoder will write, keyed by the type name
+    /// the generated DDL uses (`<field>_t`).
+    ///
+    /// Postgres allocates a composite type's OID when the type is created, so pgpq cannot know
+    /// it. The OID matters in exactly one place — a composite nested inside another composite
+    /// writes its OID into the outer composite's field header, and `record_recv` checks it — so
+    /// this is only required for nested structs. Everything else encodes without it.
+    ///
+    /// The usual flow is: run [`PostgresSchema::ddl`], then ask the server what it created.
+    ///
+    /// ```sql
+    /// select typname, oid from pg_type where typname in ('inner_t', 'outer_t');
+    /// ```
+    ///
+    /// Names that do not match any composite in this encoder are reported rather than ignored, so
+    /// a typo in a type name fails here instead of silently leaving the wrong OID in place.
+    pub fn with_composite_oids(mut self, oids: &HashMap<String, u32>) -> Result<Self, ErrorKind> {
+        let mut applied: HashSet<String> = HashSet::new();
+        for builder in &mut self.encoder_builders {
+            apply_composite_oids(builder, oids, &mut applied);
+        }
+        let unknown: Vec<String> = oids
+            .keys()
+            .filter(|name| !applied.contains(*name))
+            .cloned()
+            .collect();
+        if !unknown.is_empty() {
+            let mut unknown = unknown;
+            unknown.sort();
+            return Err(ErrorKind::UnknownFields { fields: unknown });
+        }
+        Ok(self)
     }
 
     pub fn schema(&self) -> PostgresSchema {
