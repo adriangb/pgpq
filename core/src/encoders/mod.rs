@@ -54,6 +54,28 @@ pub use text::{
     StringViewConversion,
 };
 
+/// Append one fixed-size, already big-endian field to `buf`.
+///
+/// Every fixed-width write in this module goes through here, and both halves of the signature are
+/// load-bearing — together they are worth ~30% of the encoding time on the NYC taxi benchmark:
+///
+/// * **`extend_from_slice`, not [`bytes::BufMut::put_i32`] and friends.** Every `put_*` bottoms
+///   out in `<BytesMut as BufMut>::put_slice`, which carries no `#[inline]`, so from another crate
+///   it stays an out-of-line call whose `copy_nonoverlapping` has a *runtime* length: a call into
+///   `memcpy` to move four bytes. Profiling put ~60% of samples in `put_slice` plus the `memmove`
+///   it called. The inherent `extend_from_slice` *is* `#[inline]`, so with `N` a constant the
+///   length folds away and the copy becomes a store. This is why nothing below uses `BufMut`.
+/// * **`#[inline(never)]`.** `extend_from_slice` expands to a capacity check, a store, a length
+///   bump *and* a cold call to `BytesMut::reserve_inner`. Letting that expand at the ~40 call
+///   sites measured 45% *slower* than one out-of-line copy per width (`inline(always)`: +18% over
+///   the `put_i32` baseline, no attribute at all: +25%, this: -28%) — the cold call forces every
+///   `encode` into a large stack frame and spills the hot values around it. One tiny monomorphic
+///   function per width keeps the copy size constant without that cost.
+#[inline(never)]
+pub(crate) fn put<const N: usize>(buf: &mut BytesMut, bytes: [u8; N]) {
+    buf.extend_from_slice(&bytes);
+}
+
 #[inline]
 fn downcast_checked<'a, T: 'static>(arr: &'a dyn Array, field: &str) -> Result<&'a T, ErrorKind> {
     match arr.as_any().downcast_ref::<T>() {

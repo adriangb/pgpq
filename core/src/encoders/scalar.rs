@@ -21,12 +21,12 @@ use arrow_array::{
     UInt32Array, UInt64Array, UInt8Array,
 };
 use arrow_schema::{DataType, Field, TimeUnit};
-use bytes::{BufMut, BytesMut};
+use bytes::BytesMut;
 
 use super::numeric::{
     encode_decimal_128, encode_decimal_32, encode_decimal_64, numeric_group_count_hint,
 };
-use super::{downcast_checked, BuildEncoder, Encode, Encoder};
+use super::{downcast_checked, put, BuildEncoder, Encode, Encoder};
 use crate::error::ErrorKind;
 use crate::pg_schema::{Column, PostgresType, TypeSize};
 
@@ -110,9 +110,9 @@ impl<'a, C: FixedSizeConversion> FixedSizeEncoder<'a, C> {
 impl<C: FixedSizeConversion> Encode for FixedSizeEncoder<'_, C> {
     fn encode(&self, row: usize, buf: &mut BytesMut) -> Result<(), ErrorKind> {
         if self.arr.is_null(row) {
-            buf.put_i32(-1);
+            put(buf, (-1i32).to_be_bytes());
         } else {
-            buf.put_i32(self.field_size as i32);
+            put(buf, (self.field_size as i32).to_be_bytes());
             C::write(self.arr.value_at(row), buf)?;
         }
         Ok(())
@@ -213,7 +213,7 @@ impl<'a, C: NumericConversion> NumericEncoder<'a, C> {
 impl<C: NumericConversion> Encode for NumericEncoder<'_, C> {
     fn encode(&self, row: usize, buf: &mut BytesMut) -> Result<(), ErrorKind> {
         if self.arr.is_null(row) {
-            buf.put_i32(-1);
+            put(buf, (-1i32).to_be_bytes());
         } else {
             C::write(self.arr, row, buf);
         }
@@ -356,7 +356,7 @@ impl FixedSizeConversion for BooleanConversion {
         matches!(data_type, DataType::Boolean)
     }
     fn write(value: bool, buf: &mut BytesMut) -> Result<(), ErrorKind> {
-        buf.put_u8(u8::from(value));
+        put(buf, [u8::from(value)]);
         Ok(())
     }
 }
@@ -373,7 +373,7 @@ impl FixedSizeConversion for UInt8Conversion {
         matches!(data_type, DataType::UInt8)
     }
     fn write(value: u8, buf: &mut BytesMut) -> Result<(), ErrorKind> {
-        buf.put_i16(i16::from(value));
+        put(buf, (i16::from(value)).to_be_bytes());
         Ok(())
     }
 }
@@ -388,7 +388,7 @@ impl FixedSizeConversion for UInt16Conversion {
         matches!(data_type, DataType::UInt16)
     }
     fn write(value: u16, buf: &mut BytesMut) -> Result<(), ErrorKind> {
-        buf.put_i32(i32::from(value));
+        put(buf, (i32::from(value)).to_be_bytes());
         Ok(())
     }
 }
@@ -403,7 +403,7 @@ impl FixedSizeConversion for UInt32Conversion {
         matches!(data_type, DataType::UInt32)
     }
     fn write(value: u32, buf: &mut BytesMut) -> Result<(), ErrorKind> {
-        buf.put_i64(i64::from(value));
+        put(buf, (i64::from(value)).to_be_bytes());
         Ok(())
     }
 }
@@ -418,7 +418,7 @@ impl FixedSizeConversion for Int8Conversion {
         matches!(data_type, DataType::Int8)
     }
     fn write(value: i8, buf: &mut BytesMut) -> Result<(), ErrorKind> {
-        buf.put_i16(i16::from(value));
+        put(buf, (i16::from(value)).to_be_bytes());
         Ok(())
     }
 }
@@ -433,7 +433,7 @@ impl FixedSizeConversion for Int16Conversion {
         matches!(data_type, DataType::Int16)
     }
     fn write(value: i16, buf: &mut BytesMut) -> Result<(), ErrorKind> {
-        buf.put_i16(value);
+        put(buf, (value).to_be_bytes());
         Ok(())
     }
 }
@@ -448,7 +448,7 @@ impl FixedSizeConversion for Int32Conversion {
         matches!(data_type, DataType::Int32)
     }
     fn write(value: i32, buf: &mut BytesMut) -> Result<(), ErrorKind> {
-        buf.put_i32(value);
+        put(buf, (value).to_be_bytes());
         Ok(())
     }
 }
@@ -463,7 +463,7 @@ impl FixedSizeConversion for Int64Conversion {
         matches!(data_type, DataType::Int64)
     }
     fn write(value: i64, buf: &mut BytesMut) -> Result<(), ErrorKind> {
-        buf.put_i64(value);
+        put(buf, (value).to_be_bytes());
         Ok(())
     }
 }
@@ -483,7 +483,7 @@ impl FixedSizeConversion for Float16Conversion {
         value: <Float16Array as ValueArray>::Value,
         buf: &mut BytesMut,
     ) -> Result<(), ErrorKind> {
-        buf.put_f32(f32::from(value));
+        put(buf, (f32::from(value)).to_be_bytes());
         Ok(())
     }
 }
@@ -498,7 +498,7 @@ impl FixedSizeConversion for Float32Conversion {
         matches!(data_type, DataType::Float32)
     }
     fn write(value: f32, buf: &mut BytesMut) -> Result<(), ErrorKind> {
-        buf.put_f32(value);
+        put(buf, (value).to_be_bytes());
         Ok(())
     }
 }
@@ -513,7 +513,7 @@ impl FixedSizeConversion for Float64Conversion {
         matches!(data_type, DataType::Float64)
     }
     fn write(value: f64, buf: &mut BytesMut) -> Result<(), ErrorKind> {
-        buf.put_f64(value);
+        put(buf, (value).to_be_bytes());
         Ok(())
     }
 }
@@ -539,7 +539,7 @@ impl FixedSizeConversion for TimestampMicrosecondConversion {
         let value = value.checked_sub(PG_BASE_TIMESTAMP_OFFSET_US).ok_or_else(|| ErrorKind::Encode {
             reason: "Underflow converting microseconds since 1970-01-01 (Arrow) to microseconds since 2000-01-01 (Postgres)".to_string(),
         })?;
-        buf.put_i64(value);
+        put(buf, (value).to_be_bytes());
         Ok(())
     }
 }
@@ -560,7 +560,7 @@ impl FixedSizeConversion for TimestampMillisecondConversion {
         let value = value.checked_mul(1_000).ok_or_else(|| ErrorKind::Encode {
             reason: "Overflow converting milliseconds to microseconds".to_string(),
         })?;
-        buf.put_i64(value);
+        put(buf, (value).to_be_bytes());
         Ok(())
     }
 }
@@ -583,7 +583,7 @@ impl FixedSizeConversion for TimestampSecondConversion {
             .ok_or_else(|| ErrorKind::Encode {
                 reason: "Overflow converting seconds to microseconds".to_string(),
             })?;
-        buf.put_i64(value);
+        put(buf, (value).to_be_bytes());
         Ok(())
     }
 }
@@ -604,7 +604,7 @@ impl FixedSizeConversion for Date32Conversion {
         let value = value.checked_sub(PG_BASE_DATE_OFFSET).ok_or_else(|| ErrorKind::Encode {
             reason: "Underflow converting days since 1970-01-01 (Arrow) to days since 2000-01-01 (Postgres)".to_string(),
         })?;
-        buf.put_i32(value);
+        put(buf, (value).to_be_bytes());
         Ok(())
     }
 }
@@ -624,7 +624,7 @@ impl FixedSizeConversion for Time32MillisecondConversion {
             .ok_or_else(|| ErrorKind::Encode {
                 reason: "Overflow converting milliseconds to microseconds".to_string(),
             })?;
-        buf.put_i64(value);
+        put(buf, (value).to_be_bytes());
         Ok(())
     }
 }
@@ -644,7 +644,7 @@ impl FixedSizeConversion for Time32SecondConversion {
             .ok_or_else(|| ErrorKind::Encode {
                 reason: "Overflow converting seconds to microseconds".to_string(),
             })?;
-        buf.put_i64(value);
+        put(buf, (value).to_be_bytes());
         Ok(())
     }
 }
@@ -659,7 +659,7 @@ impl FixedSizeConversion for Time64MicrosecondConversion {
         matches!(data_type, DataType::Time64(TimeUnit::Microsecond))
     }
     fn write(value: i64, buf: &mut BytesMut) -> Result<(), ErrorKind> {
-        buf.put_i64(value);
+        put(buf, (value).to_be_bytes());
         Ok(())
     }
 }
@@ -671,9 +671,10 @@ const NUM_US_PER_S: i64 = 1_000_000;
 /// microsecond component, so an Arrow duration never turns into a calendar-aware interval.
 #[inline]
 fn write_duration(duration_us: i64, buf: &mut BytesMut) {
-    buf.put_i64(duration_us);
-    buf.put_i32(0); // days
-    buf.put_i32(0); // months
+    // One append rather than three: the trailing day and month counts are always zero.
+    let mut interval = [0u8; 16];
+    interval[..8].copy_from_slice(&duration_us.to_be_bytes());
+    put(buf, interval);
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]

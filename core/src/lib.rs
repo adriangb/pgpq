@@ -173,8 +173,10 @@ impl ArrowToPostgresBinaryEncoder {
         }
         buf.reserve(required_size);
 
+        // Every row is prefixed with the same column count; render it once.
+        let row_header = (n_cols as i16).to_be_bytes();
         for row in 0..n_rows {
-            buf.put_i16(n_cols as i16);
+            encoders::put(buf, row_header);
             for encoder in &encoders {
                 encoder.encode(row, buf)?
             }

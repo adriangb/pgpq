@@ -13,9 +13,9 @@ use arrow_array::{
     StringViewArray,
 };
 use arrow_schema::{DataType, Field};
-use bytes::{BufMut, BytesMut};
+use bytes::BytesMut;
 
-use super::{downcast_checked, BuildEncoder, Encode, Encoder};
+use super::{downcast_checked, put, BuildEncoder, Encode, Encoder};
 use crate::error::ErrorKind;
 use crate::pg_schema::{Column, PostgresType};
 
@@ -76,12 +76,12 @@ pub struct GenericBinaryEncoder<'a, T: GenericBinArray> {
 impl<T: GenericBinArray> Encode for GenericBinaryEncoder<'_, T> {
     fn encode(&self, row: usize, buf: &mut BytesMut) -> Result<(), ErrorKind> {
         if self.arr.is_null(row) {
-            buf.put_i32(-1);
+            put(buf, (-1i32).to_be_bytes());
         } else {
             let v = self.arr.value(row);
             let len = v.len();
             match i32::try_from(len) {
-                Ok(l) => buf.put_i32(l),
+                Ok(l) => put(buf, (l).to_be_bytes()),
                 Err(_) => return Err(ErrorKind::field_too_large(&self.field, len)),
             }
             buf.extend_from_slice(v);
@@ -275,7 +275,7 @@ pub struct GenericStrEncoder<'a, T: GenericStrArray> {
 impl<T: GenericStrArray> Encode for GenericStrEncoder<'_, T> {
     fn encode(&self, row: usize, buf: &mut BytesMut) -> Result<(), ErrorKind> {
         if self.arr.is_null(row) {
-            buf.put_i32(-1);
+            put(buf, (-1i32).to_be_bytes());
         } else {
             let v = self.arr.value(row).as_bytes();
             let mut len = v.len();
@@ -283,11 +283,11 @@ impl<T: GenericStrArray> Encode for GenericStrEncoder<'_, T> {
                 len += 1;
             }
             match i32::try_from(len) {
-                Ok(l) => buf.put_i32(l),
+                Ok(l) => put(buf, (l).to_be_bytes()),
                 Err(_) => return Err(ErrorKind::field_too_large(&self.field, len)),
             }
             if matches!(self.output, StringOutputType::Jsonb) {
-                buf.put_u8(1) // JSONB format version
+                put(buf, [1]) // JSONB format version
             }
             buf.extend_from_slice(v);
         }

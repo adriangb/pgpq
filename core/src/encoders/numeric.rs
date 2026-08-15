@@ -4,7 +4,9 @@
 //! `UInt64`, which Postgres has no integer type wide enough for — goes through the functions in
 //! this module. The encoders that call them live in [`super::scalar`].
 
-use bytes::{BufMut, BytesMut};
+use bytes::BytesMut;
+
+use super::put;
 
 /// Number of base-10000 groups a value of `precision` decimal digits can span once its digits
 /// are aligned to the base-10000 group boundaries of the Postgres NUMERIC format.
@@ -95,17 +97,17 @@ macro_rules! encode_decimal {
             };
             let digits = &groups[trailing_zero_groups..n_groups];
 
-            buf.put_i32(8 + 2 * digits.len() as i32); // num of bytes
-            buf.put_i16(digits.len() as i16);
-            buf.put_i16(weight as i16);
-            buf.put_i16(sign);
+            put(buf, (8 + 2 * digits.len() as i32).to_be_bytes()); // num of bytes
+            put(buf, (digits.len() as i16).to_be_bytes());
+            put(buf, (weight as i16).to_be_bytes());
+            put(buf, (sign).to_be_bytes());
             // `dscale` is the number of digits displayed after the decimal point and cannot be
             // negative on the wire; a negative Arrow scale means the value is an integer.
-            buf.put_i16(scale.max(0) as i16);
+            put(buf, (scale.max(0) as i16).to_be_bytes());
             // postgres expects the digits to be encoded from largest to smallest, so we
             // need to iterate the slice in reverse
             for d in digits.iter().rev() {
-                buf.put_i16(*d);
+                put(buf, (*d).to_be_bytes());
             }
         }
     };
