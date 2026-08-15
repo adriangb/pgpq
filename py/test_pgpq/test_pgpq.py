@@ -27,6 +27,7 @@ import math
 from collections.abc import Iterator
 from typing import Any
 
+import pgpq._pgpq
 import pgpq.encoders
 import pgpq.schema
 import psycopg
@@ -455,9 +456,11 @@ def test_ddl_creates_types_for_structs() -> None:
 
     ddl = ArrowToPostgresBinaryEncoder(schema).schema().ddl("my_table", False)
 
+    # The composite carries the Arrow field names rather than positional
+    # `f0`, `f1` (#97), and every identifier is quoted.
     assert ddl == (
-        'CREATE TYPE my_struct_t AS ("f0" INT4, "f1" TEXT);\n'
-        'CREATE TABLE "my_table" ("my_struct" my_struct_t);'
+        'CREATE TYPE "my_struct_t" AS ("num" INT4, "text" TEXT);\n'
+        'CREATE TABLE "my_table" ("my_struct" "my_struct_t");'
     )
 
 
@@ -511,6 +514,48 @@ def test_infer_encoder_fixed_size_types() -> None:
     }
     # `repr` of a list builder names its own class rather than always saying "List".
     assert repr(encoders["l"]).startswith("FixedSizeListEncoderBuilder(")
+
+
+def test_struct_encoder_builder_is_usable_from_python() -> None:
+    """`StructEncoderBuilder` is nameable, constructible and inferred (#97)."""
+    schema = pa.schema(
+        [
+            pa.field(
+                "s", pa.struct([pa.field("a", pa.int32()), pa.field("b", pa.string())])
+            )
+        ]
+    )
+    field = schema.field("s")
+
+    builder = pgpq.encoders.StructEncoderBuilder(field)
+    assert repr(builder).startswith("StructEncoderBuilder(")
+    assert ArrowToPostgresBinaryEncoder.infer_encoder(field) == builder
+
+    # ...and it encodes: the explicitly-named builder drives a real batch through the
+    # composite path.
+    encoder = ArrowToPostgresBinaryEncoder.new_with_encoders(schema, {"s": builder})
+    assert (
+        encoder.schema()
+        .ddl("t", False)
+        .startswith('CREATE TYPE "s_t" AS ("a" INT4, "b" TEXT);')
+    )
+    batch = pa.record_batch(
+        {"s": pa.array([{"a": 1, "b": "x"}, None], type=field.type)}
+    )
+    buf = encoder.write_header() + encoder.write_batch(batch) + encoder.finish()
+    assert buf.startswith(b"PGCOPY\n")
+
+
+def test_every_encoder_builder_is_re_exported() -> None:
+    """`pgpq.encoders` must name every builder the extension registers.
+
+    `StructEncoderBuilder` was registered on `_pgpq` and returned by `infer_encoder`
+    while absent from `pgpq.encoders`, so typed callers could not name the type they
+    were handed (#97).
+    """
+    registered = {n for n in dir(pgpq._pgpq) if n.endswith("EncoderBuilder")}
+    assert registered, "no builders found - did the extension module move?"
+    assert registered == set(pgpq.encoders.__all__)
 
 
 def test_column_properties() -> None:
