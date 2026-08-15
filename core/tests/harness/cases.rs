@@ -301,49 +301,61 @@ pub fn custom_encoder_cases() -> Vec<Case> {
     let mut cases = vec![Case::new("json_list", batch)
         .with_encoders(encoders)
         .with_expected(expected)];
-    cases.push(jsonb_string_case());
+    cases.push(json_string_case(PostgresType::Jsonb));
+    cases.push(json_string_case(PostgresType::Json));
     cases
 }
 
-/// A plain (non list) `Utf8` column written as `JSONB`.
+/// The JSON documents used by [`json_string_case`], deliberately including whitespace and an
+/// out-of-order object, which is where `JSON` and `JSONB` part ways.
+const JSON_DOCUMENTS: [&str; 6] = [
+    "{\"b\": 1, \"a\": 2}",
+    "{ \"spaced\"  :  [1,2,3] }",
+    "[]",
+    "123",
+    "null",
+    "\"a string\"",
+];
+
+/// A plain (non list) `Utf8` column written as `JSON` or `JSONB`.
 ///
-/// The `json_list` case above only reaches `JSONB` through a list, so the scalar path — and the
-/// one byte jsonb version header the encoder writes — had no coverage of its own.
-fn jsonb_string_case() -> Case {
-    let values = vec![
-        "{\"b\": 1, \"a\": 2}",
-        "{ \"spaced\"  :  [1,2,3] }",
-        "[]",
-        "123",
-        "null",
-        "\"a string\"",
-    ];
+/// The `json_list` case above only reaches `JSONB` through a list, so neither the scalar path nor
+/// the one byte jsonb version header the encoder writes had coverage of its own, and the `JSON`
+/// output type had none at all.
+fn json_string_case(output: PostgresType) -> Case {
+    let jsonb = output == PostgresType::Jsonb;
     let field = Field::new("payload", DataType::Utf8, false);
-    let array = Arc::new(StringArray::from(values)) as ArrayRef;
+    let array = Arc::new(StringArray::from(JSON_DOCUMENTS.to_vec())) as ArrayRef;
     let batch = single_column_batch(field.clone(), array);
 
     let encoders = HashMap::from([(
         "payload".to_string(),
         EncoderBuilder::String(
-            StringEncoderBuilder::new_with_output(Arc::new(field), PostgresType::Jsonb).unwrap(),
+            StringEncoderBuilder::new_with_output(Arc::new(field), output).unwrap(),
         ),
     )]);
 
-    // JSONB is a parsed representation: Postgres re-renders it with its own spacing and (for
-    // objects) its own key order, so the text that comes back is not the text that went in.
-    let expected = [
-        "{\"a\": 2, \"b\": 1}",
-        "{\"spaced\": [1, 2, 3]}",
-        "[]",
-        "123",
-        "null",
-        "\"a string\"",
-    ]
+    // `JSON` stores the document text verbatim, so it comes back exactly as it went in. `JSONB`
+    // is a parsed representation, and Postgres re-renders it with its own spacing and (for
+    // objects) its own key order.
+    let expected = if jsonb {
+        [
+            "{\"a\": 2, \"b\": 1}",
+            "{\"spaced\": [1, 2, 3]}",
+            "[]",
+            "123",
+            "null",
+            "\"a string\"",
+        ]
+    } else {
+        JSON_DOCUMENTS
+    }
     .iter()
     .map(|s| vec![Value::Text((*s).to_string())])
     .collect();
 
-    Case::new("jsonb_string", batch)
+    let name = if jsonb { "jsonb_string" } else { "json_string" };
+    Case::new(name, batch)
         .with_encoders(encoders)
         .with_expected(expected)
 }
