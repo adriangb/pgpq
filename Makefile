@@ -27,6 +27,10 @@ test: build-develop
 	cargo test
 	uv run --no-sync pytest
 
+# `uv lock --check` only proves the lock matches the manifests; it cannot see that
+# the root [dependency-groups] have drifted from the member extras, hence
+# check_dep_groups.py (also run as its own step in CI).
 lint: build-develop
 	uv lock --check
+	python3 scripts/check_dep_groups.py
 	uv run --no-sync pre-commit run --all-files

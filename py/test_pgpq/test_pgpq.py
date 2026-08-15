@@ -24,7 +24,8 @@ wheel).
 from __future__ import annotations
 
 import math
-from typing import Any, Iterator, List, Tuple
+from collections.abc import Iterator
+from typing import Any
 
 import pgpq.encoders
 import pgpq.schema
@@ -38,7 +39,7 @@ from pgpq._pgpq import Column
 from pgpq.schema import PostgresSchema
 from testing.postgresql import Postgresql
 
-Connection = psycopg.Connection[Tuple[Any, ...]]
+Connection = psycopg.Connection[tuple[Any, ...]]
 
 
 @pytest.fixture(scope="session")
@@ -56,7 +57,7 @@ def dbconn(postgres: Postgresql) -> Iterator[Connection]:
         yield conn
 
 
-def encode(table: pa.Table) -> Tuple[PostgresSchema, bytes]:
+def encode(table: pa.Table) -> tuple[PostgresSchema, bytes]:
     """Encode a table with the default (inferred) encoders."""
     encoder = ArrowToPostgresBinaryEncoder(table.schema)
     buffer = bytearray()
@@ -69,7 +70,7 @@ def encode(table: pa.Table) -> Tuple[PostgresSchema, bytes]:
 
 def copy_buffer_and_get_rows(
     schema: PostgresSchema, buffer: bytes, dbconn: Connection
-) -> List[Tuple[Any, ...]]:
+) -> list[tuple[Any, ...]]:
     ddl = schema.ddl("data")
     try:
         with dbconn.cursor() as cursor:
@@ -83,7 +84,7 @@ def copy_buffer_and_get_rows(
     return rows
 
 
-def roundtrip(table: pa.Table, dbconn: Connection) -> List[Tuple[Any, ...]]:
+def roundtrip(table: pa.Table, dbconn: Connection) -> list[tuple[Any, ...]]:
     schema, buffer = encode(table)
     return copy_buffer_and_get_rows(schema, buffer, dbconn)
 
@@ -291,7 +292,7 @@ def test_roundtrip_custom_encoding_to_jsonb(dbconn: Connection) -> None:
 #: Column types and the values to fill them with. Deliberately primitive: decimals are
 #: excluded because the Rust suite documents open encoder bugs there, and ``\x00`` is
 #: excluded from text because Postgres rejects it in ``text`` regardless of pgpq.
-_COLUMN_TYPES: List[Tuple[pa.DataType, st.SearchStrategy[Any]]] = [
+_COLUMN_TYPES: list[tuple[pa.DataType, st.SearchStrategy[Any]]] = [
     (pa.int16(), st.integers(min_value=-(2**15), max_value=2**15 - 1)),
     (pa.int32(), st.integers(min_value=-(2**31), max_value=2**31 - 1)),
     (pa.int64(), st.integers(min_value=-(2**63), max_value=2**63 - 1)),
@@ -334,11 +335,11 @@ def test_roundtrip_arbitrary_primitive_tables(
 ) -> None:
     rows = roundtrip(table, dbconn)
 
-    expected = list(zip(*(column.to_pylist() for column in table.columns)))
+    expected = list(zip(*(column.to_pylist() for column in table.columns), strict=True))
     assert len(rows) == table.num_rows
-    for actual_row, expected_row in zip(rows, expected):
+    for actual_row, expected_row in zip(rows, expected, strict=True):
         assert len(actual_row) == len(expected_row)
-        for actual, expected_value in zip(actual_row, expected_row):
+        for actual, expected_value in zip(actual_row, expected_row, strict=True):
             assert _values_equal(expected_value, actual), (
                 f"{expected_value!r} != {actual!r} in {table.schema}"
             )

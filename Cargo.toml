@@ -6,7 +6,11 @@ exclude = ["core/fuzz"]
 resolver = "2"
 
 [workspace.package]
-edition = "2021"
+# Edition 2024 needs Rust 1.85, which is already the MSRV below (arrow 59
+# forced it), so this costs nothing. Inherited by core/, py/ and json/ via
+# `edition.workspace = true`; core/fuzz is its own workspace and is bumped
+# separately in its own manifest.
+edition = "2024"
 # Minimum supported Rust version for the library targets. Raised from 1.84 by
 # the arrow 59 bump: arrow 59.x is edition 2024 and declares `rust-version =
 # "1.85"`, so 1.84 cannot even parse its manifest. Verified by hand:

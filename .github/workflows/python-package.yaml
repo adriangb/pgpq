@@ -208,19 +208,22 @@ jobs:
           manylinux: musllinux_1_2
           args: -m ${{ inputs.package_dir }}/Cargo.toml --release --out dist
           maturin-version: ${{ env.MATURIN_VERSION }}
+      # Plain `docker run` rather than `addnab/docker-run-action`, whose v3 tag
+      # is from 2021 and which is effectively unmaintained (#83). The action was
+      # only wrapping this command; the runner already has Docker.
       - name: Install built wheel
         if: matrix.target == 'x86_64-unknown-linux-musl'
-        uses: addnab/docker-run-action@4f65fabd2431ebc8d299f8e5a018d79a769ae185 # v3
-        with:
-          image: alpine:latest
-          options: -v ${{ github.workspace }}:/io -w /io
-          run: |
+        run: |
+          # `sh -e`, not `-eu`: uv's generated `.venv/bin/activate` reads
+          # `$OSTYPE`, which is unset under a POSIX shell.
+          docker run --rm -v "${{ github.workspace }}:/io" -w /io alpine:latest sh -ec '
             apk add python3 curl
             curl -LsSf https://astral.sh/uv/install.sh | sh
-            . $HOME/.local/bin/env
+            . "$HOME/.local/bin/env"
             uv venv
             . .venv/bin/activate
             uv pip install ${{ inputs.package_name }} --no-index --find-links /io/dist/ --force-reinstall --no-deps
+          '
       - name: Upload wheels
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
@@ -249,6 +252,10 @@ jobs:
           workspaces: ${{ inputs.package_dir }}
       - name: Check that uv.lock is up to date
         run: uv lock --check
+      # Also run by `make lint`; called out separately here so a drift failure
+      # is obvious in the job log rather than buried in the lint output.
+      - name: Check the root dependency groups cover the member extras
+        run: python3 scripts/check_dep_groups.py
       - name: Lint
         run: |
           make lint
@@ -274,17 +281,42 @@ jobs:
           # If they fail in main, we want to fail the alls-green check
           allowed-skips: macos,windows,musllinux
 
+  # Publishing an already-published version is a no-op (`twine upload
+  # --skip-existing` tolerates it), but it still costs a job on every push to
+  # main. Ask PyPI whether the version in the package's pyproject.toml is new
+  # (see #56). Deliberately *not* in the `alls-green` chain: this job only
+  # decides whether to release.
+  detect-release:
+    name: Detect release
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    if: github.ref == format('refs/heads/{0}', github.event.repository.default_branch)
+    permissions:
+      contents: read
+    outputs:
+      should_release: ${{ steps.detect.outputs.should_release }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - name: Check whether ${{ inputs.package_name }} is already on PyPI
+        id: detect
+        run: |
+          python3 scripts/check_published.py \
+            --registry pypi \
+            --package '${{ inputs.package_name }}' \
+            --manifest '${{ inputs.package_dir }}/pyproject.toml'
+
   release:
     name: Release
     runs-on: ubuntu-latest
     timeout-minutes: 15
-    if: github.ref == format('refs/heads/{0}', github.event.repository.default_branch)
+    if: github.ref == format('refs/heads/{0}', github.event.repository.default_branch) && needs.detect-release.outputs.should_release == 'true'
     needs:
       - lint
       - linux
       - macos
       - windows
       - musllinux
+      - detect-release
     steps:
       - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
         with:

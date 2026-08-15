@@ -12,14 +12,14 @@
 use std::error::Error;
 
 use arrow_array::{
-    Array, BinaryArray, BinaryViewArray, BooleanArray, Date32Array, Decimal128Array,
-    Decimal32Array, Decimal64Array, DurationMicrosecondArray, DurationMillisecondArray,
-    DurationSecondArray, FixedSizeBinaryArray, FixedSizeListArray, Float16Array, Float32Array,
-    Float64Array, Int16Array, Int32Array, Int64Array, Int8Array, LargeBinaryArray, LargeListArray,
-    LargeStringArray, ListArray, StringArray, StringViewArray, StructArray, Time32MillisecondArray,
+    Array, BinaryArray, BinaryViewArray, BooleanArray, Date32Array, Decimal32Array, Decimal64Array,
+    Decimal128Array, DurationMicrosecondArray, DurationMillisecondArray, DurationSecondArray,
+    FixedSizeBinaryArray, FixedSizeListArray, Float16Array, Float32Array, Float64Array, Int8Array,
+    Int16Array, Int32Array, Int64Array, LargeBinaryArray, LargeListArray, LargeStringArray,
+    ListArray, StringArray, StringViewArray, StructArray, Time32MillisecondArray,
     Time32SecondArray, Time64MicrosecondArray, TimestampMicrosecondArray,
-    TimestampMillisecondArray, TimestampNanosecondArray, TimestampSecondArray, UInt16Array,
-    UInt32Array, UInt64Array, UInt8Array,
+    TimestampMillisecondArray, TimestampNanosecondArray, TimestampSecondArray, UInt8Array,
+    UInt16Array, UInt32Array, UInt64Array,
 };
 use arrow_schema::{DataType, TimeUnit};
 use chrono::{DateTime, Days, NaiveDate, NaiveDateTime, NaiveTime};

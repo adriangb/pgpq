@@ -1,8 +1,8 @@
 use arrow_schema::DataType;
 use thiserror::Error;
 
-use crate::pg_schema::PostgresType;
 use crate::EncoderState;
+use crate::pg_schema::PostgresType;
 
 #[derive(Debug, Error)]
 pub enum ErrorKind {

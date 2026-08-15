@@ -6,7 +6,7 @@ use arrow::record_batch::RecordBatchReader;
 use arrow_array::{Array, PrimitiveArray, RecordBatch};
 use arrow_schema::{DataType, Field, TimeUnit};
 use bytes::{BufMut, BytesMut};
-use criterion::{criterion_group, criterion_main, Criterion};
+use criterion::{Criterion, criterion_group, criterion_main};
 use postgres_types::{ToSql, Type};
 use std::fs;
 use std::hint::black_box;

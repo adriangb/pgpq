@@ -2,7 +2,7 @@ from dataclasses import dataclass
 from decimal import Decimal
 from math import floor
 from pathlib import Path
-from typing import Any, List
+from typing import Any
 
 import pyarrow as pa
 
@@ -14,7 +14,7 @@ DIR.mkdir(exist_ok=True)
 class Col:
     name: str
     type: pa.DataType
-    data: List[Any]
+    data: list[Any]
     nullable: bool = False
 
 
@@ -252,10 +252,12 @@ tables = {f.name: pa.table([data], schema=pa.schema([f])) for f, data in all_col
 
 for name, table in tables.items():
     schema = table.schema
-    with pa.OSFile(str(DIR / f"{name}.arrow"), "wb") as sink:
-        with pa.ipc.new_file(sink, schema=schema) as writer:
-            for batch in table.to_batches():
-                writer.write(batch)
+    with (
+        pa.OSFile(str(DIR / f"{name}.arrow"), "wb") as sink,
+        pa.ipc.new_file(sink, schema=schema) as writer,
+    ):
+        for batch in table.to_batches():
+            writer.write(batch)
 
 
 template = """\
@@ -266,5 +268,5 @@ fn test_{case_name}() {{
 """
 
 
-for name, table in tables.items():
+for name in tables:
     print(template.format(case_name=name))

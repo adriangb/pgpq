@@ -38,15 +38,15 @@ pub use nested::{
     StructEncoderBuilder,
 };
 pub use scalar::{
-    BooleanConversion, Date32Conversion, Decimal128Conversion, Decimal32Conversion,
-    Decimal64Conversion, DurationMicrosecondConversion, DurationMillisecondConversion,
+    BooleanConversion, Date32Conversion, Decimal32Conversion, Decimal64Conversion,
+    Decimal128Conversion, DurationMicrosecondConversion, DurationMillisecondConversion,
     DurationSecondConversion, FixedSizeConversion, FixedSizeEncoder, FixedSizeEncoderBuilder,
-    Float16Conversion, Float32Conversion, Float64Conversion, Int16Conversion, Int32Conversion,
-    Int64Conversion, Int8Conversion, Int8EncoderBuilder, NumericConversion, NumericEncoder,
+    Float16Conversion, Float32Conversion, Float64Conversion, Int8Conversion, Int8EncoderBuilder,
+    Int16Conversion, Int32Conversion, Int64Conversion, NumericConversion, NumericEncoder,
     NumericEncoderBuilder, Time32MillisecondConversion, Time32SecondConversion,
     Time64MicrosecondConversion, TimestampMicrosecondConversion, TimestampMillisecondConversion,
-    TimestampSecondConversion, UInt16Conversion, UInt32Conversion, UInt64Conversion,
-    UInt8Conversion, ValueArray,
+    TimestampSecondConversion, UInt8Conversion, UInt16Conversion, UInt32Conversion,
+    UInt64Conversion, ValueArray,
 };
 pub use text::{
     GenericBinArray, GenericBinaryEncoder, GenericBinaryEncoderBuilder, GenericStrArray,
@@ -269,7 +269,7 @@ impl EncoderBuilder {
                         field.name(),
                         data_type,
                         "Postgres does not support ns precision; convert to us",
-                    ))
+                    ));
                 }
                 TimeUnit::Microsecond => {
                     Self::TimestampMicrosecond(TimestampMicrosecondEncoderBuilder::unchecked(field))
@@ -297,7 +297,7 @@ impl EncoderBuilder {
                         field.name(),
                         data_type,
                         "Postgres does not support ns precision; convert to us",
-                    ))
+                    ));
                 }
                 TimeUnit::Microsecond => {
                     Self::Time64Microsecond(Time64MicrosecondEncoderBuilder::unchecked(field))
@@ -310,7 +310,7 @@ impl EncoderBuilder {
                         field.name(),
                         data_type,
                         "Postgres does not support ns precision; convert to us",
-                    ))
+                    ));
                 }
                 TimeUnit::Microsecond => {
                     Self::DurationMicrosecond(DurationMicrosecondEncoderBuilder::unchecked(field))
@@ -358,7 +358,7 @@ impl EncoderBuilder {
                     field.name(),
                     data_type,
                     "unknown type",
-                ))
+                ));
             }
         };
         Ok(res)

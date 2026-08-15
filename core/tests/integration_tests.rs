@@ -7,11 +7,11 @@ use std::path::PathBuf;
 
 use bytes::BytesMut;
 use console::Style;
-use pgpq::pg_schema::{Column, PostgresType};
 use pgpq::ArrowToPostgresBinaryEncoder;
+use pgpq::pg_schema::{Column, PostgresType};
 use similar::{ChangeTag, TextDiff};
 
-use harness::cases::{all_cases, read_batches, Case};
+use harness::cases::{Case, all_cases, read_batches};
 use harness::db::TestDb;
 use harness::value::Value;
 
