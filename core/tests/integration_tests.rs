@@ -1,25 +1,70 @@
 mod harness;
 
 use std::cmp::min;
+use std::collections::HashMap;
 use std::fs::{self, File};
 use std::io::{Read, Write};
 use std::path::PathBuf;
 
+use arrow_array::RecordBatch;
+use arrow_schema::Schema;
 use bytes::BytesMut;
 use console::Style;
 use pgpq::ArrowToPostgresBinaryEncoder;
-use pgpq::pg_schema::{Column, PostgresType};
+use pgpq::pg_schema::{Column, PostgresSchema, PostgresType};
 use similar::{ChangeTag, TextDiff};
 
 use harness::cases::{Case, all_cases, custom_encoder_cases, int8_char_case, read_batches};
 use harness::db::TestDb;
 use harness::value::Value;
 
+/// The composite OIDs the test corpus encodes with.
+///
+/// Composite OIDs belong to the database being loaded, so pgpq makes the caller supply them
+/// (#96). The snapshots are byte-exact files that predate that, and they were produced with the
+/// old hard-coded 16385 — which is also what a *fresh* cluster allocates for the first type the
+/// generated DDL creates, so `validate_snapshots` still loads them. Naming the value here keeps
+/// the snapshots reproducible and puts the assumption where it can be seen, rather than inside
+/// the library where it silently applied to every user's database.
+///
+/// `with_composite_oids` rejects names it does not recognise, so this maps every composite the
+/// schema actually contains.
+fn corpus_composite_oids(schema: &PostgresSchema) -> HashMap<String, u32> {
+    fn walk(column: &Column, out: &mut HashMap<String, u32>) {
+        match &column.data_type {
+            PostgresType::UserDefined { fields, .. } => {
+                out.insert(format!("{}_t", column.name), 16_385);
+                for field in fields {
+                    walk(field, out);
+                }
+            }
+            PostgresType::List(inner) => walk(inner, out),
+            _ => {}
+        }
+    }
+
+    let mut out = HashMap::new();
+    for column in &schema.columns {
+        walk(column, &mut out);
+    }
+    out
+}
+
+/// Build the default encoder for `schema`, with the corpus' composite OIDs applied.
+fn corpus_encoder(schema: &Schema) -> ArrowToPostgresBinaryEncoder {
+    let encoder = ArrowToPostgresBinaryEncoder::try_new(schema).unwrap();
+    let oids = corpus_composite_oids(&encoder.schema());
+    if oids.is_empty() {
+        return encoder;
+    }
+    encoder.with_composite_oids(&oids).unwrap()
+}
+
 fn run_test_case(case: &str) {
     let path =
         PathBuf::from(env!("CARGO_MANIFEST_DIR")).join(format!("tests/testdata/{case}.arrow"));
     let (batches, schema) = read_batches(&path);
-    let mut encoder = ArrowToPostgresBinaryEncoder::try_new(&schema).unwrap();
+    let mut encoder = corpus_encoder(&schema);
     let mut buf = BytesMut::new();
     encoder.write_header(&mut buf).unwrap();
     for batch in batches {
@@ -1471,6 +1516,80 @@ fn describe_mismatch(
 /// load bearing: `record_recv` rejects a composite field whose declared OID names a type other
 /// than the column's, so a struct with an array field only loads if the array OID is exactly
 /// right. This checks the table rather than trusting it.
+/// A nested composite must be encoded with the OID the *target database* gave it.
+///
+/// The old hard-coded `16385` survived only because a fresh cluster has no user objects and hands
+/// that OID out first. Any database that has already created user-defined types shifts the
+/// numbering, and the value pgpq wrote then named some other type entirely — which is what
+/// `record_recv` checks. This test creates unrelated types first so the composite lands
+/// elsewhere, then shows the encoder follows the server rather than a constant (#96).
+#[test]
+fn nested_composite_uses_the_databases_own_oid() {
+    let (batches, schema) = read_batches(
+        &PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("tests/testdata/nested_struct.arrow"),
+    );
+
+    let mut db = TestDb::start().expect("failed to start embedded postgres");
+    // Burn the low user OIDs so the composite cannot land on the old placeholder.
+    db.client()
+        .batch_execute(
+            "create type unrelated_a as (x int4); \
+             create type unrelated_b as (y int4); \
+             create type unrelated_c as (z int4);",
+        )
+        .unwrap();
+
+    // Create the nested composite's type exactly as the DDL would, to read its real OID.
+    db.client()
+        .batch_execute("create type s_t as (b float4);")
+        .unwrap();
+    let real_oid: u32 = db
+        .client()
+        .query_one("select oid from pg_type where typname = 's_t'", &[])
+        .unwrap()
+        .get(0);
+    assert_ne!(
+        real_oid, 16_385,
+        "this database was supposed to have shifted the composite off the old placeholder"
+    );
+    db.client().batch_execute("drop type s_t;").unwrap();
+
+    // The OID really is on the wire: the same batch encoded with the database's OID and with the
+    // old placeholder differ, and the real one appears in the bytes.
+    let with_real = encode_nested_struct(&schema, &batches, real_oid);
+    let with_placeholder = encode_nested_struct(&schema, &batches, 16_385);
+    assert_ne!(
+        with_real, with_placeholder,
+        "the composite field header should carry the OID"
+    );
+    assert!(
+        with_real.windows(4).any(|w| w == real_oid.to_be_bytes()),
+        "the encoded buffer should contain the database's own OID"
+    );
+
+    // And the roundtrip works on this database, because the harness asks `pg_type` for the OID
+    // and hands it to `with_composite_oids` rather than assuming one.
+    let rows = db
+        .roundtrip("nested_struct_shifted", &schema, &batches, None)
+        .expect("nested composite must load when the database's own OID is used");
+    assert_eq!(rows.len(), 1);
+}
+
+/// Encode the `nested_struct` corpus case, declaring `oid` for its inner composite.
+fn encode_nested_struct(schema: &Schema, batches: &[RecordBatch], oid: u32) -> BytesMut {
+    let mut encoder = ArrowToPostgresBinaryEncoder::try_new(schema)
+        .unwrap()
+        .with_composite_oids(&HashMap::from([("s_t".to_string(), oid)]))
+        .unwrap();
+    let mut buf = BytesMut::new();
+    encoder.write_header(&mut buf).unwrap();
+    for batch in batches {
+        encoder.write_batch(batch, &mut buf).unwrap();
+    }
+    encoder.write_footer(&mut buf).unwrap();
+    buf
+}
+
 #[test]
 fn array_oids_match_pg_type() {
     // (pgpq type, the `pg_type.typname` of the element type it maps to)
@@ -1520,7 +1639,11 @@ fn array_oids_match_pg_type() {
     });
     assert_eq!(PostgresType::List(int4.clone()).array_oid(), None);
     assert_eq!(
-        PostgresType::UserDefined { fields: vec![int4] }.array_oid(),
+        PostgresType::UserDefined {
+            fields: vec![int4],
+            oid: None,
+        }
+        .array_oid(),
         None
     );
 }

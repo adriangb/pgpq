@@ -96,6 +96,23 @@ impl ArrowToPostgresBinaryEncoder {
             .map_err(|e| PyValueError::new_err(format!("Failed to write footer: {:?}", e)))?;
         Ok(&self.buf[..])
     }
+    /// Declare the OIDs of the composite types this encoder writes, keyed by the type name the
+    /// generated DDL uses (`<field>_t`).
+    ///
+    /// Required for structs nested inside other structs, and for arrays of structs: those write
+    /// the composite's OID onto the wire, and Postgres allocates it when the type is created, so
+    /// it has to come from the target database. Mutates in place and returns `None`.
+    fn with_composite_oids(&mut self, oids: HashMap<String, u32>) -> PyResult<()> {
+        // The Rust API consumes and returns the encoder; swap a placeholder in while it does.
+        let placeholder = pgpq::ArrowToPostgresBinaryEncoder::try_new(&ArrowSchema::empty())
+            .map_err(|e| PyValueError::new_err(format!("{e:?}")))?;
+        let encoder = std::mem::replace(&mut self.encoder, placeholder);
+        self.encoder = encoder
+            .with_composite_oids(&oids)
+            .map_err(|e| PyValueError::new_err(format!("{e:?}")))?;
+        Ok(())
+    }
+
     fn schema(&self) -> crate::pg_schema::PostgresSchema {
         self.encoder.schema().into()
     }

@@ -444,6 +444,49 @@ def test_ddl() -> None:
     assert schema.ddl("my_table").startswith('CREATE TEMP TABLE "my_table"')
 
 
+def test_nested_struct_needs_composite_oids() -> None:
+    """A struct inside a struct writes the inner type's OID.
+
+    Postgres allocates that OID when the type is created, so only the
+    server knows it (#96).
+    """
+    schema = pa.schema(
+        [
+            pa.field(
+                "outer",
+                pa.struct(
+                    [
+                        pa.field("a", pa.int32()),
+                        pa.field("s", pa.struct([pa.field("b", pa.float32())])),
+                    ]
+                ),
+            )
+        ]
+    )
+    batch = pa.record_batch(
+        {
+            "outer": pa.array(
+                [{"a": 1, "s": {"b": 2.0}}], type=schema.field("outer").type
+            )
+        }
+    )
+
+    encoder = ArrowToPostgresBinaryEncoder(schema)
+    encoder.write_header()
+    with pytest.raises(ValueError):
+        encoder.write_batch(batch)
+
+    # With the inner composite's OID declared, it encodes.
+    encoder = ArrowToPostgresBinaryEncoder(schema)
+    encoder.with_composite_oids({"s_t": 16385})
+    buf = encoder.write_header() + encoder.write_batch(batch) + encoder.finish()
+    assert buf.startswith(b"PGCOPY\n")
+
+    # An unknown type name is an error rather than a silent no-op.
+    with pytest.raises(ValueError):
+        ArrowToPostgresBinaryEncoder(schema).with_composite_oids({"nope_t": 1})
+
+
 def test_ddl_creates_types_for_structs() -> None:
     schema = pa.schema(
         [

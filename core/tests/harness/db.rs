@@ -15,7 +15,7 @@ use arrow_schema::Schema;
 use bytes::BytesMut;
 use pgpq::ArrowToPostgresBinaryEncoder;
 use pgpq::encoders::EncoderBuilder;
-use pgpq::pg_schema::PostgresSchema;
+use pgpq::pg_schema::{Column, PostgresSchema, PostgresType};
 use postgres::{Client, NoTls};
 use postgresql_embedded::Settings;
 use postgresql_embedded::blocking::PostgreSQL;
@@ -31,18 +31,65 @@ pub fn encode(
     batches: &[RecordBatch],
     encoders: Option<&HashMap<String, EncoderBuilder>>,
 ) -> Result<(BytesMut, PostgresSchema), BoxError> {
-    let mut encoder = match encoders {
+    let encoder = build_encoder(schema, encoders)?;
+    let pg_schema = encoder.schema();
+    let oids = composite_type_names(&pg_schema)
+        .into_iter()
+        // No server here to ask, so the historical placeholder stands in; see
+        // `corpus_composite_oids` in integration_tests.rs.
+        .map(|name| (name, 16_385))
+        .collect::<HashMap<_, _>>();
+    let encoder = if oids.is_empty() {
+        encoder
+    } else {
+        encoder.with_composite_oids(&oids)?
+    };
+    Ok((encode_batches(encoder, batches)?, pg_schema))
+}
+
+fn build_encoder(
+    schema: &Schema,
+    encoders: Option<&HashMap<String, EncoderBuilder>>,
+) -> Result<ArrowToPostgresBinaryEncoder, BoxError> {
+    Ok(match encoders {
         Some(encoders) => ArrowToPostgresBinaryEncoder::try_new_with_encoders(schema, encoders)?,
         None => ArrowToPostgresBinaryEncoder::try_new(schema)?,
-    };
-    let pg_schema = encoder.schema();
+    })
+}
+
+fn encode_batches(
+    mut encoder: ArrowToPostgresBinaryEncoder,
+    batches: &[RecordBatch],
+) -> Result<BytesMut, BoxError> {
     let mut buf = BytesMut::new();
     encoder.write_header(&mut buf)?;
     for batch in batches {
         encoder.write_batch(batch, &mut buf)?;
     }
     encoder.write_footer(&mut buf)?;
-    Ok((buf, pg_schema))
+    Ok(buf)
+}
+
+/// Every composite type name the generated DDL will create, outermost first.
+pub fn composite_type_names(pg_schema: &PostgresSchema) -> Vec<String> {
+    fn walk(column: &Column, out: &mut Vec<String>) {
+        match &column.data_type {
+            PostgresType::UserDefined { fields, .. } => {
+                out.push(format!("{}_t", column.name));
+                for field in fields {
+                    walk(field, out);
+                }
+            }
+            PostgresType::List(inner) => walk(inner, out),
+            _ => {}
+        }
+    }
+
+    let mut out = Vec::new();
+    for column in &pg_schema.columns {
+        walk(column, &mut out);
+    }
+    out
 }
 
 pub struct TestDb {
@@ -77,19 +124,57 @@ impl TestDb {
         &mut self.client
     }
 
-    /// Create a table from `pg_schema`, `COPY` `buf` into it and read every row back with typed
-    /// `FromSql` decoding. The table (and any composite types it needs) only exist for the
-    /// duration of the call.
-    pub fn load_and_read(
+    /// Create the table (and any composite types) for `pg_schema` and `COPY` `buf` into it,
+    /// rolling back afterwards. Used to check that a *particular* encoding is accepted or
+    /// rejected by the server, rather than to read values back.
+    pub fn load_snapshot(
         &mut self,
         table: &str,
         pg_schema: &PostgresSchema,
         buf: &[u8],
-    ) -> Result<Vec<Vec<Value>>, BoxError> {
+    ) -> Result<(), BoxError> {
         let mut tx = self.client.transaction()?;
         tx.batch_execute(&pg_schema.ddl(table, false))?;
         let mut writer = tx.copy_in(format!("copy \"{table}\" from stdin binary").as_str())?;
         writer.write_all(buf)?;
+        writer.finish()?;
+        tx.rollback()?;
+        Ok(())
+    }
+
+    /// Encode `batches`, push them through Postgres and read them back.
+    pub fn roundtrip(
+        &mut self,
+        table: &str,
+        schema: &Schema,
+        batches: &[RecordBatch],
+        encoders: Option<&HashMap<String, EncoderBuilder>>,
+    ) -> Result<Vec<Vec<Value>>, BoxError> {
+        let encoder = build_encoder(schema, encoders)?;
+        let pg_schema = encoder.schema();
+
+        let mut tx = self.client.transaction()?;
+        tx.batch_execute(&pg_schema.ddl(table, false))?;
+
+        // The composite types now exist, so ask the server what OIDs it gave them and encode
+        // with those. This is the flow `with_composite_oids` is for, and it means the roundtrip
+        // never depends on a composite landing on a particular OID (#96).
+        let mut oids = HashMap::new();
+        for name in composite_type_names(&pg_schema) {
+            let oid: u32 = tx
+                .query_one("select oid from pg_type where typname = $1", &[&name])?
+                .get(0);
+            oids.insert(name, oid);
+        }
+        let encoder = if oids.is_empty() {
+            encoder
+        } else {
+            encoder.with_composite_oids(&oids)?
+        };
+        let buf = encode_batches(encoder, batches)?;
+
+        let mut writer = tx.copy_in(format!("copy \"{table}\" from stdin binary").as_str())?;
+        writer.write_all(&buf)?;
         writer.finish()?;
         let rows = tx.query(
             format!("select * from \"{table}\" order by ctid").as_str(),
@@ -106,17 +191,5 @@ impl TestDb {
         // Rolling back drops the table and any composite types created above.
         tx.rollback()?;
         Ok(decoded)
-    }
-
-    /// Encode `batches`, push them through Postgres and read them back.
-    pub fn roundtrip(
-        &mut self,
-        table: &str,
-        schema: &Schema,
-        batches: &[RecordBatch],
-        encoders: Option<&HashMap<String, EncoderBuilder>>,
-    ) -> Result<Vec<Vec<Value>>, BoxError> {
-        let (buf, pg_schema) = encode(schema, batches, encoders)?;
-        self.load_and_read(table, &pg_schema, &buf)
     }
 }

@@ -179,6 +179,14 @@ impl<T: GenericListArrayValues> PartialEq for GenericListEncoderBuilder<T> {
 }
 
 impl<T: GenericListArrayValues> GenericListEncoderBuilder<T> {
+    /// The element builder, mutably, so a caller can walk into it.
+    ///
+    /// Uses `Arc::make_mut`, so a builder shared with a clone is copied first rather than mutated
+    /// underneath it.
+    pub(crate) fn inner_encoder_builder_mut(&mut self) -> &mut EncoderBuilder {
+        Arc::make_mut(&mut self.inner_encoder_builder)
+    }
+
     pub fn new(field: Arc<Field>) -> Result<Self, ErrorKind> {
         match T::inner_field(field.data_type()) {
             Some(inner) => {
@@ -296,6 +304,12 @@ impl Encode for StructEncoder<'_> {
 pub struct StructEncoderBuilder {
     field: Arc<Field>,
     field_encoder_builders: Vec<EncoderBuilder>,
+    /// This composite's own OID in the target database, if the caller supplied one.
+    ///
+    /// Only consulted when this composite is a *field of another composite*, which is the one
+    /// place a composite's OID goes on the wire. A top-level composite column never needs it:
+    /// binary COPY declares no column types.
+    oid: Option<u32>,
 }
 
 impl StructEncoderBuilder {
@@ -306,8 +320,10 @@ impl StructEncoderBuilder {
                 .map(|f| EncoderBuilder::try_new(f.clone()))
                 .collect::<Result<Vec<_>, _>>()?;
             let builder = Self::unchecked(field, field_encoder_builders);
-            // Fail at schema time rather than once per batch.
-            builder.field_oids()?;
+            // Fail at schema time rather than once per batch — but only for shapes that can
+            // never work. A nested composite whose OID has not been supplied yet is not one of
+            // those: the caller sets it with `with_oid` after building the tree.
+            builder.check_field_types_encodable()?;
             Ok(builder)
         } else {
             Err(ErrorKind::FieldTypeNotSupported {
@@ -326,32 +342,116 @@ impl StructEncoderBuilder {
         Self {
             field,
             field_encoder_builders,
+            oid: None,
         }
+    }
+
+    /// Declare this composite's OID in the database being loaded.
+    ///
+    /// Required only when the composite is nested inside another composite. Postgres allocates
+    /// composite OIDs when the type is created, so the value has to come from the server:
+    ///
+    /// ```sql
+    /// select oid from pg_type where typname = 'my_struct_t';
+    /// ```
+    ///
+    /// [`ArrowToPostgresBinaryEncoder::with_composite_oids`] applies a whole map of these at
+    /// once, keyed by the type name the generated DDL uses.
+    ///
+    /// [`ArrowToPostgresBinaryEncoder::with_composite_oids`]: crate::ArrowToPostgresBinaryEncoder::with_composite_oids
+    pub fn with_oid(mut self, oid: u32) -> Self {
+        self.oid = Some(oid);
+        self
+    }
+
+    /// [`Self::with_oid`] for a builder held behind a `&mut`, as the tree walk in
+    /// [`ArrowToPostgresBinaryEncoder::with_composite_oids`] has.
+    ///
+    /// [`ArrowToPostgresBinaryEncoder::with_composite_oids`]: crate::ArrowToPostgresBinaryEncoder::with_composite_oids
+    pub(crate) fn set_oid(&mut self, oid: u32) {
+        self.oid = Some(oid);
+    }
+
+    /// This composite's declared OID, if one has been supplied.
+    pub fn oid(&self) -> Option<u32> {
+        self.oid
+    }
+
+    /// The builders for this composite's fields, so a caller can walk the tree.
+    pub(crate) fn field_encoder_builders_mut(&mut self) -> &mut Vec<EncoderBuilder> {
+        &mut self.field_encoder_builders
+    }
+
+    /// The name the generated DDL gives this composite's type.
+    pub(crate) fn type_name(&self) -> String {
+        format!("{}_t", self.field.name())
+    }
+
+    /// Reject field types that can never carry an OID, whatever the caller does.
+    ///
+    /// A composite field's OID goes on the wire, and Postgres' `record_recv` checks it. Some
+    /// types have no answer at all — an array of composites, or an array of arrays, neither of
+    /// which Postgres has a distinct type for — and those are rejected when the builder is
+    /// created rather than once per batch. A *composite* field is fine here even with no OID yet:
+    /// the caller supplies it with [`Self::with_oid`] after the tree exists.
+    pub(super) fn check_field_types_encodable(&self) -> Result<(), ErrorKind> {
+        for builder in &self.field_encoder_builders {
+            let column = builder.schema();
+            let missing_oid = column.data_type.oid().is_none();
+            let is_composite = matches!(column.data_type, PostgresType::UserDefined { .. });
+            if missing_oid && !is_composite {
+                return Err(ErrorKind::type_unsupported(
+                    self.field.name(),
+                    self.field.data_type(),
+                    &format!(
+                        "field {} maps to {:?}, which has no Postgres OID; \
+                         a composite type cannot contain an array of composites or of arrays",
+                        column.name, column.data_type
+                    ),
+                ));
+            }
+        }
+        Ok(())
     }
 
     /// The OID Postgres expects for each field of the composite type.
     ///
     /// Postgres' `record_recv` compares the OID written for every field against the composite's
     /// declared column type, so these have to be real: an array field needs the array type's OID
-    /// (`_int4` = 1007 for `int4[]`), not the element's. Types whose OID is only known to the
-    /// server — an array of composites, or an array of arrays — have no answer here, and are
-    /// reported as unsupported rather than encoded with something Postgres would reject.
+    /// (`_int4` = 1007 for `int4[]`), not the element's.
+    ///
+    /// A composite field's OID is allocated by the server, so pgpq can only know it if the caller
+    /// says so — see [`Self::with_oid`] and
+    /// [`ArrowToPostgresBinaryEncoder::with_composite_oids`]. Encoding without it would put a
+    /// guess on the wire, which is exactly the bug this replaced.
+    ///
+    /// [`ArrowToPostgresBinaryEncoder::with_composite_oids`]: crate::ArrowToPostgresBinaryEncoder::with_composite_oids
     pub(super) fn field_oids(&self) -> Result<Vec<u32>, ErrorKind> {
         self.field_encoder_builders
             .iter()
             .map(|builder| {
                 let column = builder.schema();
-                column.data_type.oid().ok_or_else(|| {
-                    ErrorKind::type_unsupported(
-                        self.field.name(),
-                        self.field.data_type(),
-                        &format!(
-                            "field {} maps to {:?}, which has no Postgres OID; \
-                             a composite type cannot contain an array of composites or of arrays",
-                            column.name, column.data_type
-                        ),
-                    )
-                })
+                if let Some(oid) = column.data_type.oid() {
+                    return Ok(oid);
+                }
+                let reason = match &column.data_type {
+                    PostgresType::UserDefined { .. } => format!(
+                        "field {} is a composite type whose OID in the target database is \
+                         unknown; supply it with `with_composite_oids` (look it up with \
+                         `select oid from pg_type where typname = '{}_t'`)",
+                        column.name, column.name
+                    ),
+                    other => format!(
+                        "field {} maps to {other:?}, which has no Postgres OID; \
+                         a composite type cannot contain an array of composites or of arrays",
+                        column.name
+                    ),
+                };
+                Err(ErrorKind::type_unsupported(
+                    self.field.name(),
+                    self.field.data_type(),
+                    &reason,
+                ))
             })
             .collect()
     }
@@ -391,6 +491,7 @@ impl BuildEncoder for StructEncoderBuilder {
                     .iter()
                     .map(|builder| Box::new(builder.schema()))
                     .collect(),
+                oid: self.oid,
             },
             nullable: self.field.is_nullable(),
         }
