@@ -27,17 +27,14 @@ ArrowToPostgresBinaryEncoder::try_new -> schema().ddl() -> write_header -> write
 The property is **"encoding valid Arrow data in the documented call order never panics"**. Encoder
 `Err`s are values, not failures, and are ignored.
 
-Two regions are deliberately excluded so the target explores new ground instead of rediscovering
-known bugs on every run (both are documented with `KNOWN BUG` comments in
-`core/tests/proptest_roundtrip.rs`):
+Nothing is excluded any more. The two regions that used to be — structs with a `List` field
+(`StructEncoderBuilder::try_new` panicked because `PostgresType::List` has no OID) and negative
+decimal scales (`Decimal*Encoder::byte_size_hint` underflowed) — are both fixed and both fuzzed:
+see `Shape::StructWithList` and the `-(precision)..=precision` scale draw.
 
-* structs with a `List` field — `StructEncoderBuilder::try_new` panics because `PostgresType::List`
-  has no OID;
-* negative decimal scales — `Decimal*Encoder::byte_size_hint` underflows.
-
-`write_header`/`write_batch`/`write_footer` `assert!` on out-of-order use. That is a deliberate
-panic-on-misuse API, so the target always calls them in order; misuse is not the property under
-test.
+`write_header`/`write_batch`/`write_footer` return `Err` on out-of-order use rather than
+panicking, so misuse is a value like any other; the target still calls them in order, because the
+property under test is about encoding, not about the state machine.
 
 ### No `json` crate target
 

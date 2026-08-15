@@ -13,14 +13,12 @@ use std::sync::Arc;
 use arrow::buffer::{NullBuffer, OffsetBuffer};
 use arrow_array::builder::{ListBuilder, StringBuilder};
 use arrow_array::{
-    ArrayRef, BooleanArray, Float32Array, Float64Array, Int8Array, Int32Array, ListArray,
-    RecordBatch, StringArray, StructArray,
+    ArrayRef, BooleanArray, Float32Array, Float64Array, Int32Array, ListArray, RecordBatch,
+    StringArray, StructArray,
 };
 use arrow_ipc::reader::FileReader;
 use arrow_schema::{DataType, Field, Fields, Schema};
-use pgpq::encoders::{
-    EncoderBuilder, Int8EncoderBuilder, ListEncoderBuilder, StringEncoderBuilder,
-};
+use pgpq::encoders::{EncoderBuilder, ListEncoderBuilder, StringEncoderBuilder};
 use pgpq::pg_schema::PostgresType;
 
 use super::value::{Value, expected_rows};
@@ -400,35 +398,6 @@ fn json_string_case(output: PostgresType) -> Case {
     Case::new(name, batch)
         .with_encoders(encoders)
         .with_expected(expected)
-}
-
-/// An `Int8` column written as `PostgresType::Char` rather than the default `INT2`.
-///
-/// `Int8EncoderBuilder` is the one scalar builder whose output type is caller selectable, and the
-/// `Char` branch was reachable from no test at all.
-///
-/// This case is deliberately *not* part of [`all_cases`]: Postgres rejects the `COPY` outright.
-/// See `int8_as_char_is_rejected_by_postgres` in `tests/integration_tests.rs`.
-pub fn int8_char_case() -> Case {
-    let field = Field::new("code", DataType::Int8, true);
-    let array = Arc::new(Int8Array::from(vec![
-        Some(0),
-        Some(1),
-        Some(-1),
-        Some(i8::MIN),
-        Some(i8::MAX),
-        None,
-    ])) as ArrayRef;
-    let batch = single_column_batch(field.clone(), array);
-
-    let encoders = HashMap::from([(
-        "code".to_string(),
-        EncoderBuilder::Int8(
-            Int8EncoderBuilder::new_with_output(Arc::new(field), PostgresType::Char).unwrap(),
-        ),
-    )]);
-
-    Case::new("int8_char", batch).with_encoders(encoders)
 }
 
 /// Every case, in the order they should be run.
