@@ -15,7 +15,7 @@ use arrow_schema::Schema;
 use bytes::BytesMut;
 use pgpq::ArrowToPostgresBinaryEncoder;
 use pgpq::encoders::EncoderBuilder;
-use pgpq::pg_schema::{Column, PostgresSchema, PostgresType};
+use pgpq::pg_schema::PostgresSchema;
 use postgres::{Client, NoTls};
 use postgresql_embedded::Settings;
 use postgresql_embedded::blocking::PostgreSQL;
@@ -33,7 +33,8 @@ pub fn encode(
 ) -> Result<(BytesMut, PostgresSchema), BoxError> {
     let encoder = build_encoder(schema, encoders)?;
     let pg_schema = encoder.schema();
-    let oids = composite_type_names(&pg_schema)
+    let oids = encoder
+        .composite_type_names()
         .into_iter()
         // No server here to ask, so the historical placeholder stands in; see
         // `corpus_composite_oids` in integration_tests.rs.
@@ -68,28 +69,6 @@ fn encode_batches(
     }
     encoder.write_footer(&mut buf)?;
     Ok(buf)
-}
-
-/// Every composite type name the generated DDL will create, outermost first.
-pub fn composite_type_names(pg_schema: &PostgresSchema) -> Vec<String> {
-    fn walk(column: &Column, out: &mut Vec<String>) {
-        match &column.data_type {
-            PostgresType::UserDefined { fields, .. } => {
-                out.push(format!("{}_t", column.name));
-                for field in fields {
-                    walk(field, out);
-                }
-            }
-            PostgresType::List(inner) => walk(inner, out),
-            _ => {}
-        }
-    }
-
-    let mut out = Vec::new();
-    for column in &pg_schema.columns {
-        walk(column, &mut out);
-    }
-    out
 }
 
 pub struct TestDb {
@@ -160,7 +139,7 @@ impl TestDb {
         // with those. This is the flow `with_composite_oids` is for, and it means the roundtrip
         // never depends on a composite landing on a particular OID (#96).
         let mut oids = HashMap::new();
-        for name in composite_type_names(&pg_schema) {
+        for name in encoder.composite_type_names() {
             let oid: u32 = tx
                 .query_one("select oid from pg_type where typname = $1", &[&name])?
                 .get(0);

@@ -147,6 +147,37 @@ impl ArrowToPostgresBinaryEncoder {
         })
     }
 
+    /// The composite type names this encoder needs OIDs for, outermost first.
+    ///
+    /// These are the names [`PostgresSchema::ddl`] creates, so the usual flow is: run the DDL,
+    /// look these names up in `pg_type`, and hand the result to [`Self::with_composite_oids`].
+    ///
+    /// Every composite is listed, including top-level struct columns that do not strictly need an
+    /// OID — supplying one for those is harmless, and leaving them out of the list would make it
+    /// a poor answer to "which types did my DDL create?".
+    pub fn composite_type_names(&self) -> Vec<String> {
+        fn walk(builder: &EncoderBuilder, out: &mut Vec<String>) {
+            match builder {
+                EncoderBuilder::Struct(s) => {
+                    out.push(s.type_name());
+                    for inner in s.field_builders() {
+                        walk(inner, out);
+                    }
+                }
+                EncoderBuilder::List(l) => walk(l.inner_builder(), out),
+                EncoderBuilder::LargeList(l) => walk(l.inner_builder(), out),
+                EncoderBuilder::FixedSizeList(l) => walk(l.inner_builder(), out),
+                _ => {}
+            }
+        }
+
+        let mut out = Vec::new();
+        for builder in &self.encoder_builders {
+            walk(builder, &mut out);
+        }
+        out
+    }
+
     /// Supply the OIDs of the composite types this encoder will write, keyed by the type name
     /// the generated DDL uses (`<field>_t`).
     ///

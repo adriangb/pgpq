@@ -61,12 +61,16 @@ def dbconn(postgres: Postgresql) -> Iterator[Connection]:
 def encode(table: pa.Table) -> tuple[PostgresSchema, bytes]:
     """Encode a table with the default (inferred) encoders."""
     encoder = ArrowToPostgresBinaryEncoder(table.schema)
+    return encoder.schema(), _encode_with(encoder, table)
+
+
+def _encode_with(encoder: ArrowToPostgresBinaryEncoder, table: pa.Table) -> bytes:
     buffer = bytearray()
     buffer.extend(encoder.write_header())
     for batch in table.to_batches():
         buffer.extend(encoder.write_batch(batch))
     buffer.extend(encoder.finish())
-    return encoder.schema(), bytes(buffer)
+    return bytes(buffer)
 
 
 def copy_buffer_and_get_rows(
@@ -86,8 +90,32 @@ def copy_buffer_and_get_rows(
 
 
 def roundtrip(table: pa.Table, dbconn: Connection) -> list[tuple[Any, ...]]:
-    schema, buffer = encode(table)
-    return copy_buffer_and_get_rows(schema, buffer, dbconn)
+    """Create the table, then encode against the OIDs the server actually allocated.
+
+    Composite types get their OIDs when the DDL runs, so the types have to exist
+    before the batch can be encoded -- see `with_composite_oids` (#96).
+    """
+    encoder = ArrowToPostgresBinaryEncoder(table.schema)
+    schema = encoder.schema()
+    try:
+        with dbconn.cursor() as cursor:
+            cursor.execute(schema.ddl("data"))  # type: ignore[arg-type]
+
+            names = encoder.composite_type_names()
+            if names:
+                cursor.execute(
+                    "SELECT typname, oid FROM pg_type WHERE typname = ANY(%s)", (names,)
+                )
+                encoder.with_composite_oids(dict(cursor.fetchall()))
+
+            buffer = _encode_with(encoder, table)
+            with cursor.copy("COPY data FROM STDIN WITH (FORMAT BINARY)") as copy:
+                copy.write(buffer)
+            cursor.execute("SELECT * FROM data")
+            rows = cursor.fetchall()
+    finally:
+        dbconn.rollback()  # all that matters is that we drop our temp table
+    return rows
 
 
 # --------------------------------------------------------------------------------------

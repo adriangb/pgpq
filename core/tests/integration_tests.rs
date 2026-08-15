@@ -11,7 +11,7 @@ use arrow_schema::Schema;
 use bytes::BytesMut;
 use console::Style;
 use pgpq::ArrowToPostgresBinaryEncoder;
-use pgpq::pg_schema::{Column, PostgresSchema, PostgresType};
+use pgpq::pg_schema::{Column, PostgresType};
 use similar::{ChangeTag, TextDiff};
 
 use harness::cases::{Case, all_cases, custom_encoder_cases, read_batches};
@@ -26,34 +26,13 @@ use harness::value::Value;
 /// generated DDL creates, so `validate_snapshots` still loads them. Naming the value here keeps
 /// the snapshots reproducible and puts the assumption where it can be seen, rather than inside
 /// the library where it silently applied to every user's database.
-///
-/// `with_composite_oids` rejects names it does not recognise, so this maps every composite the
-/// schema actually contains.
-fn corpus_composite_oids(schema: &PostgresSchema) -> HashMap<String, u32> {
-    fn walk(column: &Column, out: &mut HashMap<String, u32>) {
-        match &column.data_type {
-            PostgresType::UserDefined { fields, .. } => {
-                out.insert(format!("{}_t", column.name), 16_385);
-                for field in fields {
-                    walk(field, out);
-                }
-            }
-            PostgresType::List(inner) => walk(inner, out),
-            _ => {}
-        }
-    }
-
-    let mut out = HashMap::new();
-    for column in &schema.columns {
-        walk(column, &mut out);
-    }
-    out
-}
-
-/// Build the default encoder for `schema`, with the corpus' composite OIDs applied.
 fn corpus_encoder(schema: &Schema) -> ArrowToPostgresBinaryEncoder {
     let encoder = ArrowToPostgresBinaryEncoder::try_new(schema).unwrap();
-    let oids = corpus_composite_oids(&encoder.schema());
+    let oids: HashMap<String, u32> = encoder
+        .composite_type_names()
+        .into_iter()
+        .map(|name| (name, 16_385))
+        .collect();
     if oids.is_empty() {
         return encoder;
     }

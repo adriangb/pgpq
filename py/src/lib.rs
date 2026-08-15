@@ -96,6 +96,14 @@ impl ArrowToPostgresBinaryEncoder {
             .map_err(|e| PyValueError::new_err(format!("Failed to write footer: {:?}", e)))?;
         Ok(&self.buf[..])
     }
+    /// The composite type names this encoder needs OIDs for, outermost first.
+    ///
+    /// These are the names `schema().ddl(...)` creates, so the flow is: run the DDL, look these
+    /// up in `pg_type`, and pass the result to `with_composite_oids`.
+    fn composite_type_names(&self) -> Vec<String> {
+        self.encoder.composite_type_names()
+    }
+
     /// Declare the OIDs of the composite types this encoder writes, keyed by the type name the
     /// generated DDL uses (`<field>_t`).
     ///

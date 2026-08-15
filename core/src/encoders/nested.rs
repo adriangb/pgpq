@@ -220,6 +220,11 @@ impl<T: GenericListArrayValues> GenericListEncoderBuilder<T> {
     pub fn inner_encoder_builder(&self) -> EncoderBuilder {
         (*self.inner_encoder_builder).clone()
     }
+
+    /// The element builder by reference, for walking the tree without cloning it.
+    pub(crate) fn inner_builder(&self) -> &EncoderBuilder {
+        &self.inner_encoder_builder
+    }
 }
 
 impl<T> BuildEncoder for GenericListEncoderBuilder<T>
@@ -459,6 +464,11 @@ impl StructEncoderBuilder {
     pub fn inner_encoder_builder(&self) -> Vec<EncoderBuilder> {
         // Return a clone of the inner encoder builders
         self.field_encoder_builders.to_vec()
+    }
+
+    /// The field builders by reference, for walking the tree without cloning it.
+    pub(crate) fn field_builders(&self) -> &[EncoderBuilder] {
+        &self.field_encoder_builders
     }
 }
 
