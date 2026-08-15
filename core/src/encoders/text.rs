@@ -15,7 +15,7 @@ use arrow_array::{
 use arrow_schema::{DataType, Field};
 use bytes::BytesMut;
 
-use super::{downcast_checked, put, BuildEncoder, Encode, Encoder};
+use super::{BuildEncoder, Encode, Encoder, downcast_checked, put};
 use crate::error::ErrorKind;
 use crate::pg_schema::{Column, PostgresType};
 

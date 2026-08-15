@@ -12,7 +12,7 @@ use arrow_array::{
 use arrow_schema::{DataType, Field};
 use bytes::BytesMut;
 
-use super::{downcast_checked, put, BuildEncoder, Encode, Encoder, EncoderBuilder};
+use super::{BuildEncoder, Encode, Encoder, EncoderBuilder, downcast_checked, put};
 use crate::error::ErrorKind;
 use crate::pg_schema::{Column, PostgresType};
 
@@ -105,7 +105,7 @@ impl<T: GenericListArrayValues> Encode for GenericListEncoder<'_, T> {
             let base_idx = buf.len();
             put(buf, (0i32).to_be_bytes()); // the total number of bytes this element takes up, insert later
             put(buf, (1i32).to_be_bytes()); // num dimensions, we only support 1
-                                            // nulls flag, true if any item is null
+            // nulls flag, true if any item is null
             put(buf, ((val.null_count() != 0) as i32).to_be_bytes());
             put(buf, (inner_tp_oid as i32).to_be_bytes());
             // put the dimension length

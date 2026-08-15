@@ -1,13 +1,13 @@
 use arrow::array::Array;
 use arrow::array::StringBuilder;
 use pyo3::prelude::*;
-use pyo3::{exceptions::PyValueError, Python};
+use pyo3::{Python, exceptions::PyValueError};
 
-use arrow::array::{make_array, ArrayData, LargeStringBuilder};
+use arrow::array::{ArrayData, LargeStringBuilder, make_array};
 use arrow::pyarrow::{FromPyArrow, ToPyArrow};
 use arrow::record_batch::RecordBatch;
 use arrow_json::writer::Writer;
-use serde_json::{to_string, Value};
+use serde_json::{Value, to_string};
 
 #[pyfunction]
 #[pyo3(signature = (array, large = true))]

@@ -26,7 +26,7 @@ environment.
 make init          # create the venv from the committed uv.lock + install pre-commit
 make build-develop # maturin develop both extension modules into the venv
 make test          # cargo test + pytest
-make lint          # uv lock --check + pre-commit (cargo fmt, clippy, ruff)
+make lint          # uv lock --check + dependency-group check + pre-commit (cargo fmt, clippy, ruff)
 ```
 
 `cargo test` alone runs the entire Rust suite (unit tests, byte-exact snapshot
@@ -50,8 +50,10 @@ Makefile's `uv sync` nor `maturin develop` consults the extras — but it can
 *appear* to work locally when the package happens to be present transitively
 (or via the `bench` group, which local `make init` installs and CI does not).
 CI, which installs only the root `test` group, then fails with
-`ModuleNotFoundError`. `make lint` runs `uv lock --check`, which catches a
-stale lock but *not* a missing mirror entry.
+`ModuleNotFoundError`. `uv lock --check` catches a stale lock but *not* a
+missing mirror entry, so `make lint` (and the CI lint job) also runs
+`scripts/check_dep_groups.py`, which fails if a root group is no longer a
+superset of the corresponding extras.
 
 The `--no-sync` flags on `uv run` in the Makefile are load-bearing: the
 maturin-built extension modules are not part of the lock, and an implicit sync

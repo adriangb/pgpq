@@ -13,12 +13,12 @@ use std::time::Duration;
 use arrow_array::RecordBatch;
 use arrow_schema::Schema;
 use bytes::BytesMut;
+use pgpq::ArrowToPostgresBinaryEncoder;
 use pgpq::encoders::EncoderBuilder;
 use pgpq::pg_schema::PostgresSchema;
-use pgpq::ArrowToPostgresBinaryEncoder;
 use postgres::{Client, NoTls};
-use postgresql_embedded::blocking::PostgreSQL;
 use postgresql_embedded::Settings;
+use postgresql_embedded::blocking::PostgreSQL;
 
 use super::value::Value;
 

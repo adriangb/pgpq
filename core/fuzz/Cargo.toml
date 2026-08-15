@@ -2,7 +2,9 @@
 name = "pgpq-fuzz"
 version = "0.0.0"
 publish = false
-edition = "2021"
+# Kept in step with the root workspace's `[workspace.package] edition`; this
+# crate is its own workspace so it cannot inherit it.
+edition = "2024"
 
 [package.metadata]
 cargo-fuzz = true
