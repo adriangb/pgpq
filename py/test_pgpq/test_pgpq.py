@@ -346,6 +346,11 @@ def test_roundtrip_custom_encoding_to_jsonb(dbconn: Connection) -> None:
 #: Column types and the values to fill them with. Deliberately primitive: decimals are
 #: excluded because the Rust suite documents open encoder bugs there, and ``\x00`` is
 #: excluded from text because Postgres rejects it in ``text`` regardless of pgpq.
+#:
+#: Surrogates (category ``Cs``) are excluded too: ``st.text()`` will happily draw a lone
+#: ``\ud800``, which is a valid `str` but has no UTF-8 encoding, so ``pa.array`` raises
+#: while *building* the example. That made this test fail at random, on data that never
+#: reached pgpq.
 _COLUMN_TYPES: list[tuple[pa.DataType, st.SearchStrategy[Any]]] = [
     (pa.int16(), st.integers(min_value=-(2**15), max_value=2**15 - 1)),
     (pa.int32(), st.integers(min_value=-(2**31), max_value=2**31 - 1)),
@@ -354,7 +359,12 @@ _COLUMN_TYPES: list[tuple[pa.DataType, st.SearchStrategy[Any]]] = [
     (pa.bool_(), st.booleans()),
     (
         pa.string(),
-        st.text(alphabet=st.characters(blacklist_characters="\x00"), max_size=32),
+        st.text(
+            alphabet=st.characters(
+                blacklist_characters="\x00", blacklist_categories=("Cs",)
+            ),
+            max_size=32,
+        ),
     ),
     (pa.large_binary(), st.binary(max_size=32)),
 ]
