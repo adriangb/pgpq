@@ -287,6 +287,25 @@ pub fn float_cases() -> Vec<Case> {
 
 /// Cases that override the default encoder selection, e.g. writing Arrow strings as `JSONB`.
 pub fn custom_encoder_cases() -> Vec<Case> {
+    vec![
+        json_list_case(PostgresType::Jsonb),
+        json_list_case(PostgresType::Json),
+        json_string_case(PostgresType::Jsonb),
+        json_string_case(PostgresType::Json),
+    ]
+}
+
+/// A `List(Utf8)` column whose elements are written as `JSON` or `JSONB`.
+///
+/// This is the one shape that puts a JSON element OID on the wire: an array header declares the
+/// OID of its element type, and `array_recv` checks it against the column's real element type.
+/// `PostgresType::Json` used to report jsonb's 3802 (#96), which Postgres rejects outright for a
+/// `json[]` column — the `JSONB` variant of this case could not see it, because 3802 is right
+/// for jsonb.
+fn json_list_case(output: PostgresType) -> Case {
+    let jsonb = output == PostgresType::Jsonb;
+    let name = if jsonb { "json_list" } else { "json_list_json" };
+
     let mut builder = ListBuilder::new(StringBuilder::new()).with_field(Arc::new(Field::new(
         "field",
         DataType::Utf8,
@@ -296,35 +315,35 @@ pub fn custom_encoder_cases() -> Vec<Case> {
     builder.append_value([Some("{\"foo\":\"bar\"}")]);
     builder.append_value([Some("123")]);
     let list = Arc::new(builder.finish()) as ArrayRef;
-    let field = Field::new_list("json_list", Field::new("field", DataType::Utf8, true), true);
+    let field = Field::new_list(name, Field::new("field", DataType::Utf8, true), true);
     let batch = single_column_batch(field.clone(), list);
 
     let inner = Field::new("field", DataType::Utf8, true);
     let encoder = ListEncoderBuilder::new_with_inner(
         Arc::new(field),
         EncoderBuilder::String(
-            StringEncoderBuilder::new_with_output(Arc::new(inner), PostgresType::Jsonb).unwrap(),
+            StringEncoderBuilder::new_with_output(Arc::new(inner), output).unwrap(),
         ),
     )
     .unwrap();
-    let encoders = HashMap::from([("json_list".to_string(), EncoderBuilder::List(encoder))]);
+    let encoders = HashMap::from([(name.to_string(), EncoderBuilder::List(encoder))]);
 
-    // JSONB is a parsed representation, so Postgres hands back canonical JSON text rather than the
-    // exact input bytes.
+    // JSONB is a parsed representation, so Postgres hands back canonical JSON text rather than
+    // the exact input bytes; JSON stores the document text verbatim.
+    let middle = if jsonb {
+        "{\"foo\": \"bar\"}"
+    } else {
+        "{\"foo\":\"bar\"}"
+    };
     let expected = vec![
         vec![Value::Array(vec![Value::Text("[]".into())])],
-        vec![Value::Array(vec![Value::Text("{\"foo\": \"bar\"}".into())])],
+        vec![Value::Array(vec![Value::Text(middle.into())])],
         vec![Value::Array(vec![Value::Text("123".into())])],
     ];
 
-    let mut cases = vec![
-        Case::new("json_list", batch)
-            .with_encoders(encoders)
-            .with_expected(expected),
-    ];
-    cases.push(json_string_case(PostgresType::Jsonb));
-    cases.push(json_string_case(PostgresType::Json));
-    cases
+    Case::new(name, batch)
+        .with_encoders(encoders)
+        .with_expected(expected)
 }
 
 /// The JSON documents used by [`json_string_case`], deliberately including whitespace and an
