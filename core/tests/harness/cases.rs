@@ -13,12 +13,14 @@ use std::sync::Arc;
 use arrow::buffer::{NullBuffer, OffsetBuffer};
 use arrow_array::builder::{ListBuilder, StringBuilder};
 use arrow_array::{
-    ArrayRef, BooleanArray, Float32Array, Float64Array, Int32Array, ListArray, RecordBatch,
-    StringArray, StructArray,
+    ArrayRef, BooleanArray, Float32Array, Float64Array, Int32Array, Int8Array, ListArray,
+    RecordBatch, StringArray, StructArray,
 };
 use arrow_ipc::reader::FileReader;
 use arrow_schema::{DataType, Field, Fields, Schema};
-use pgpq::encoders::{EncoderBuilder, ListEncoderBuilder, StringEncoderBuilder};
+use pgpq::encoders::{
+    EncoderBuilder, Int8EncoderBuilder, ListEncoderBuilder, StringEncoderBuilder,
+};
 use pgpq::pg_schema::PostgresType;
 
 use super::value::{expected_rows, Value};
@@ -296,9 +298,83 @@ pub fn custom_encoder_cases() -> Vec<Case> {
         vec![Value::Array(vec![Value::Text("123".into())])],
     ];
 
-    vec![Case::new("json_list", batch)
+    let mut cases = vec![Case::new("json_list", batch)
         .with_encoders(encoders)
-        .with_expected(expected)]
+        .with_expected(expected)];
+    cases.push(jsonb_string_case());
+    cases
+}
+
+/// A plain (non list) `Utf8` column written as `JSONB`.
+///
+/// The `json_list` case above only reaches `JSONB` through a list, so the scalar path — and the
+/// one byte jsonb version header the encoder writes — had no coverage of its own.
+fn jsonb_string_case() -> Case {
+    let values = vec![
+        "{\"b\": 1, \"a\": 2}",
+        "{ \"spaced\"  :  [1,2,3] }",
+        "[]",
+        "123",
+        "null",
+        "\"a string\"",
+    ];
+    let field = Field::new("payload", DataType::Utf8, false);
+    let array = Arc::new(StringArray::from(values)) as ArrayRef;
+    let batch = single_column_batch(field.clone(), array);
+
+    let encoders = HashMap::from([(
+        "payload".to_string(),
+        EncoderBuilder::String(
+            StringEncoderBuilder::new_with_output(Arc::new(field), PostgresType::Jsonb).unwrap(),
+        ),
+    )]);
+
+    // JSONB is a parsed representation: Postgres re-renders it with its own spacing and (for
+    // objects) its own key order, so the text that comes back is not the text that went in.
+    let expected = [
+        "{\"a\": 2, \"b\": 1}",
+        "{\"spaced\": [1, 2, 3]}",
+        "[]",
+        "123",
+        "null",
+        "\"a string\"",
+    ]
+    .iter()
+    .map(|s| vec![Value::Text((*s).to_string())])
+    .collect();
+
+    Case::new("jsonb_string", batch)
+        .with_encoders(encoders)
+        .with_expected(expected)
+}
+
+/// An `Int8` column written as `PostgresType::Char` rather than the default `INT2`.
+///
+/// `Int8EncoderBuilder` is the one scalar builder whose output type is caller selectable, and the
+/// `Char` branch was reachable from no test at all.
+///
+/// This case is deliberately *not* part of [`all_cases`]: Postgres rejects the `COPY` outright.
+/// See `int8_as_char_is_rejected_by_postgres` in `tests/integration_tests.rs`.
+pub fn int8_char_case() -> Case {
+    let field = Field::new("code", DataType::Int8, true);
+    let array = Arc::new(Int8Array::from(vec![
+        Some(0),
+        Some(1),
+        Some(-1),
+        Some(i8::MIN),
+        Some(i8::MAX),
+        None,
+    ])) as ArrayRef;
+    let batch = single_column_batch(field.clone(), array);
+
+    let encoders = HashMap::from([(
+        "code".to_string(),
+        EncoderBuilder::Int8(
+            Int8EncoderBuilder::new_with_output(Arc::new(field), PostgresType::Char).unwrap(),
+        ),
+    )]);
+
+    Case::new("int8_char", batch).with_encoders(encoders)
 }
 
 /// Every case, in the order they should be run.
