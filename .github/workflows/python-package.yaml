@@ -208,19 +208,22 @@ jobs:
           manylinux: musllinux_1_2
           args: -m ${{ inputs.package_dir }}/Cargo.toml --release --out dist
           maturin-version: ${{ env.MATURIN_VERSION }}
+      # Plain `docker run` rather than `addnab/docker-run-action`, whose v3 tag
+      # is from 2021 and which is effectively unmaintained (#83). The action was
+      # only wrapping this command; the runner already has Docker.
       - name: Install built wheel
         if: matrix.target == 'x86_64-unknown-linux-musl'
-        uses: addnab/docker-run-action@4f65fabd2431ebc8d299f8e5a018d79a769ae185 # v3
-        with:
-          image: alpine:latest
-          options: -v ${{ github.workspace }}:/io -w /io
-          run: |
+        run: |
+          # `sh -e`, not `-eu`: uv's generated `.venv/bin/activate` reads
+          # `$OSTYPE`, which is unset under a POSIX shell.
+          docker run --rm -v "${{ github.workspace }}:/io" -w /io alpine:latest sh -ec '
             apk add python3 curl
             curl -LsSf https://astral.sh/uv/install.sh | sh
-            . $HOME/.local/bin/env
+            . "$HOME/.local/bin/env"
             uv venv
             . .venv/bin/activate
             uv pip install ${{ inputs.package_name }} --no-index --find-links /io/dist/ --force-reinstall --no-deps
+          '
       - name: Upload wheels
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
