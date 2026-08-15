@@ -41,43 +41,73 @@ See [core](./core).
 
 ## Data type support
 
-We currently support nearly all scalar data types as well as List/Array data types.
-There's no reason we can't support struct data types as well.
+We support nearly all scalar data types, all three of Arrow's list layouts, and structs
+(as Postgres composite types).
 
-|   Arrow                   |   Postgres       |
-|---------------------------|------------------|
-|   Boolean                 |   BOOL           |
-|   UInt8                   |   INT2           |
-|   UInt16                  |   INT4           |
-|   UInt32                  |   INT8           |
-|   UInt64                  |   NUMERIC        |
-|   Int8                    |   CHAR,INT2      |
-|   Int16                   |   INT2           |
-|   Int32                   |   INT4           |
-|   Int64                   |   INT8           |
-|   Float16                 |   FLOAT4         |
-|   Float32                 |   FLOAT4         |
-|   Float64                 |   FLOAT8         |
-|   Decimal32               |   NUMERIC        |
-|   Decimal64               |   NUMERIC        |
-|   Decimal128              |   NUMERIC        |
-|   Timestamp(Nanosecond)   |   Not supported  |
-|   Timestamp(Microsecond)  |   TIMESTAMP      |
-|   Timestamp(Millisecond)  |   TIMESTAMP      |
-|   Timestamp(Second)       |   TIMESTAMP      |
-|   Date32                  |   DATE           |
-|   Date64                  |   Not supported  |
-|   Time32(Millisecond)     |   TIME           |
-|   Time32(Second)          |   TIME           |
-|   Time64(Nanosecond)      |   Not supported  |
-|   Time64(Microsecond)     |   TIME           |
-|   Duration(Nanosecond)    |   Not supported  |
-|   Duration(Microsecond)   |   INTERVAL       |
-|   Duration(Millisecond)   |   INTERVAL       |
-|   Duration(Second)        |   INTERVAL       |
-|   String                  |   TEXT,JSONB     |
-|   Binary                  |   BYTEA          |
-|   List\<T\>               |   Array\<T\>     |
+|   Arrow                   |   Postgres              |
+|---------------------------|-------------------------|
+|   Boolean                 |   BOOL                  |
+|   UInt8                   |   INT2                  |
+|   UInt16                  |   INT4                  |
+|   UInt32                  |   INT8                  |
+|   UInt64                  |   NUMERIC               |
+|   Int8                    |   INT2                  |
+|   Int16                   |   INT2                  |
+|   Int32                   |   INT4                  |
+|   Int64                   |   INT8                  |
+|   Float16                 |   FLOAT4                |
+|   Float32                 |   FLOAT4                |
+|   Float64                 |   FLOAT8                |
+|   Decimal32               |   NUMERIC               |
+|   Decimal64               |   NUMERIC               |
+|   Decimal128              |   NUMERIC               |
+|   Timestamp(Nanosecond)   |   Not supported         |
+|   Timestamp(Microsecond)  |   TIMESTAMP             |
+|   Timestamp(Millisecond)  |   TIMESTAMP             |
+|   Timestamp(Second)       |   TIMESTAMP             |
+|   Date32                  |   DATE                  |
+|   Date64                  |   Not supported         |
+|   Time32(Millisecond)     |   TIME                  |
+|   Time32(Second)          |   TIME                  |
+|   Time64(Nanosecond)      |   Not supported         |
+|   Time64(Microsecond)     |   TIME                  |
+|   Duration(Nanosecond)    |   Not supported         |
+|   Duration(Microsecond)   |   INTERVAL              |
+|   Duration(Millisecond)   |   INTERVAL              |
+|   Duration(Second)        |   INTERVAL              |
+|   Utf8                    |   TEXT, JSON, JSONB     |
+|   LargeUtf8               |   TEXT, JSON, JSONB     |
+|   Utf8View                |   TEXT, JSON, JSONB     |
+|   Binary                  |   BYTEA                 |
+|   LargeBinary             |   BYTEA                 |
+|   FixedSizeBinary         |   BYTEA                 |
+|   List\<T\>               |   Array\<T\>            |
+|   LargeList\<T\>          |   Array\<T\>            |
+|   FixedSizeList\<T\>      |   Array\<T\>            |
+|   Struct                  |   Composite type        |
+
+The non-default output types (`JSON`/`JSONB` for strings) are selected per column with
+`StringEncoderBuilder::new_with_output`.
+
+### Structs and composite types
+
+A struct column becomes a Postgres composite type, and `PostgresSchema::ddl` emits the
+`CREATE TYPE` for it using the Arrow field names.
+
+A composite's OID goes on the wire wherever one is *nested* — a struct inside a struct, or an
+array of structs — and Postgres allocates that OID when the type is created, so it has to come
+from the database you are loading into:
+
+```sql
+select oid from pg_type where typname = 'my_struct_t';
+```
+
+```rust
+let encoder = ArrowToPostgresBinaryEncoder::try_new(&schema)?
+    .with_composite_oids(&HashMap::from([("my_struct_t".to_string(), oid)]))?;
+```
+
+Top-level struct columns need nothing extra: binary COPY declares no column types.
 
 ### JSONB support
 
