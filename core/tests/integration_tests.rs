@@ -92,7 +92,8 @@ fn validate_custom_encoder_snapshots() {
 /// third type again — and one that would reject a two byte payload as well.)
 ///
 /// This test asserts the behaviour as it stands today so the gap is visible rather than merely
-/// untested; it is expected to fail, loudly, when the encoding is fixed.
+/// untested; it is expected to fail, loudly, when the encoding is fixed. Tracked as
+/// <https://github.com/adriangb/pgpq/issues/95>.
 #[test]
 fn int8_as_char_is_rejected_by_postgres() {
     let case = int8_char_case();
