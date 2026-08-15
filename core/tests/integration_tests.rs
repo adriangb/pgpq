@@ -11,7 +11,7 @@ use pgpq::ArrowToPostgresBinaryEncoder;
 use pgpq::pg_schema::{Column, PostgresType};
 use similar::{ChangeTag, TextDiff};
 
-use harness::cases::{Case, all_cases, read_batches};
+use harness::cases::{Case, all_cases, custom_encoder_cases, int8_char_case, read_batches};
 use harness::db::TestDb;
 use harness::value::Value;
 
@@ -41,6 +41,79 @@ fn run_test_case(case: &str) {
             "values did not match. First {n_chars} bytes shown",
         )
     }
+}
+
+/// Byte level snapshots for the cases whose encoders are *not* the inferred ones.
+///
+/// [`run_test_case`] covers the generated `testdata/*.arrow` corpus, but it always builds the
+/// encoder with `try_new`, so nothing pinned the bytes of a case built with
+/// `try_new_with_encoders`. These live in a subdirectory of `tests/snapshots` because they have no
+/// `.arrow` file behind them, which is what [`validate_snapshots`] keys off.
+fn custom_encoder_snapshot(case: &Case) {
+    let (buf, _) = harness::db::encode(&case.schema, &case.batches, case.encoders.as_ref())
+        .unwrap_or_else(|err| panic!("{}: encoding failed: {err}", case.name));
+
+    let dir = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("tests/snapshots/custom_encoders");
+    fs::create_dir_all(&dir).unwrap();
+    let snap_file = dir.join(format!("{}.bin", case.name));
+    if !snap_file.exists() {
+        fs::write(&snap_file, &buf[..]).unwrap();
+        panic!("wrote new snap at {snap_file:?}")
+    }
+    assert_eq!(
+        fs::read(&snap_file).unwrap(),
+        &buf[..],
+        "{} did not match {snap_file:?}",
+        case.name
+    );
+}
+
+#[test]
+fn validate_custom_encoder_snapshots() {
+    let cases = custom_encoder_cases();
+    assert!(!cases.is_empty());
+    for case in &cases {
+        custom_encoder_snapshot(case);
+    }
+    // Not part of `custom_encoder_cases` because Postgres will not load it; see
+    // `int8_as_char_is_rejected_by_postgres`. The bytes are still worth pinning.
+    custom_encoder_snapshot(&int8_char_case());
+}
+
+/// KNOWN BUG: an `Int8` column encoded as `PostgresType::Char` cannot be loaded into Postgres.
+///
+/// `Int8EncoderBuilder::new_with_output(_, Char)` changes only the *declared* column type; the
+/// payload stays the two byte big-endian `i16` of the default `INT2` encoding (`Char`'s
+/// `TypeSize` is `Fixed(2)`). But `PostgresType::Char`'s DDL name is `CHAR`, which Postgres
+/// resolves to `bpchar` — a text type — so it reads those two bytes as UTF-8 and rejects them.
+/// Every `i8` value fails, because the high byte is `0x00` for non-negative values and `0xff` for
+/// negative ones and neither is valid UTF-8.
+///
+/// (`PostgresType::Char` also reports OID 18, which is Postgres' internal one byte `"char"`, a
+/// third type again — and one that would reject a two byte payload as well.)
+///
+/// This test asserts the behaviour as it stands today so the gap is visible rather than merely
+/// untested; it is expected to fail, loudly, when the encoding is fixed. Tracked as
+/// <https://github.com/adriangb/pgpq/issues/95>.
+#[test]
+fn int8_as_char_is_rejected_by_postgres() {
+    let case = int8_char_case();
+    let mut db = TestDb::start().expect("failed to start embedded postgres");
+
+    let err = db
+        .roundtrip(
+            &case.name,
+            &case.schema,
+            &case.batches,
+            case.encoders.as_ref(),
+        )
+        .expect_err("Int8 -> Char now loads; the known bug is fixed, update this test");
+
+    let message = err.to_string();
+    assert!(
+        format!("{err:?}").contains("invalid byte sequence for encoding"),
+        "unexpected failure: {message} / {err:?}"
+    );
 }
 
 // These tests are generated in generate_test_data.py
@@ -88,6 +161,11 @@ fn test_int32() {
 #[test]
 fn test_int64() {
     run_test_case("int64")
+}
+
+#[test]
+fn test_float16() {
+    run_test_case("float16")
 }
 
 #[test]
@@ -256,6 +334,11 @@ fn test_int64_nullable() {
 }
 
 #[test]
+fn test_float16_nullable() {
+    run_test_case("float16_nullable")
+}
+
+#[test]
 fn test_float32_nullable() {
     run_test_case("float32_nullable")
 }
@@ -418,6 +501,11 @@ fn test_list_int32() {
 #[test]
 fn test_list_int64() {
     run_test_case("list_int64")
+}
+
+#[test]
+fn test_list_float16() {
+    run_test_case("list_float16")
 }
 
 #[test]
@@ -586,6 +674,11 @@ fn test_list_int64_nullable() {
 }
 
 #[test]
+fn test_list_float16_nullable() {
+    run_test_case("list_float16_nullable")
+}
+
+#[test]
 fn test_list_float32_nullable() {
     run_test_case("list_float32_nullable")
 }
@@ -748,6 +841,11 @@ fn test_list_nullable_int32() {
 #[test]
 fn test_list_nullable_int64() {
     run_test_case("list_nullable_int64")
+}
+
+#[test]
+fn test_list_nullable_float16() {
+    run_test_case("list_nullable_float16")
 }
 
 #[test]
@@ -916,6 +1014,11 @@ fn test_list_nullable_int64_nullable() {
 }
 
 #[test]
+fn test_list_nullable_float16_nullable() {
+    run_test_case("list_nullable_float16_nullable")
+}
+
+#[test]
 fn test_list_nullable_float32_nullable() {
     run_test_case("list_nullable_float32_nullable")
 }
@@ -1033,6 +1136,46 @@ fn test_list_nullable_large_string_nullable() {
 #[test]
 fn test_list_nullable_string_view_nullable() {
     run_test_case("list_nullable_string_view_nullable")
+}
+
+#[test]
+fn test_large_list_int32() {
+    run_test_case("large_list_int32")
+}
+
+#[test]
+fn test_large_list_string() {
+    run_test_case("large_list_string")
+}
+
+#[test]
+fn test_large_list_int32_nullable() {
+    run_test_case("large_list_int32_nullable")
+}
+
+#[test]
+fn test_large_list_string_nullable() {
+    run_test_case("large_list_string_nullable")
+}
+
+#[test]
+fn test_large_list_nullable_int32() {
+    run_test_case("large_list_nullable_int32")
+}
+
+#[test]
+fn test_large_list_nullable_string() {
+    run_test_case("large_list_nullable_string")
+}
+
+#[test]
+fn test_large_list_nullable_int32_nullable() {
+    run_test_case("large_list_nullable_int32_nullable")
+}
+
+#[test]
+fn test_large_list_nullable_string_nullable() {
+    run_test_case("large_list_nullable_string_nullable")
 }
 
 #[test]
@@ -1302,7 +1445,10 @@ fn describe_mismatch(
         }
         for (col, (expected_value, actual_value)) in expected_row.iter().zip(actual_row).enumerate()
         {
-            if expected_value != actual_value {
+            // `semantically_equals` rather than `!=`: identical for every non-float variant, and
+            // for floats it is both looser (NaN equals NaN) and stricter (`-0.0` does not equal
+            // `0.0`) than `PartialEq`. See `harness::value::Value::semantically_equals`.
+            if !expected_value.semantically_equals(actual_value) {
                 let name = case
                     .schema
                     .fields()

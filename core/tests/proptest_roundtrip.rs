@@ -87,8 +87,13 @@ const MAX_HARNESS_NUMERIC_DIGITS: u8 = 28;
 const MIN_TIMESTAMP_US: i64 = -17_987_443_200_000_000;
 const MAX_TIMESTAMP_US: i64 = 13_569_465_600_000_000;
 
-/// Date bounds in days since the Unix epoch: 0001-01-01 .. 9999-12-31. Postgres accepts a wider
-/// range (4713 BC .. 5874897 AD) but reserves `i32::MIN`/`i32::MAX` for `-infinity`/`infinity`.
+/// Date bounds in days since the Unix epoch: 0001-01-01 .. 9999-12-31.
+///
+/// This is an expectation-side bound, not an encoder one: `chrono::NaiveDate` (which both sides of
+/// the compare go through) only spans years 1..=9999, while Postgres itself accepts 4713 BC ..
+/// 5874897 AD and reserves `i32::MIN`/`i32::MAX` for `-infinity`/`infinity`. Widening this range
+/// would need a different expectation type; the fuzz target covers the full `i32` range for
+/// panic-freedom in the meantime.
 const MIN_DATE_DAYS: i32 = -719_162;
 const MAX_DATE_DAYS: i32 = 2_932_896;
 
@@ -227,6 +232,11 @@ fn f64s() -> BoxedStrategy<f64> {
 
 /// Strings avoid `NUL`: Postgres rejects it in `text` regardless of what pgpq does with it, so
 /// generating it would only test Postgres' input validation.
+///
+/// The long tail is drawn from several alphabets rather than only ASCII, because the interesting
+/// property of a long string is its *byte* length: the encoders size a `text` field from
+/// `str::len()`, so a multi-KB string of 3 and 4 byte code points is the case where a length
+/// computed in characters instead of bytes would show up.
 fn strings() -> BoxedStrategy<String> {
     prop_oneof![
         6 => proptest::string::string_regex("[^\u{0}]{0,24}").unwrap(),
@@ -257,7 +267,25 @@ fn strings() -> BoxedStrategy<String> {
             .map(|s| s.to_string())
             .collect::<Vec<_>>(),
         ),
-        1 => proptest::string::string_regex("[a-zA-Z0-9 ]{512,2048}").unwrap(),
+        1 => long_strings(),
+    ]
+    .boxed()
+}
+
+/// Multi-KB strings, ASCII and multi-byte alike (roughly 0.5 KB .. 12 KB of UTF-8).
+fn long_strings() -> BoxedStrategy<String> {
+    prop_oneof![
+        // ASCII: 512..2048 bytes.
+        proptest::string::string_regex("[a-zA-Z0-9 ]{512,2048}").unwrap(),
+        // Latin/Greek/Cyrillic, 2 bytes per code point: ~1..4 KB.
+        proptest::string::string_regex("[\u{e0}-\u{ff}\u{3b1}-\u{3c9}\u{430}-\u{44f}]{512,2048}")
+            .unwrap(),
+        // CJK, 3 bytes per code point: ~1.5..6 KB.
+        proptest::string::string_regex("[\u{4e00}-\u{4eff}\u{3040}-\u{309f}]{512,2048}").unwrap(),
+        // Emoji (astral plane), 4 bytes per code point: ~2..8 KB.
+        proptest::string::string_regex("[\u{1f600}-\u{1f64f}]{512,2048}").unwrap(),
+        // A mixture, so the multi-byte boundaries are not all aligned the same way.
+        proptest::string::string_regex("[a\u{e9}\u{4e2d}\u{1f980} ]{1024,3072}").unwrap(),
     ]
     .boxed()
 }
@@ -673,6 +701,11 @@ fn scalar_type() -> BoxedStrategy<DataType> {
     .boxed()
 }
 
+/// A list of scalars, never a list of lists.
+///
+/// `EncoderBuilder::try_new` rejects a nested list with an `Err` (Postgres arrays are flat), so
+/// generating one would only produce cases this suite has to skip. That `Err` path is covered
+/// directly by `nested_lists_are_rejected` in `core/src/lib.rs`.
 fn list_type() -> BoxedStrategy<DataType> {
     (scalar_type(), any::<bool>())
         .prop_map(|(inner, large)| {
@@ -781,27 +814,14 @@ fn case_strategy(name: &'static str, column_type: BoxedStrategy<DataType>) -> Bo
 // Comparison
 // ---------------------------------------------------------------------------------------------
 
-/// Value equality that treats `NaN` as equal to itself.
-///
-/// `NaN != NaN` under `PartialEq`, but "Postgres gave back a NaN where the Arrow array held a
-/// NaN" is exactly the behaviour we want to assert.
-fn values_equal(expected: &Value, actual: &Value) -> bool {
-    match (expected, actual) {
-        (Value::Float4(a), Value::Float4(b)) => a == b || (a.is_nan() && b.is_nan()),
-        (Value::Float8(a), Value::Float8(b)) => a == b || (a.is_nan() && b.is_nan()),
-        (Value::Array(a), Value::Array(b)) | (Value::Record(a), Value::Record(b)) => {
-            a.len() == b.len() && a.iter().zip(b).all(|(a, b)| values_equal(a, b))
-        }
-        _ => expected == actual,
-    }
-}
-
+/// Rows compare with [`Value::semantically_equals`], which treats `NaN` as equal to itself and
+/// `-0.0` as *different* from `0.0` (both strategies above draw `-0.0` explicitly, and Postgres
+/// preserves the sign of zero through a binary `COPY`).
 fn rows_equal(expected: &[Vec<Value>], actual: &[Vec<Value>]) -> bool {
     expected.len() == actual.len()
-        && expected
-            .iter()
-            .zip(actual)
-            .all(|(e, a)| e.len() == a.len() && e.iter().zip(a).all(|(e, a)| values_equal(e, a)))
+        && expected.iter().zip(actual).all(|(e, a)| {
+            e.len() == a.len() && e.iter().zip(a).all(|(e, a)| e.semantically_equals(a))
+        })
 }
 
 // ---------------------------------------------------------------------------------------------

@@ -13,12 +13,14 @@ use std::sync::Arc;
 use arrow::buffer::{NullBuffer, OffsetBuffer};
 use arrow_array::builder::{ListBuilder, StringBuilder};
 use arrow_array::{
-    ArrayRef, BooleanArray, Float64Array, Int32Array, ListArray, RecordBatch, StringArray,
-    StructArray,
+    ArrayRef, BooleanArray, Float32Array, Float64Array, Int8Array, Int32Array, ListArray,
+    RecordBatch, StringArray, StructArray,
 };
 use arrow_ipc::reader::FileReader;
 use arrow_schema::{DataType, Field, Fields, Schema};
-use pgpq::encoders::{EncoderBuilder, ListEncoderBuilder, StringEncoderBuilder};
+use pgpq::encoders::{
+    EncoderBuilder, Int8EncoderBuilder, ListEncoderBuilder, StringEncoderBuilder,
+};
 use pgpq::pg_schema::PostgresType;
 
 use super::value::{Value, expected_rows};
@@ -245,6 +247,46 @@ pub fn struct_cases() -> Vec<Case> {
     cases
 }
 
+/// IEEE 754 special values, which the derived `PartialEq` on [`Value`] compares badly.
+///
+/// This is the deterministic counterpart to the `-0.0` / `NaN` values the proptest suite draws:
+/// it pins down that a binary `COPY` preserves the *sign of zero* (`-0.0` is not `0.0`) and that
+/// `NaN`, `inf` and `-inf` survive as themselves. Both rely on
+/// [`Value::semantically_equals`](super::value::Value::semantically_equals) rather than `==`.
+pub fn float_cases() -> Vec<Case> {
+    let f32_values = vec![
+        0.0f32,
+        -0.0f32,
+        f32::NAN,
+        f32::INFINITY,
+        f32::NEG_INFINITY,
+        1.0,
+        -1.0,
+    ];
+    let f64_values: Vec<f64> = vec![
+        0.0,
+        -0.0,
+        f64::NAN,
+        f64::INFINITY,
+        f64::NEG_INFINITY,
+        1.0,
+        -1.0,
+    ];
+    let schema = Arc::new(Schema::new(vec![
+        Field::new("f32", DataType::Float32, false),
+        Field::new("f64", DataType::Float64, false),
+    ]));
+    let batch = RecordBatch::try_new(
+        schema,
+        vec![
+            Arc::new(Float32Array::from(f32_values)) as ArrayRef,
+            Arc::new(Float64Array::from(f64_values)) as ArrayRef,
+        ],
+    )
+    .unwrap();
+    vec![Case::new("float_special_values", batch)]
+}
+
 /// Cases that override the default encoder selection, e.g. writing Arrow strings as `JSONB`.
 pub fn custom_encoder_cases() -> Vec<Case> {
     let mut builder = ListBuilder::new(StringBuilder::new()).with_field(Arc::new(Field::new(
@@ -277,17 +319,104 @@ pub fn custom_encoder_cases() -> Vec<Case> {
         vec![Value::Array(vec![Value::Text("123".into())])],
     ];
 
-    vec![
+    let mut cases = vec![
         Case::new("json_list", batch)
             .with_encoders(encoders)
             .with_expected(expected),
-    ]
+    ];
+    cases.push(json_string_case(PostgresType::Jsonb));
+    cases.push(json_string_case(PostgresType::Json));
+    cases
+}
+
+/// The JSON documents used by [`json_string_case`], deliberately including whitespace and an
+/// out-of-order object, which is where `JSON` and `JSONB` part ways.
+const JSON_DOCUMENTS: [&str; 6] = [
+    "{\"b\": 1, \"a\": 2}",
+    "{ \"spaced\"  :  [1,2,3] }",
+    "[]",
+    "123",
+    "null",
+    "\"a string\"",
+];
+
+/// A plain (non list) `Utf8` column written as `JSON` or `JSONB`.
+///
+/// The `json_list` case above only reaches `JSONB` through a list, so neither the scalar path nor
+/// the one byte jsonb version header the encoder writes had coverage of its own, and the `JSON`
+/// output type had none at all.
+fn json_string_case(output: PostgresType) -> Case {
+    let jsonb = output == PostgresType::Jsonb;
+    let field = Field::new("payload", DataType::Utf8, false);
+    let array = Arc::new(StringArray::from(JSON_DOCUMENTS.to_vec())) as ArrayRef;
+    let batch = single_column_batch(field.clone(), array);
+
+    let encoders = HashMap::from([(
+        "payload".to_string(),
+        EncoderBuilder::String(
+            StringEncoderBuilder::new_with_output(Arc::new(field), output).unwrap(),
+        ),
+    )]);
+
+    // `JSON` stores the document text verbatim, so it comes back exactly as it went in. `JSONB`
+    // is a parsed representation, and Postgres re-renders it with its own spacing and (for
+    // objects) its own key order.
+    let expected = if jsonb {
+        [
+            "{\"a\": 2, \"b\": 1}",
+            "{\"spaced\": [1, 2, 3]}",
+            "[]",
+            "123",
+            "null",
+            "\"a string\"",
+        ]
+    } else {
+        JSON_DOCUMENTS
+    }
+    .iter()
+    .map(|s| vec![Value::Text((*s).to_string())])
+    .collect();
+
+    let name = if jsonb { "jsonb_string" } else { "json_string" };
+    Case::new(name, batch)
+        .with_encoders(encoders)
+        .with_expected(expected)
+}
+
+/// An `Int8` column written as `PostgresType::Char` rather than the default `INT2`.
+///
+/// `Int8EncoderBuilder` is the one scalar builder whose output type is caller selectable, and the
+/// `Char` branch was reachable from no test at all.
+///
+/// This case is deliberately *not* part of [`all_cases`]: Postgres rejects the `COPY` outright.
+/// See `int8_as_char_is_rejected_by_postgres` in `tests/integration_tests.rs`.
+pub fn int8_char_case() -> Case {
+    let field = Field::new("code", DataType::Int8, true);
+    let array = Arc::new(Int8Array::from(vec![
+        Some(0),
+        Some(1),
+        Some(-1),
+        Some(i8::MIN),
+        Some(i8::MAX),
+        None,
+    ])) as ArrayRef;
+    let batch = single_column_batch(field.clone(), array);
+
+    let encoders = HashMap::from([(
+        "code".to_string(),
+        EncoderBuilder::Int8(
+            Int8EncoderBuilder::new_with_output(Arc::new(field), PostgresType::Char).unwrap(),
+        ),
+    )]);
+
+    Case::new("int8_char", batch).with_encoders(encoders)
 }
 
 /// Every case, in the order they should be run.
 pub fn all_cases() -> Vec<Case> {
     let mut cases = testdata_cases();
     cases.extend(struct_cases());
+    cases.extend(float_cases());
     cases.extend(custom_encoder_cases());
     cases
 }

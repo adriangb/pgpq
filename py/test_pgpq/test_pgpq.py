@@ -113,6 +113,31 @@ def test_roundtrip_primitives(dbconn: Connection) -> None:
     ]
 
 
+def test_roundtrip_float_special_values(dbconn: Connection) -> None:
+    """``NaN``, ``±inf`` and — crucially — ``-0.0`` survive a binary COPY unchanged.
+
+    The deterministic counterpart to the ``-0.0`` values hypothesis draws below: since
+    ``-0.0 == 0.0`` in IEEE, only an explicit sign check can prove Postgres kept it.
+    """
+    values = [0.0, -0.0, math.nan, math.inf, -math.inf, None]
+    table = pa.table(
+        {
+            "f32": pa.array(values, pa.float32()),
+            "f64": pa.array(values, pa.float64()),
+        }
+    )
+
+    rows = roundtrip(table, dbconn)
+
+    assert len(rows) == len(values)
+    for row, expected in zip(rows, values, strict=True):
+        for actual in row:
+            assert _values_equal(expected, actual), f"{expected!r} != {actual!r}"
+    # Spelled out so the assertion above cannot pass vacuously.
+    assert math.copysign(1.0, rows[1][0]) == -1.0
+    assert math.copysign(1.0, rows[1][1]) == -1.0
+
+
 def test_roundtrip_strings_and_binary(dbconn: Connection) -> None:
     table = pa.table(
         {
@@ -322,9 +347,20 @@ def _mixed_tables(draw: st.DrawFn) -> pa.Table:
 
 
 def _values_equal(expected: Any, actual: Any) -> bool:
-    # NaN != NaN, but "Postgres gave back the NaN that went in" is what we assert.
+    """Float aware equality, matching ``Value::semantically_equals`` on the Rust side.
+
+    Two departures from ``==``: ``NaN`` equals ``NaN`` (Postgres gave back the NaN that
+    went in, which is what we assert), and ``-0.0`` does *not* equal ``0.0``. IEEE
+    compares the two zeroes equal, so a plain ``==`` would say nothing about the sign of
+    zero — but Postgres preserves it through a binary ``COPY``, and losing it would be a
+    silent fidelity bug.
+    """
     if isinstance(expected, float) and isinstance(actual, float):
-        return expected == actual or (math.isnan(expected) and math.isnan(actual))
+        if math.isnan(expected) or math.isnan(actual):
+            return math.isnan(expected) and math.isnan(actual)
+        return expected == actual and math.copysign(1.0, expected) == math.copysign(
+            1.0, actual
+        )
     return bool(expected == actual)
 
 
