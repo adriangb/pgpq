@@ -183,6 +183,67 @@ def test_roundtrip_structs(dbconn: Connection) -> None:
     ]
 
 
+def test_roundtrip_fixed_size_types(dbconn: Connection) -> None:
+    """``FixedSizeBinary`` lands in a BYTEA and ``FixedSizeList`` in an array."""
+    table = pa.table(
+        {
+            "b": pa.array([b"abc", None], pa.binary(3)),
+            "l": pa.array(
+                [[1, 2], None],
+                pa.list_(pa.field("item", pa.int32(), nullable=True), 2),
+            ),
+        }
+    )
+
+    rows = roundtrip(table, dbconn)
+
+    assert rows == [(b"abc", [1, 2]), (None, None)]
+
+
+def test_roundtrip_struct_with_list_field(dbconn: Connection) -> None:
+    """A composite type with an array column (issue #90).
+
+    Postgres checks the OID pgpq writes for each composite field against the column's
+    declared type, so this only loads if the array type OID is the real one.
+    """
+    struct_type = pa.struct(
+        [
+            pa.field("num", pa.int32()),
+            pa.field("nums", pa.list_(pa.field("item", pa.int32(), nullable=True))),
+        ]
+    )
+    table = pa.table({"s": pa.array([{"num": 1, "nums": [1, 2]}, None], struct_type)})
+
+    rows = roundtrip(table, dbconn)
+
+    assert rows == [('(1,"{1,2}")',), (None,)]
+
+
+def test_struct_with_list_of_structs_raises_value_error() -> None:
+    """The one composite shape that has no answer: an array of a user defined type.
+
+    Its array type OID is assigned when the type is created, so pgpq cannot know it.
+    """
+    schema = pa.schema(
+        [
+            pa.field(
+                "s",
+                pa.struct(
+                    [
+                        pa.field(
+                            "structs",
+                            pa.list_(pa.struct([pa.field("num", pa.int32())])),
+                        )
+                    ]
+                ),
+            )
+        ]
+    )
+
+    with pytest.raises(ValueError):
+        ArrowToPostgresBinaryEncoder(schema)
+
+
 def test_roundtrip_custom_encoding_to_jsonb(dbconn: Connection) -> None:
     """A string column can be told to land in Postgres as JSONB instead of TEXT."""
     batch = pa.RecordBatch.from_arrays(
@@ -389,6 +450,30 @@ def test_infer_encoder() -> None:
             ),
         ),
     }
+
+
+def test_infer_encoder_fixed_size_types() -> None:
+    schema = pa.schema(
+        [
+            pa.field("b", pa.binary(3)),
+            pa.field("l", pa.list_(pa.field("item", pa.int32(), nullable=True), 2)),
+        ]
+    )
+
+    encoders = {
+        name: ArrowToPostgresBinaryEncoder.infer_encoder(schema.field(name))
+        for name in schema.names
+    }
+
+    assert encoders == {
+        "b": pgpq.encoders.FixedSizeBinaryEncoderBuilder(schema.field("b")),
+        "l": pgpq.encoders.FixedSizeListEncoderBuilder.new_with_inner(
+            schema.field("l"),
+            pgpq.encoders.Int32EncoderBuilder(schema.field("l").type.value_field),
+        ),
+    }
+    # `repr` of a list builder names its own class rather than always saying "List".
+    assert repr(encoders["l"]).startswith("FixedSizeListEncoderBuilder(")
 
 
 def test_column_properties() -> None:

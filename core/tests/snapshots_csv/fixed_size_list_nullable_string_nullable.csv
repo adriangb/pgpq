@@ -1,0 +1,3 @@
+fixed_size_list_nullable_string_nullable
+"{"""",""some data! "",NULL,"""",""some data! ""}"
+null

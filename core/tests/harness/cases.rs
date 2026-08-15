@@ -197,9 +197,30 @@ pub fn struct_cases() -> Vec<Case> {
         ));
     }
 
-    // NOTE: a struct with a *list* field is not covered because `StructEncoderBuilder` requires
-    // every field type to have an OID and `PostgresType::List` has none, so building the encoder
-    // panics. See the note in `core/src/encoders.rs` (`StructEncoderBuilder::try_new`).
+    // A struct with a *list* field, i.e. a composite type with an array column. Postgres checks
+    // the OID pgpq writes for each composite field against the column's declared type, so this
+    // covers `PostgresType::List(_)::oid()` resolving to the real array type OID (`_int4` = 1007).
+    {
+        let item = Arc::new(Field::new("item", DataType::Int32, true));
+        let fields = Fields::from(vec![
+            Field::new("num", DataType::Int32, true),
+            Field::new("nums", DataType::List(item.clone()), true),
+        ]);
+        // Rows: [1, [1, 2]], [2, []], [3, NULL], with a null element in the first list.
+        let values = Arc::new(Int32Array::from(vec![Some(1), None])) as ArrayRef;
+        let offsets = OffsetBuffer::new(vec![0, 2, 2, 2].into());
+        let list_nulls = NullBuffer::from(vec![true, true, false]);
+        let lists = Arc::new(ListArray::new(item, offsets, values, Some(list_nulls))) as ArrayRef;
+        let columns: Vec<ArrayRef> = vec![Arc::new(Int32Array::from(vec![1, 2, 3])), lists];
+        let array = Arc::new(StructArray::new(fields.clone(), columns, None)) as ArrayRef;
+        cases.push(Case::new(
+            "struct_with_list_field",
+            single_column_batch(
+                Field::new("my_struct", DataType::Struct(fields), false),
+                array,
+            ),
+        ));
+    }
 
     // An array of structs (`composite_type[]`), with more than one struct per row.
     {

@@ -47,8 +47,10 @@ field_only = [
     "StringViewEncoderBuilder",
     "BinaryEncoderBuilder",
     "LargeBinaryEncoderBuilder",
+    "FixedSizeBinaryEncoderBuilder",
     "ListEncoderBuilder",
     "LargeListEncoderBuilder",
+    "FixedSizeListEncoderBuilder",
     "DynamicEncoderBuilder",
 ]
 
