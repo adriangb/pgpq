@@ -117,8 +117,10 @@ class UInt64EncoderBuilder:
 class Int8EncoderBuilder:
     def __init__(self, field: pyarrow.Field) -> None: ...
     @classmethod
+    # `Char` is not accepted: it declares bpchar (a text type) for an INT2 payload,
+    # which Postgres rejects on every value. See pgpq issue #95.
     def new_with_output(
-        cls, field: pyarrow.Field, output: Char | Int2
+        cls, field: pyarrow.Field, output: Int2
     ) -> Int8EncoderBuilder: ...
 
 class Int16EncoderBuilder:

@@ -639,6 +639,17 @@ def test_unknown_encoder_field_raises_value_error() -> None:
         ArrowToPostgresBinaryEncoder.new_with_encoders(schema, encoders)
 
 
+def test_int8_char_output_raises_value_error() -> None:
+    """`Char` declares bpchar for an INT2 payload, which Postgres rejects (#95)."""
+    field = pa.field("code", pa.int8())
+
+    with pytest.raises(ValueError):
+        pgpq.encoders.Int8EncoderBuilder.new_with_output(field, pgpq.schema.Char())
+
+    # The supported output still builds.
+    pgpq.encoders.Int8EncoderBuilder.new_with_output(field, pgpq.schema.Int2())
+
+
 def test_invalid_output_type_raises_value_error() -> None:
     field = pa.field("s", pa.string())
 
