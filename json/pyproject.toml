@@ -24,7 +24,7 @@ dependencies = [
 test = [
     "pytest>=7.0.0",
     "pytest-cov>=7.0.0",
-    "maturin>=1.14.1",
+    "maturin>=1.15.0",
     "pre-commit>=2.16.0",
     "pyarrow>=11.0.0",
     "polars>=0.16.1",
@@ -37,7 +37,7 @@ Documentation = "https://github.com/adriangb/pgpq/README.md"
 Repository = "https://github.com/adriangb/pgpq"
 
 [build-system]
-requires = ["maturin>=1.0.0,<2"]
+requires = ["maturin>=1.15.0,<2"]
 build-backend = "maturin"
 
 [tool.maturin]
