@@ -24,7 +24,7 @@ dependencies = [
 test = [
     "pytest>=7.0.0",
     "pytest-cov>=7.0.0",
-    "maturin>=1.14.1",
+    "maturin>=1.15.0",
     "pre-commit>=4.5.1",
     "testing.postgresql>=1.3.0",
     "psycopg[binary]>=3.3.4",
@@ -43,7 +43,7 @@ Documentation = "https://github.com/adriangb/pgpq/README.md"
 Repository = "https://github.com/adriangb/pgpq"
 
 [build-system]
-requires = ["maturin>=1,<2"]
+requires = ["maturin>=1.15.0,<2"]
 build-backend = "maturin"
 
 [tool.maturin]
