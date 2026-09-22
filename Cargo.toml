@@ -27,16 +27,16 @@ rust-version = "1.85"
 # resolve a split tree -- direct deps at 56 while `arrow-pyarrow` pulled 59 --
 # which compiles but fails at the type level. Dependabot (see
 # .github/dependabot.yml) now proposes the major bumps instead.
-arrow = "59"
+arrow = "60"
 # `default-features` must be declared here, not only at the use site: cargo
 # ignores (and warns about) `default-features = false` on an inherited
 # dependency unless the workspace entry sets it too. arrow-array's `default` is
 # empty today, so this is a correctness/lint fix rather than a behaviour change.
-arrow-array = { version = "59", default-features = false }
-arrow-schema = "59"
-arrow-json = "59"
-arrow-ipc = "59"
-parquet = "59"
+arrow-array = { version = "60", default-features = false }
+arrow-schema = "60"
+arrow-json = "60"
+arrow-ipc = "60"
+parquet = "60"
 
 [profile.bench.package.pgpq]
 debug = true
