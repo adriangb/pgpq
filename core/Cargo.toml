@@ -22,7 +22,7 @@ enum_dispatch = "0.3.11"
 thiserror = "2.0.20"
 
 [dev-dependencies]
-rstest = "0.26.1"
+rstest = "0.27.0"
 parquet.workspace = true
 criterion = "0.8.2"
 arrow = { workspace = true, features = ["ipc"]}
