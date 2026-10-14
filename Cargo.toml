@@ -6,18 +6,18 @@ exclude = ["core/fuzz"]
 resolver = "2"
 
 [workspace.package]
-# Edition 2024 needs Rust 1.85, which is already the MSRV below (arrow 59
+# Edition 2024 needs Rust 1.88, which is already the MSRV below (arrow 59
 # forced it), so this costs nothing. Inherited by core/, py/ and json/ via
 # `edition.workspace = true`; core/fuzz is its own workspace and is bumped
 # separately in its own manifest.
 edition = "2024"
 # Minimum supported Rust version for the library targets. Raised from 1.84 by
 # the arrow 59 bump: arrow 59.x is edition 2024 and declares `rust-version =
-# "1.85"`, so 1.84 cannot even parse its manifest. Verified by hand:
-# `cargo +1.85 check --workspace --locked` passes, `cargo +1.84` fails.
+# "1.88"`, so 1.84 cannot even parse its manifest. Verified by hand:
+# `cargo +1.88 check --workspace --locked` passes, `cargo +1.84` fails.
 # Note that the *test* suite still needs a much newer toolchain than this: the
 # dev-dependency floor is 1.94, set by postgresql_embedded 0.21 / sqlx 0.9.
-rust-version = "1.85"
+rust-version = "1.88"
 
 [workspace.dependencies]
 # Caret ranges (`59` == `>=59.0.0, <60.0.0`) rather than the open `>=56.0.0`
