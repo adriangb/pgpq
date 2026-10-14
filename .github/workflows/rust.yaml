@@ -97,7 +97,7 @@ jobs:
           # Required by cargo-llvm-cov (it drives llvm-profdata/llvm-cov).
           components: llvm-tools-preview
       - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2.9.2
-      - uses: taiki-e/install-action@9983c65e42da123ff25d1f78505eb6de315aa172 # v2.87.20
+      - uses: taiki-e/install-action@ab6895351a88b908e96a4697860d4ffea5e57dbe # v2.87.27
         with:
           tool: cargo-llvm-cov
       - uses: ./.github/actions/cache-embedded-postgres
