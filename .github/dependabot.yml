@@ -1,60 +1,47 @@
 version: 2
 
+# Goal: at most one open PR per ecosystem, and for Rust only when Cargo.toml
+# actually has to change. Requirements in Cargo.toml are plain caret ranges
+# ("60", "0.29"), so any semver-compatible release is already allowed for
+# downstream users; only a new major (or 0.x minor) needs our attention.
 updates:
-  # Rust: one manifest set for the whole cargo workspace (root Cargo.toml plus
-  # core/, py/, json/) -- Dependabot resolves workspace members from the root.
   - package-ecosystem: cargo
     directory: "/"
     schedule:
-      interval: weekly
-      day: monday
-    open-pull-requests-limit: 5
+      interval: monthly
+    ignore:
+      # Compatible releases are already allowed by our requirements.
+      - dependency-name: "*"
+        update-types: ["version-update:semver-minor", "version-update:semver-patch"]
     groups:
-      # The arrow family must move in lockstep: `arrow`'s `pyarrow` feature ties
-      # the arrow version to a specific pyo3 major via `arrow-pyarrow`, so
-      # splitting these across PRs produces trees that do not type-check.
-      arrow:
-        patterns:
-          - "arrow"
-          - "arrow-*"
-          - "parquet"
-          - "pyo3"
-      # Everything else that is not a major bump rolls up into a single PR.
-      cargo-minor-patch:
-        patterns:
-          - "*"
-        exclude-patterns:
-          - "arrow"
-          - "arrow-*"
-          - "parquet"
-          - "pyo3"
-        update-types:
-          - minor
-          - patch
+      # One PR for all breaking bumps. This also keeps the arrow family and
+      # pyo3 together, which must move in lockstep.
+      cargo:
+        patterns: ["*"]
+      cargo-security:
+        applies-to: security-updates
+        patterns: ["*"]
 
   # Workflow actions are pinned to commit SHAs (with a `# vX.Y.Z` comment);
   # Dependabot understands and preserves that format when it bumps them.
   - package-ecosystem: github-actions
     directory: "/"
     schedule:
-      interval: weekly
-      day: monday
+      interval: monthly
     groups:
       actions:
-        patterns:
-          - "*"
+        patterns: ["*"]
 
-  # The uv lockfile for the dev/test environment (root pyproject.toml plus the
-  # py/ and json/ workspace members).
+  # The uv lockfile for the dev/test environment only; it does not affect
+  # what users of the published packages get, so never edit pyproject.toml.
   - package-ecosystem: uv
     directory: "/"
     schedule:
-      interval: weekly
-      day: monday
+      interval: monthly
+    versioning-strategy: lockfile-only
     groups:
-      python-minor-patch:
-        patterns:
-          - "*"
-        update-types:
-          - minor
-          - patch
+      python:
+        patterns: ["*"]
+      python-security:
+        applies-to: security-updates
+        patterns: ["*"]
