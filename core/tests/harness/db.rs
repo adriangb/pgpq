@@ -17,8 +17,8 @@ use pgpq::ArrowToPostgresBinaryEncoder;
 use pgpq::encoders::EncoderBuilder;
 use pgpq::pg_schema::PostgresSchema;
 use postgres::{Client, NoTls};
-use postgresql_embedded::{Settings, VersionReq};
 use postgresql_embedded::blocking::PostgreSQL;
+use postgresql_embedded::{Settings, VersionReq};
 
 use super::value::Value;
 

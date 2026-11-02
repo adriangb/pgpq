@@ -16,8 +16,8 @@ use arrow_schema::{Field, Schema};
 use bytes::BytesMut;
 use pgpq::ArrowToPostgresBinaryEncoder;
 use postgres::{Client, NoTls};
-use postgresql_embedded::{Settings, VersionReq};
 use postgresql_embedded::blocking::PostgreSQL;
+use postgresql_embedded::{Settings, VersionReq};
 
 /// Pinned for the same reason as `harness::db::POSTGRES_VERSION`; keep the two in sync.
 const POSTGRES_VERSION: &str = "=18.6.0";
