@@ -1,0 +1,39 @@
+name: Dependabot auto-merge
+
+# Lockfile-only Dependabot PRs (Cargo.lock / uv.lock, nothing else) change only
+# what CI and contributors install, never what users of the published packages
+# get, so they are queued for auto-merge here. GitHub still waits for the
+# required status checks in branch protection before merging, so a red CI run
+# leaves the PR open for a human. Anything touching a manifest or a workflow
+# file is left for review.
+#
+# Note: a merge performed this way is attributed to GITHUB_TOKEN, and events
+# from GITHUB_TOKEN do not trigger the `push` workflows on main. That is fine
+# for lockfile bumps, which never need a release.
+
+on: pull_request
+
+permissions:
+  contents: write
+  pull-requests: write
+
+jobs:
+  auto-merge:
+    name: Enable auto-merge
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    if: github.event.pull_request.user.login == 'dependabot[bot]'
+    env:
+      GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      PR_URL: ${{ github.event.pull_request.html_url }}
+    steps:
+      - name: Queue lockfile-only updates for auto-merge
+        run: |
+          files="$(gh pr diff "$PR_URL" --name-only)"
+          echo "Changed files:"
+          echo "$files"
+          if echo "$files" | grep -qvxE 'Cargo\.lock|uv\.lock'; then
+            echo "Touches more than lockfiles; leaving it for review."
+            exit 0
+          fi
+          gh pr merge "$PR_URL" --auto --squash
