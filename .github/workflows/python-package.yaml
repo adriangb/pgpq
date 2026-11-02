@@ -190,7 +190,9 @@ jobs:
   musllinux:
     name: Build / MuslLinux (${{ matrix.target }})
     if: github.ref == format('refs/heads/{0}', github.event.repository.default_branch)
-    runs-on: ubuntu-latest
+    # See the note on the linux job: the smoke test below runs `apk add` inside
+    # a container.
+    runs-on: ubuntu-24.04
     timeout-minutes: 30
     strategy:
       matrix:
