@@ -8,9 +8,9 @@ runs:
   using: composite
   steps:
     # `postgresql_embedded` installs into `~/.theseus/postgresql/<pg version>`
-    # by default, and picks the Postgres version itself, so the cache is keyed
-    # on the crate version (from Cargo.lock) rather than on a Postgres version
-    # we would have to keep in sync by hand.
+    # by default. The Postgres version is pinned in core/tests/harness/db.rs
+    # (upstream re-publishes broke us when it floated), so the cache is keyed on
+    # both that pin and the crate version from Cargo.lock.
     - name: Resolve postgresql_embedded version
       id: pg
       shell: bash
@@ -20,9 +20,15 @@ runs:
           echo "::error::could not find postgresql_embedded in Cargo.lock"
           exit 1
         fi
-        echo "Found postgresql_embedded $version"
+        pg_version="$(sed -n 's/^pub const POSTGRES_VERSION: &str = "=\(.*\)";$/\1/p' core/tests/harness/db.rs)"
+        if [ -z "$pg_version" ]; then
+          echo "::error::could not find POSTGRES_VERSION in core/tests/harness/db.rs"
+          exit 1
+        fi
+        echo "Found postgresql_embedded $version, Postgres $pg_version"
         echo "version=$version" >> "$GITHUB_OUTPUT"
+        echo "pg_version=$pg_version" >> "$GITHUB_OUTPUT"
     - uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
       with:
         path: ~/.theseus
-        key: theseus-${{ runner.os }}-${{ runner.arch }}-pgembedded-${{ steps.pg.outputs.version }}
+        key: theseus-${{ runner.os }}-${{ runner.arch }}-pgembedded-${{ steps.pg.outputs.version }}-pg${{ steps.pg.outputs.pg_version }}

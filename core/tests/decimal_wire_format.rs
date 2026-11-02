@@ -16,8 +16,11 @@ use arrow_schema::{Field, Schema};
 use bytes::BytesMut;
 use pgpq::ArrowToPostgresBinaryEncoder;
 use postgres::{Client, NoTls};
-use postgresql_embedded::Settings;
+use postgresql_embedded::{Settings, VersionReq};
 use postgresql_embedded::blocking::PostgreSQL;
+
+/// Pinned for the same reason as `harness::db::POSTGRES_VERSION`; keep the two in sync.
+const POSTGRES_VERSION: &str = "=18.6.0";
 
 /// 38 nines: the largest magnitude a `Decimal128(38, _)` can hold.
 const MAX_PRECISION_38: i128 = 99_999_999_999_999_999_999_999_999_999_999_999_999;
@@ -156,6 +159,7 @@ fn cases() -> Vec<Case> {
 fn decimals_roundtrip_through_postgres() {
     let mut postgresql = PostgreSQL::new(Settings {
         timeout: Some(Duration::from_secs(30)),
+        version: VersionReq::parse(POSTGRES_VERSION).unwrap(),
         ..Default::default()
     });
     postgresql.setup().unwrap();

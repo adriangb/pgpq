@@ -17,12 +17,18 @@ use pgpq::ArrowToPostgresBinaryEncoder;
 use pgpq::encoders::EncoderBuilder;
 use pgpq::pg_schema::PostgresSchema;
 use postgres::{Client, NoTls};
-use postgresql_embedded::Settings;
+use postgresql_embedded::{Settings, VersionReq};
 use postgresql_embedded::blocking::PostgreSQL;
 
 use super::value::Value;
 
 type BoxError = Box<dyn Error>;
+
+/// The Postgres release to run. Left unset, postgresql_embedded resolves the *latest* theseus
+/// binaries at runtime, so an upstream re-publish can break CI with no change on our side: the
+/// 18.6.1 rebuild rejects `TimeZone=UTC` at connection time. Keep in sync with
+/// `decimal_wire_format.rs` (the CI cache key is derived from this line).
+pub const POSTGRES_VERSION: &str = "=18.6.0";
 
 /// Encode `batches` into Postgres' binary COPY format, returning the buffer and the Postgres
 /// schema the encoder derived from `schema`.
@@ -82,6 +88,7 @@ impl TestDb {
     pub fn start() -> Result<TestDb, BoxError> {
         let settings = Settings {
             timeout: Some(Duration::from_secs(60)),
+            version: VersionReq::parse(POSTGRES_VERSION)?,
             ..Default::default()
         };
         let mut postgres = PostgreSQL::new(settings);
